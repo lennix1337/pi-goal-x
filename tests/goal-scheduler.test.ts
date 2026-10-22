@@ -656,3 +656,41 @@ test("prompt cache: model changes and missing identities cannot replay another r
  assert.equal(restarted.filter(m => m.customType === "pi-goal-live-context").length, 2);
  assert.match(restarted.at(-1).content, /234567 tokens/);
 });
+
+test("per-goal allowance overrides project settings and is enforced without resetting spent runs", async t => {
+ const h = await fixture(t, 99);
+ t.mock.timers.enable({apis: ["setTimeout", "Date"]});
+ h.core.goalService.apply(h.ctx, {mutate: g => ({...g, maxAutonomousRuns: 2})});
+ h.begin();
+ for (let used = 1; used <= 2; used++) {
+  assert.equal(h.ready().terminate, true);
+  h.core.scheduler.settled(h.ctx); t.mock.timers.tick(1); h.admit();
+  assert.equal(h.core.state.goal?.scheduler?.used, used);
+ }
+ assert.equal(h.ready().terminate, false);
+ h.core.scheduler.settled(h.ctx); t.mock.timers.tick(1);
+ assert.equal(h.sent.length, 2);
+ assert.equal(h.core.state.goal?.status, "paused");
+ assert.equal(h.core.state.goal?.scheduler?.used, 2);
+});
+
+test("explicit unlimited per-goal allowance overrides configured cap", async t => {
+ const h = await fixture(t, 1);
+ t.mock.timers.enable({apis: ["setTimeout", "Date"]});
+ h.core.goalService.apply(h.ctx, {mutate: g => ({...g, maxAutonomousRuns: null})});
+ h.begin();
+ for (let used = 1; used <= 3; used++) {
+  assert.equal(h.ready().terminate, true);
+  h.core.scheduler.settled(h.ctx); t.mock.timers.tick(1); h.admit();
+  assert.equal(h.core.state.goal?.scheduler?.used, used);
+ }
+});
+
+test("malformed persisted allowance fails closed, null and absence remain distinct", () => {
+ const goal = createGoal({objective: "Persisted limits", autoContinue: true, sisyphus: false});
+ for (const value of [-1, 1.5, "30", {}, Number.MAX_SAFE_INTEGER + 1]) {
+  assert.equal(normalizeGoalRecord({...goal, maxAutonomousRuns: value})?.maxAutonomousRuns, 0);
+ }
+ assert.equal(normalizeGoalRecord({...goal, maxAutonomousRuns: null})?.maxAutonomousRuns, null);
+ assert.equal(normalizeGoalRecord(goal)?.maxAutonomousRuns, undefined);
+});

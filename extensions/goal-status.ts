@@ -32,6 +32,7 @@ export const PLAIN_THEME = {
 
 export interface GoalStatusTextOptions {
 	maxAutonomousRuns?: number;
+	showAutonomousRuns?: boolean;
 	goal: GoalRecord | null;
 	focused: boolean;
 	otherOpenGoals: number;
@@ -74,6 +75,7 @@ export function buildGoalStatusText(options: GoalStatusTextOptions): string {
 	const model = deriveGoalDashboardModel(options.goal, {
 		focused: options.focused,
 		maxAutonomousRuns: options.maxAutonomousRuns,
+		showAutonomousRuns: options.showAutonomousRuns,
 		otherOpenGoals: options.otherOpenGoals,
 		ledgerEvents: events,
 	});

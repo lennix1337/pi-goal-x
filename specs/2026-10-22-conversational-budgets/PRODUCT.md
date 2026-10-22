@@ -1,0 +1,17 @@
+# Conversational per-goal budgets
+
+The operator requests `/goal <objective and natural-language limits>` without visiting `/goal-settings`. The drafting model supplies structured limits and the existing confirmation shows and applies them. `/goal-tweak` supports subsequent budget-only revisions without rewriting other state.
+
+- New goals default to 30 autonomous runs and unlimited lifetime tokens when limits are omitted, unless an existing run setting supplies the default. State the assumption in the proposal; ask one question if the request is ambiguous.
+- `max_autonomous_runs`: nonnegative safe integer, null explicitly unlimited, omitted retains an existing tweak limit or uses the creation default. Zero disables autonomous continuation. These are extension-scheduled runs, not tool calls or all assistant messages.
+- `token_budget`: positive safe integer, null unlimited, omitted retains a tweak budget or creates without a token cap.
+- Scope is one goal, never silent modification of project/global settings. Existing goals without an override retain settings inheritance. Resume resets spent run allowance as upstream does; changing limits must not reset usage.
+- Reject malformed input before mutation/confirmation. Persist limits across reloads and enforce/display the same effective allowance. Invalid persisted run overrides fail closed at zero.
+- Model and dashboard state reads state an unlimited allowance explicitly (`Autonomous runs: unlimited (N used).`) for explicit-null and legacy records with no configured limit, and omit the line entirely when `showAutonomousRuns` is off. Prompt counters are unchanged. The settings label for an unset allowance reads "30 for new goals (default)"; earlier goals without an override inherit the configured allowance (unlimited if none).
+- Validation failures in `get_goal`, `create_goal`, `update_goal`, `set_goal_tasks` and `update_goal_task`, completion/scheduling gates and genuine Oracle provider/configuration failures return native `isError: true` without applying a rejected mutation. Successful empty states, user-declined proposals, audit rejections and cancelled operations remain non-errors.
+- Drafting tools (`propose_goal_draft`, `goal_question`, `goal_questionnaire`) return `isError: true` for actual failures: no active draft, an unavailable or throwing dialog host, invalid run/token limits, empty or over-long objective, mode mismatch, invalid or disabled task lists, an insufficient Sisyphus objective, unsaved pending goal state, a completed tweak target, a goal revised during confirmation, a failed post-confirmation flush, and a failed tweak apply. User cancellation, a declined draft, Continue refining and focus loss (nothing applied) stay non-errors; a successful creation or tweak terminates. A goal save that throws rejects natively and leaves the draft active. Failures never create or mutate a goal and keep drafting active.
+- Preserve confirmation, ownership, revision, token-limit, SDK/auth and other existing boundaries. Installation never starts a goal or invokes a model.
+
+## Acceptance
+
+Handler tests cover command prompt, explicit/default/unlimited/zero and invalid limits, confirmation/cancellation, tweak preservation, reload, scheduler exhaustion and non-resetting accounting. Full local unit/type/lint checks plus offline Pi 1.3 extension loading and local package registration validate installation. Real model interpretation and OptChat/failover lifecycle remain unverified without paid/live execution.

@@ -23,6 +23,10 @@ import { createMockTheme } from "./tui-test-utils.ts";
 
 interface Harness {
 	ctx: ExtensionContext;
+	/** Test/debug core hook exposed by goalExtension; used to inject service faults. */
+	core: any;
+	failDialog(error: Error): void;
+	removeDialogHost(): void;
 	commands: Map<string, any>;
 	tools: Map<string, any>;
 	messages: string[];
@@ -49,6 +53,7 @@ function createHarness(cwd: string, opts: { hasUI?: boolean } = {}): Harness {
 	let dialogResolve: ((result: any) => void) | null = null;
 	let hasDialogPending = false;
 	let selectAnswer: string | undefined;
+	let dialogFailure: Error | undefined;
 	const hasUI = opts.hasUI ?? false;
 	const pi = {
 		registerTool: (def: any) => { tools.set(def.name, def); },
@@ -78,7 +83,10 @@ function createHarness(cwd: string, opts: { hasUI?: boolean } = {}): Harness {
 			onTerminalInput: () => () => {},
 			select: async () => selectAnswer,
 			confirm: async () => false,
-			custom: async () => new Promise((resolve) => { dialogResolve = resolve; hasDialogPending = true; }),
+			custom: async () => {
+				if (dialogFailure) throw dialogFailure;
+				return new Promise((resolve) => { dialogResolve = resolve; hasDialogPending = true; });
+			},
 		},
 		getSystemPrompt: () => "base",
 		isIdle: () => true,
@@ -88,6 +96,9 @@ function createHarness(cwd: string, opts: { hasUI?: boolean } = {}): Harness {
 	goalExtension(pi as any, {});
 	return {
 		ctx,
+		core: (pi as unknown as { _goalCore: unknown })._goalCore,
+		failDialog: (error: Error) => { dialogFailure = error; },
+		removeDialogHost: () => { delete (ctx.ui as unknown as Record<string, unknown>).custom; delete (ctx.ui as unknown as Record<string, unknown>).select; },
 		commands,
 		tools,
 		messages,
@@ -1409,3 +1420,329 @@ for (const unavailable of [false, true]) {
 		} finally { rmSync(cwd, { recursive: true, force: true }); }
 	});
 }
+
+// Fork: natural-language limits are translated by the drafting model into these fields.
+for (const [label, extra, expected] of [
+ ["default", {}, 30],
+ ["explicit", {max_autonomous_runs: 7, token_budget: null}, 7],
+ ["unlimited", {max_autonomous_runs: null, token_budget: null}, null],
+ ["disabled", {max_autonomous_runs: 0}, 0],
+] as const) {
+ test(`conversational budgets: ${label} persists per goal after confirmation`, async t => {
+  const cwd = mkdtempSync(path.join(tmpdir(), "goal-conversation-"));
+  t.after(() => rmSync(cwd, {recursive: true, force: true}));
+  const h = createHarness(cwd, {hasUI: true});
+  await h.sessionStart();
+  await h.commands.get("goal").handler("Fix the bug; 30 turns, unlimited tokens", h.ctx);
+  assert.match(h.messages.at(-1)!, /max_autonomous_runs/);
+  assert.match(h.messages.at(-1)!, /30/);
+  const pending = runProposal(h, proposalParams("Fix the bug", {...extra}));
+  h.dialogResult({ questions: [], answers: [{ id: "confirm", question: "Confirm Goal Draft", answer: CONFIRM_ANSWER, wasCustom: false }], cancelled: false });
+  const result = await pending;
+  const goal = firstGoal(cwd);
+  assert.equal(goal.maxAutonomousRuns, expected);
+  assert.equal(goal.tokenBudget, undefined);
+  assert.match(result.content[0].text, /Autonomous runs:/);
+  assert.equal(activeGoalFiles(cwd).length, 1);
+  await h.commands.get("goal-pause").handler("", h.ctx);
+ });
+}
+
+test("conversational budgets: invalid allowances do not open confirmation or mutate", async t => {
+ const cwd = mkdtempSync(path.join(tmpdir(), "goal-invalid-runs-"));
+ t.after(() => rmSync(cwd, {recursive: true, force: true}));
+ const h = createHarness(cwd, {hasUI: true});
+ await h.sessionStart();
+ await h.commands.get("goal").handler("Fix bug", h.ctx);
+ for (const value of [-1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, "30"]) {
+  const result = await runProposal(h, proposalParams("Fix bug", {max_autonomous_runs: value}));
+  assert.match(result.content[0].text, /max_autonomous_runs/);
+  assert.equal(h.hasDialog(), false);
+  assert.equal(activeGoalFiles(cwd).length, 0);
+ }
+});
+
+test("conversational budgets: tweak changes limits without resetting spent runs", async t => {
+ const cwd = mkdtempSync(path.join(tmpdir(), "goal-tweak-runs-"));
+ t.after(() => rmSync(cwd, {recursive: true, force: true}));
+ const goal = createGoal({objective: "Keep original", autoContinue: false, sisyphus: false});
+ goal.maxAutonomousRuns = 30;
+ goal.tokenBudget = 1000;
+ goal.usage.tokensUsed = 100;
+ goal.scheduler = {version: 1, owner: "draft-session", generation: "test-generation", used: 6, phase: "idle", repairUsed: false};
+ writeActiveGoalFile({cwd}, goal);
+ const h = createHarness(cwd, {hasUI: true});
+ await h.sessionStart();
+ await h.commands.get("goal-focus").handler("", h.ctx);
+ await h.commands.get("goal-tweak").handler("Only change to 10 turns and unlimited tokens", h.ctx);
+ const pending = runProposal(h, proposalParams(goal.objective, {max_autonomous_runs: 10, token_budget: null}));
+ h.dialogResult({ questions: [], answers: [{ id: "confirm", question: "Confirm Goal Draft", answer: CONFIRM_ANSWER, wasCustom: false }], cancelled: false });
+ await pending;
+ const updated = firstGoal(cwd);
+ assert.equal(updated.maxAutonomousRuns, 10);
+ assert.equal(updated.tokenBudget, undefined);
+ assert.equal(updated.scheduler?.used, 6);
+ assert.equal(updated.usage.tokensUsed, 100);
+ assert.equal(updated.objective, goal.objective);
+ await h.commands.get("goal-pause").handler("", h.ctx);
+});
+
+
+test("conversational budgets: configured defaults stay inherited, not copied into the goal", async t => {
+ const cwd = mkdtempSync(path.join(tmpdir(), "goal-inherited-runs-"));
+ t.after(() => rmSync(cwd, {recursive: true, force: true}));
+ writeSettings(cwd, {maxAutonomousRuns: 0});
+ const h = createHarness(cwd, {hasUI: true});
+ await h.sessionStart();
+ await h.commands.get("goal").handler("Fix bug", h.ctx);
+ const pending = runProposal(h, proposalParams("Fix bug"));
+ h.dialogResult({ questions: [], answers: [{ id: "confirm", question: "Confirm Goal Draft", answer: CONFIRM_ANSWER, wasCustom: false }], cancelled: false });
+ const result = await pending;
+ assert.equal(firstGoal(cwd).maxAutonomousRuns, undefined);
+ assert.match(result.content[0].text, /Autonomous runs: 0/);
+});
+
+// ── Failure result contract (isError) ─────────────────────────────────────
+// Actual failures carry `isError: true`; user cancellation, decline, Continue
+// refining, and focus loss stay non-errors; a successful creation terminates.
+
+const sessionSignal = new AbortController().signal;
+
+const runDraftingTool = (h: Harness, name: string, params: Record<string, unknown>): Promise<any> => h.tools.get(name).execute(`${name}-call`, params, sessionSignal, undefined, h.ctx);
+
+/** Fixture store + throwing network trap around one drafting scenario. */
+async function withDraftingFixture(
+	prefix: string,
+	options: { settings?: Record<string, unknown> },
+	body: (h: Harness, cwd: string) => Promise<void>,
+): Promise<void> {
+	const cwd = mkdtempSync(path.join(tmpdir(), prefix));
+	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });
+	if (options.settings) writeSettings(cwd, options.settings);
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = (() => { throw new Error("outbound request attempted"); }) as typeof fetch;
+	try {
+		const h = createHarness(cwd, { hasUI: true });
+		await h.sessionStart();
+		await body(h, cwd);
+	} finally {
+		globalThis.fetch = originalFetch;
+		rmSync(cwd, { recursive: true, force: true });
+	}
+}
+
+function answerConfirmation(h: Harness, answer: string): void {
+	h.dialogResult({ questions: [], answers: [{ id: "confirm", question: "Confirm Goal Draft", answer, wasCustom: false }], cancelled: false });
+}
+
+function assertDraftingFailure(result: any, pattern: RegExp): void {
+	assert.equal(result.isError, true, `expected isError:true, got: ${JSON.stringify(result.content?.[0]?.text)}`);
+	assert.match(result.content[0].text, pattern);
+	assert.notEqual(result.terminate, true, "a failure must not terminate the turn");
+}
+
+function assertNotFailure(result: any): void {
+	assert.notEqual(result.isError, true, `unexpected isError: ${JSON.stringify(result.content?.[0]?.text)}`);
+}
+
+const VALID_OBJECTIVE = "Fix bug\nSuccess criteria: tests pass.";
+
+test("failure contract: drafting tools report a missing draft as an error", async () => {
+	await withDraftingFixture("goal-draft-err-nodraft-", {}, async (h, cwd) => {
+		assertDraftingFailure(await runDraftingTool(h, "goal_question", { question: "x" }), /No guided goal draft is active/);
+		assertDraftingFailure(await runDraftingTool(h, "goal_questionnaire", { questions: [] }), /No guided goal draft is active/);
+		assertDraftingFailure(await runDraftingTool(h, "propose_goal_draft", proposalParams("x")), /No guided goal draft is active/);
+		assert.equal(h.hasDialog(), false, "no dialog may open without a draft");
+		assert.equal(activeGoalFiles(cwd).length, 0);
+	});
+});
+
+test("failure contract: a throwing dialog host is an error and keeps drafting active", async () => {
+	await withDraftingFixture("goal-draft-err-throw-", {}, async (h, cwd) => {
+		await h.commands.get("goal")!.handler("Fix bug", h.ctx);
+		h.failDialog(new Error("dialog host failure"));
+		assertDraftingFailure(await runDraftingTool(h, "goal_question", { question: "x", options: ["a"] }), /Goal drafting dialog failed: dialog host failure/);
+		assertDraftingFailure(await runDraftingTool(h, "goal_questionnaire", { questions: [{ id: "i", question: "x", options: ["a"] }] }), /Goal drafting dialog failed: dialog host failure/);
+		assertDraftingFailure(await runDraftingTool(h, "propose_goal_draft", proposalParams(VALID_OBJECTIVE)), /Goal draft confirmation failed: dialog host failure.*NOT created/);
+		assert.equal(activeGoalFiles(cwd).length, 0, "a failed dialog must not create a goal");
+		assert.ok(h.activeTools().includes("goal_questionnaire"), "drafting remains active");
+	});
+});
+
+test("failure contract: an unavailable dialog host is an error and keeps drafting active", async () => {
+	await withDraftingFixture("goal-draft-err-unavailable-", {}, async (h, cwd) => {
+		await h.commands.get("goal")!.handler("Fix bug", h.ctx);
+		h.removeDialogHost();
+		assertDraftingFailure(await runDraftingTool(h, "goal_question", { question: "x", options: ["a"] }), /cannot display the required goal-drafting dialogs/);
+		assertDraftingFailure(await runDraftingTool(h, "goal_questionnaire", { questions: [{ id: "i", question: "x", options: ["a"] }] }), /cannot display the required goal-drafting dialogs/);
+		assertDraftingFailure(await runDraftingTool(h, "propose_goal_draft", proposalParams(VALID_OBJECTIVE)), /goal was NOT created and drafting remains active/);
+		assert.equal(activeGoalFiles(cwd).length, 0);
+		assert.ok(h.activeTools().includes("goal_questionnaire"), "drafting remains active");
+	});
+});
+
+test("failure contract: invalid proposals are errors that open no dialog and create nothing", async () => {
+	await withDraftingFixture("goal-draft-err-invalid-", { settings: { objectiveMaxChars: 40 } }, async (h, cwd) => {
+		await h.commands.get("goal")!.handler("Fix bug", h.ctx);
+		const cases: Array<[Record<string, unknown>, RegExp]> = [
+			[proposalParams("Fix bug", { max_autonomous_runs: -1 }), /max_autonomous_runs/],
+			[proposalParams("Fix bug", { token_budget: 1.5 }), /token budget|token_budget/i],
+			[proposalParams("   "), /at least 1 character/],
+			[proposalParams("x".repeat(41)), /at most 40 characters \(41 given\)/],
+			[{ objective: "Fix bug", sisyphus: true }, /mode does not match/],
+			[proposalParams("Fix bug", { tasks: [{ id: "a", title: "A", parent_id: "ghost" }] }), /ghost|parent/i],
+		];
+		for (const [params, pattern] of cases) assertDraftingFailure(await runDraftingTool(h, "propose_goal_draft", params), pattern);
+		assert.equal(h.hasDialog(), false, "invalid proposals must not open the dialog");
+		assert.equal(activeGoalFiles(cwd).length, 0);
+	});
+	await withDraftingFixture("goal-draft-err-notasks-", { settings: { disableTasks: true } }, async (h) => {
+		await h.commands.get("goal")!.handler("Fix bug", h.ctx);
+		assertDraftingFailure(await runDraftingTool(h, "propose_goal_draft", proposalParams("Fix bug", { tasks: [{ id: "a", title: "A" }] })), /disabled by settings/);
+	});
+	await withDraftingFixture("goal-draft-err-sisyphus-", {}, async (h) => {
+		await h.commands.get("sisyphus")!.handler("Refactor auth", h.ctx);
+		assertDraftingFailure(await runDraftingTool(h, "propose_goal_draft", proposalParams("Refactor auth cleanly.", { sisyphus: true })), /ordered steps/);
+	});
+});
+
+test("failure contract: a proposal that cannot flush pending goal state is an error", async () => {
+	await withDraftingFixture("goal-draft-err-flush-", {}, async (h, cwd) => {
+		await h.commands.get("goal")!.handler("Fix bug", h.ctx);
+		const service = h.core.goalService;
+		service.flushForAudit = () => "simulated disk full";
+		assertDraftingFailure(await runDraftingTool(h, "propose_goal_draft", proposalParams(VALID_OBJECTIVE)), /Proposal not saved: simulated disk full/);
+		service.flushForAudit = () => null;
+		service.isTurnBuffered = () => true;
+		assertDraftingFailure(await runDraftingTool(h, "propose_goal_draft", proposalParams(VALID_OBJECTIVE)), /Proposal not saved: goal changes are still buffered/);
+		assert.equal(h.hasDialog(), false);
+		assert.equal(activeGoalFiles(cwd).length, 0);
+	});
+});
+
+test("failure contract: a goal that cannot be saved rejects natively and drafting stays active", async () => {
+	await withDraftingFixture("goal-draft-err-save-", {}, async (h, cwd) => {
+		await h.commands.get("goal")!.handler("Fix bug", h.ctx);
+		// Real storage fault: the goals directory becomes a plain file.
+		rmSync(path.join(cwd, ".pi", "goals"), { recursive: true, force: true });
+		writeFileSync(path.join(cwd, ".pi", "goals"), "not a directory", "utf8");
+		const pending = runDraftingTool(h, "propose_goal_draft", proposalParams(VALID_OBJECTIVE));
+		answerConfirmation(h, CONFIRM_ANSWER);
+		// A thrown storage error is the native tool-error path; the draft must not be consumed.
+		await assert.rejects(pending, /EEXIST|ENOTDIR/);
+		assert.ok(h.activeTools().includes("goal_questionnaire"), "drafting remains active after a failed save");
+		assert.equal(activeGoalFiles(cwd).length, 0, "no goal file exists after a failed save");
+	});
+});
+
+test("failure contract: tweak failures are errors and leave the goal untouched", async () => {
+	await withDraftingFixture("goal-draft-err-tweak-complete-", {}, async (h) => {
+		await h.commands.get("goal-direct")!.handler("Initial objective", h.ctx);
+		await h.commands.get("goal-tweak")!.handler("Revise it", h.ctx);
+		// Disk reconciliation normally unfocuses a completed goal; pin the in-memory record to reach the defensive guard.
+		h.core.reconcileFocusedGoalFromDisk = () => {};
+		h.core.goalsById.get(h.core.focusedGoalId).status = "complete";
+		assertDraftingFailure(await runDraftingTool(h, "propose_goal_draft", proposalParams("Revised objective")), /Completed goals cannot be tweaked/);
+	});
+	await withDraftingFixture("goal-draft-err-tweak-conflict-", {}, async (h, cwd) => {
+		await h.commands.get("goal-direct")!.handler("Initial objective", h.ctx);
+		await h.commands.get("goal-tweak")!.handler("Revise it", h.ctx);
+		// The goal revision moves while the confirmation dialog is open.
+		const pending = runDraftingTool(h, "propose_goal_draft", proposalParams("Revised objective"));
+		assert.ok(h.hasDialog());
+		assert.equal(h.core.goalService.apply(h.ctx, { reconcile: false, mutate: (goal: GoalRecord) => ({ ...goal, objective: "Edited elsewhere" }) }).ok, true);
+		answerConfirmation(h, CONFIRM_ANSWER);
+		assertDraftingFailure(await pending, /Goal tweak was not applied: the goal changed during confirmation/);
+		assert.equal(firstGoal(cwd).objective, "Edited elsewhere", "the concurrent revision is not overwritten");
+	});
+	await withDraftingFixture("goal-draft-err-tweak-flush-", {}, async (h, cwd) => {
+		await h.commands.get("goal-direct")!.handler("Initial objective", h.ctx);
+		await h.commands.get("goal-tweak")!.handler("Revise it", h.ctx);
+		// The pre-confirmation flush succeeds; the post-confirmation flush fails.
+		let flushes = 0;
+		h.core.goalService.flushForAudit = () => (++flushes > 1 ? "simulated disk full" : null);
+		const pending = runDraftingTool(h, "propose_goal_draft", proposalParams("Revised objective"));
+		answerConfirmation(h, CONFIRM_ANSWER);
+		assertDraftingFailure(await pending, /Goal tweak was not applied/);
+		assert.equal(firstGoal(cwd).objective, "Initial objective");
+	});
+	await withDraftingFixture("goal-draft-err-tweak-apply-", {}, async (h, cwd) => {
+		await h.commands.get("goal-direct")!.handler("Initial objective", h.ctx);
+		await h.commands.get("goal-tweak")!.handler("Revise it", h.ctx);
+		h.core.goalService.apply = () => ({ ok: false, message: "simulated lock contention" });
+		const pending = runDraftingTool(h, "propose_goal_draft", proposalParams("Revised objective"));
+		answerConfirmation(h, CONFIRM_ANSWER);
+		assertDraftingFailure(await pending, /Goal tweak was not applied: simulated lock contention/);
+		assert.equal(firstGoal(cwd).objective, "Initial objective");
+		assert.ok(h.activeTools().includes("goal_questionnaire"), "the tweak draft stays active after a failed apply");
+	});
+});
+
+test("failure contract: cancellation, decline, refinement and focus loss are not errors", async () => {
+	await withDraftingFixture("goal-draft-nonerr-", {}, async (h, cwd) => {
+		await h.commands.get("goal")!.handler("Fix bug", h.ctx);
+
+		const question = runDraftingTool(h, "goal_question", { question: "x", options: ["a"] });
+		h.dialogResult({ questions: [], answers: [], cancelled: true });
+		const cancelledQuestion = await question;
+		assertNotFailure(cancelledQuestion);
+		assert.match(cancelledQuestion.content[0].text, /user cancelled the question/);
+
+		const questionnaire = runDraftingTool(h, "goal_questionnaire", { questions: [{ id: "i", question: "x", options: ["a"] }] });
+		h.dialogResult({ questions: [], answers: [], cancelled: true });
+		const cancelledQuestionnaire = await questionnaire;
+		assertNotFailure(cancelledQuestionnaire);
+		assert.match(cancelledQuestionnaire.content[0].text, /user cancelled the questionnaire/);
+
+		const refine = runDraftingTool(h, "propose_goal_draft", proposalParams(VALID_OBJECTIVE));
+		answerConfirmation(h, CONTINUE_ANSWER);
+		const refined = await refine;
+		assertNotFailure(refined);
+		assert.notEqual(refined.terminate, true);
+		assert.match(refined.content[0].text, /refinement requested/);
+
+		const decline = runDraftingTool(h, "propose_goal_draft", proposalParams(VALID_OBJECTIVE));
+		answerConfirmation(h, CANCEL_ANSWER);
+		const declined = await decline;
+		assertNotFailure(declined);
+		assert.match(declined.content[0].text, /Draft cancelled; no goal was created/);
+		assert.equal(activeGoalFiles(cwd).length, 0);
+	});
+	await withDraftingFixture("goal-draft-nonerr-focus-", {}, async (h, cwd) => {
+		await h.commands.get("goal-direct")!.handler("Initial objective", h.ctx);
+		await h.commands.get("goal-tweak")!.handler("Revise it", h.ctx);
+		// Focus is lost while the confirmation dialog is open: nothing is applied and no error is raised.
+		const pending = runDraftingTool(h, "propose_goal_draft", proposalParams("Revised objective"));
+		assert.ok(h.hasDialog());
+		await h.commands.get("goal-unfocus")!.handler("", h.ctx);
+		answerConfirmation(h, CONFIRM_ANSWER);
+		const lost = await pending;
+		assertNotFailure(lost);
+		assert.match(lost.content[0].text, /Goal tweak was not applied: the goal changed during confirmation/);
+		assert.equal(firstGoal(cwd).objective, "Initial objective", "focus loss must not mutate the goal");
+	});
+	await withDraftingFixture("goal-draft-nonerr-focus-before-", {}, async (h, cwd) => {
+		await h.commands.get("goal-direct")!.handler("Initial objective", h.ctx);
+		await h.commands.get("goal-tweak")!.handler("Revise it", h.ctx);
+		await h.commands.get("goal-unfocus")!.handler("", h.ctx);
+		const lost = await runDraftingTool(h, "propose_goal_draft", proposalParams("Changed objective"));
+		assertNotFailure(lost);
+		assert.match(lost.content[0].text, /goal changed while drafting/);
+		assert.equal(firstGoal(cwd).objective, "Initial objective");
+	});
+});
+
+test("failure contract: a confirmed new goal terminates without an error with the persisted default limits", async () => {
+	await withDraftingFixture("goal-draft-success-", {}, async (h, cwd) => {
+		await h.commands.get("goal")!.handler("Fix bug", h.ctx);
+		const pending = runDraftingTool(h, "propose_goal_draft", proposalParams(VALID_OBJECTIVE));
+		answerConfirmation(h, CONFIRM_ANSWER);
+		const created = await pending;
+		assertNotFailure(created);
+		assert.equal(created.terminate, true);
+		const goal = firstGoal(cwd);
+		assert.equal(goal.tokenBudget, undefined, "tokens stay unlimited unless requested");
+		assert.equal(goal.maxAutonomousRuns, 30, "a new goal without a configured default gets the 30-run allowance");
+		assert.match(created.content[0].text, /Autonomous runs: 30/);
+	});
+});

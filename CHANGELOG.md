@@ -4,6 +4,13 @@ All notable changes to pi-goal-x are documented here.
 
 ## [Unreleased]
 
+### Local fork
+
+- Conversational per-goal run allowances in goal proposals, creation and tweaks. New unconfigured goals default to 30 autonomous runs and unlimited tokens; explicit limits are shown for confirmation. Existing goals retain settings inheritance. Tweaks preserve usage; resume renews the run allowance as before.
+- `get_goal` and the dashboard state an unlimited run allowance explicitly and honor `showAutonomousRuns`; the settings label for an unset allowance reads "30 for new goals (default)".
+- Validation failures in `get_goal`, `create_goal`, `update_goal`, `set_goal_tasks` and `update_goal_task`, completion/scheduling gates, and Oracle provider/configuration failures now return native `isError: true`. Successful empty states, audit rejections and declined proposals remain non-errors. The drafting tools `goal_question`, `goal_questionnaire` and `propose_goal_draft` do the same for actual failures (no draft, unavailable or failing dialog, invalid proposals, unsaved or conflicting state); cancellation, decline, Continue refining and focus loss stay non-errors.
+- Windows unit runner passes its import hook as a file URL.
+
 ## [0.32.3] — 2026-10-02
 
 ### Fixed

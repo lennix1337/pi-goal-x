@@ -1,4 +1,5 @@
-import { schedulerSummary } from "../goal-scheduler-state.ts";
+import { effectiveRunLimit } from "../goal-run-budget.ts";
+import { schedulerDisplaySummary } from "../goal-scheduler-state.ts";
 import { taskIndex } from "../goal-task-index.ts";
 /**
  * Shared dashboard view model (plan §6) — the single source of truth for the
@@ -500,7 +501,7 @@ export function deriveGoalDashboardModel(
 	if (goal.usage.tokensUsed > 0) footerUsageBits.push(formatCompactTokens(goal.usage.tokensUsed));
 
 	return {
-		scheduling: schedulerSummary(goal.scheduler, options.maxAutonomousRuns, options.showAutonomousRuns !== false).split("\n").filter(Boolean),
+		scheduling: schedulerDisplaySummary(goal.scheduler, effectiveRunLimit(goal, options.maxAutonomousRuns), options.showAutonomousRuns !== false).split("\n").filter(Boolean),
 		goalId: goal.id,
 		title: displayObjectiveTitle(goal.objective),
 		status,

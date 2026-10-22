@@ -554,3 +554,49 @@ test("RPC cancellation preserves the persisted task list", async () => {
  f.cleanup();
  }
 });
+
+test("task tool validation and rejected-update failures are native errors; successes are not", async () => {
+	const f = fixtureWithTasks([
+		{ id: "t1", title: "Task one", status: "pending", verificationContract: "Run the check." },
+		{ id: "t2", title: "Task two", status: "pending" },
+	]);
+	try {
+		const h = createHarness(f.cwd, f.sessionEntries);
+		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
+		await h.handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "go", systemPromptOptions: {} }, h.ctx);
+		const update = (h.tools.get("update_goal_task")!.execute as any);
+		const call = (params: Record<string, unknown>) => update("task-axi", params, undefined, undefined, h.ctx);
+		assert.equal((await call({})).isError, true, "missing task_id/status");
+		assert.equal((await call({ task_id: "t1", status: "complete" })).isError, true, "contract needs evidence");
+		assert.equal((await call({ task_id: "t2", status: "skipped" })).isError, true, "skip needs reason");
+		assert.equal((await call({ task_id: "ghost", status: "start" })).isError, true, "unknown task");
+		assert.equal((await call({ updates: [{ task_id: "t2", status: "start" }], task_id: "t2" })).isError, true, "mixed forms");
+		assert.equal((await call({ updates: [{ task_id: "ghost", status: "start" }] })).isError, true, "batch rejection");
+		const started = await call({ task_id: "t2", status: "start" });
+		assert.notEqual(started.isError, true);
+		const batch = await call({ updates: [{ task_id: "t2", status: "complete" }] });
+		assert.notEqual(batch.isError, true, "successful batch is not an error");
+		assert.match(batch.content[0].text, /t2 complete/);
+		const set = (h.tools.get("set_goal_tasks")!.execute as any);
+		const bad = await set("set-axi", { tasks: [{ id: "a", title: "A", parent_id: "ghost" }] }, undefined, undefined, h.ctx);
+		assert.equal(bad.isError, true, "invalid task tree");
+		assert.equal(activeGoal(f.cwd)?.taskList?.tasks.length, 2, "task list unchanged by rejected input");
+	} finally {
+		f.cleanup();
+	}
+});
+
+test("update_goal_task and set_goal_tasks without a focused goal are native errors", async () => {
+	const cwd = mkdtempSync(path.join(tmpdir(), "goal-task-none-"));
+	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });
+	try {
+		const h = createHarness(cwd, []);
+		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
+		const update = await (h.tools.get("update_goal_task")!.execute as any)("none-1", { task_id: "t1", status: "start" }, undefined, undefined, h.ctx);
+		assert.equal(update.isError, true);
+		const set = await (h.tools.get("set_goal_tasks")!.execute as any)("none-2", { tasks: [{ id: "a", title: "A" }] }, undefined, undefined, h.ctx);
+		assert.equal(set.isError, true);
+	} finally {
+		try { rmSync(cwd, { recursive: true, force: true }); } catch {}
+	}
+});

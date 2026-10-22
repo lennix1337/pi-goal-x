@@ -1,3 +1,4 @@
+import { effectiveRunLimit } from "../goal-run-budget.ts";
 import { schedulerSummaryParts } from "../goal-scheduler-state.ts";
 import { taskIndex } from "../goal-task-index.ts";
 import { statusLabel, truncateText } from "../goal-core.ts";
@@ -186,7 +187,7 @@ export function sisyphusDisciplineBlock(goal: GoalRecord): string {
 function lifecyclePolicyBlock(autonomous: boolean, strict: boolean): string {
  return [
   "[OUTCOMES]",
-  '- Automatic runs default to unlimited. maxAutonomousRuns in .pi/pi-goal-x-settings.json caps runs; 0 disables (agents may set it). Only creation or user /goal-resume renews usage.',
+  '- New goals default to 30 autonomous runs unless configured; earlier goals without an override inherit maxAutonomousRuns (unlimited if none). maxAutonomousRuns in .pi/pi-goal-x-settings.json caps runs; 0 disables (agents may set it). Only creation or user /goal-resume renews usage.',
   ...(autonomous && strict ? ['- End execution with update_goal: ready for runnable work, wait for an external condition, or a status below. Saved decisions terminate; further work invalidates them. Missing decisions allow one repair. Never busy-poll.'] : []),
   ...(autonomous && !strict ? ['- Continue pursuing the goal automatically after each execution; no scheduling declaration is required. New waits require user opt-in to strictExecutionContract; do not enable it merely to continue.'] : []),
   '- update_goal({status: "complete"}) only when every requirement is satisfied; the independent completion auditor checks actual evidence. Approval archives; rejection requires rework.',
@@ -208,7 +209,7 @@ let promptCacheChars = 0;
 function cachedPrompt(goal: GoalRecord, settings: GoalSettings | undefined, kind: "goal" | "continuation", build: () => string): string {
  const key = [kind, goal.id, goal.status, goal.autoContinue, goal.sisyphus, goal.objective,
   goal.verificationContract, settings?.disableTasks ? undefined : taskIndex(goal.taskList?.tasks),
-  goal.taskList?.blockCompletion, promptProfile(), goal.currentTaskId, settings?.disableTasks, settings?.disableContracts, settings?.maxAutonomousRuns !== 0, settings?.strictExecutionContract === true, !!goal.scheduler?.wait];
+  goal.taskList?.blockCompletion, promptProfile(), goal.currentTaskId, settings?.disableTasks, settings?.disableContracts, effectiveRunLimit(goal, settings?.maxAutonomousRuns) !== 0, settings?.strictExecutionContract === true, !!goal.scheduler?.wait];
  for (let i = promptFragmentCache.length - 1; i >= 0; i--) {
   const entry = promptFragmentCache[i]!;
   if (key.every((part, j) => part === entry.key[j])) return entry.value;
@@ -235,8 +236,8 @@ export function goalPromptParts(goal: GoalRecord, settings?: GoalSettings, conte
 	// Scheduling instructions ride with the policy block: they are cleared by
 	// omission, so a retained copy would keep issuing a cancelled order.
 	const fixed = cachedPrompt(goal, settings, "goal", () => buildGoalPrompt(goal, settings));
-	const { runs, instructions } = schedulerSummaryParts(goal.scheduler, settings?.maxAutonomousRuns, settings?.showAutonomousRuns);
-	const limits = `Limits: lifetime tokens=${goal.tokenBudget ?? "none"}; runs=${settings?.maxAutonomousRuns ?? "unlimited"}.`;
+	const { runs, instructions } = schedulerSummaryParts(goal.scheduler, effectiveRunLimit(goal, settings?.maxAutonomousRuns), settings?.showAutonomousRuns);
+	const limits = `Limits: lifetime tokens=${goal.tokenBudget ?? "none"}; runs=${effectiveRunLimit(goal, settings?.maxAutonomousRuns) ?? "unlimited"}.`;
 	const state = [fixed, instructions, limits, "Usage spans goal turns, not context. Latest snapshot supersedes earlier snapshots."].filter(Boolean).join("\n");
 	const counters = `Goal snapshot: ${formatUsage(goal)}\n${contextUsageLine(contextUsage)}\n${runs}`;
 	return { state, counters };
@@ -252,7 +253,7 @@ function buildGoalPrompt(goal: GoalRecord, settings?: GoalSettings): string {
  // Bound individual data fields so essential rules can never be sliced off.
  return [
   `[PI GOAL ACTIVE goalId=${goal.id}]`,
-  lifecyclePolicyBlock(settings?.maxAutonomousRuns !== 0, settings?.strictExecutionContract === true || !!goal.scheduler?.wait), sisyphusDisciplineBlock(goal),
+  lifecyclePolicyBlock(effectiveRunLimit(goal, settings?.maxAutonomousRuns) !== 0, settings?.strictExecutionContract === true || !!goal.scheduler?.wait), sisyphusDisciplineBlock(goal),
   `Status: ${statusLabel(goal)}\nMode: ${goal.sisyphus ? "sisyphus" : "regular"}`,
   untrustedObjectiveBlock(goal), taskListBlock(goal, settings), verificationContractBlock(goal, settings),
  ].filter(Boolean).join("\n\n");

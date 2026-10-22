@@ -320,6 +320,17 @@ export function armOracleAdvice(goalId: string, fingerprint: string, advice: Ora
 	return adviceId;
 }
 
+/**
+ * Keep the advice for this blocker armed so the next work attempt is recorded
+ * as its follow-up, including after a restart that lost the in-memory marker.
+ */
+export function ensureOracleAdviceArmed(armed: ArmedAdvice): ArmedAdvice {
+	const existing = armedByGoalId.get(armed.goalId);
+	if (existing?.fingerprint === armed.fingerprint) return existing;
+	armedByGoalId.set(armed.goalId, armed);
+	return armed;
+}
+
 export function hasPendingOracleAdviceForFocusedGoal(goalId: string): boolean {
 	return armedByGoalId.has(goalId);
 }

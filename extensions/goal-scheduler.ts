@@ -1,3 +1,4 @@
+import { effectiveRunLimit } from "./goal-run-budget.ts";
 import { randomUUID } from "node:crypto";
 import type { ExtensionContext, AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { GoalCore } from "./goal-state.ts";
@@ -20,7 +21,7 @@ export class GoalScheduler {
 	constructor(core: GoalCore) { this.core = core; }
 
 	private owner(ctx: ExtensionContext): string { return ctx.sessionManager.getSessionId() || "unknown-session"; }
-	private limit(ctx: ExtensionContext): number | undefined { return loadGoalSettings(ctx.cwd).maxAutonomousRuns; }
+	private limit(ctx: ExtensionContext, goal = this.core.state.goal): number | undefined { return effectiveRunLimit(goal, loadGoalSettings(ctx.cwd).maxAutonomousRuns); }
 	private strict(ctx: ExtensionContext, s: GoalSchedulerState): boolean {
 		return loadGoalSettings(ctx.cwd).strictExecutionContract === true || !!s.wait;
 	}
@@ -28,8 +29,8 @@ export class GoalScheduler {
 		s.phase = "ready"; s.dispatch = undefined; s.generation = randomUUID();
 		s.decision = { kind: "ready", purpose: "ready" };
 	}
-	private available(ctx: ExtensionContext, s: GoalSchedulerState): boolean {
-		const limit = this.limit(ctx);
+	private available(ctx: ExtensionContext, s: GoalSchedulerState, goal = this.core.state.goal): boolean {
+		const limit = this.limit(ctx, goal);
 		return limit === undefined || s.used < limit;
 	}
 	private state(ctx: ExtensionContext, goal: GoalRecord): GoalSchedulerState {
@@ -81,7 +82,7 @@ export class GoalScheduler {
 		ctx.ui.notify(reason, "warning");
 	}
 	private allowanceReason(ctx: ExtensionContext): string {
-		return this.limit(ctx) === 0 ? "Automatic continuation disabled by maxAutonomousRuns=0. Change the setting in /goal-settings, then use /goal-resume." : "Autonomous-run allowance exhausted. Increase or remove maxAutonomousRuns, or use /goal-resume to renew.";
+		return this.limit(ctx) === 0 ? "Automatic continuation disabled by maxAutonomousRuns=0. Change the per-goal allowance with /goal-tweak (or inherited limits in /goal-settings), then use /goal-resume." : "Autonomous-run allowance exhausted. Use /goal-tweak to increase or remove this goal's allowance, or /goal-resume to renew.";
 	}
 
 	/** Bind once per live session. The event is deliberately not a triggerTurn message. */
@@ -147,8 +148,8 @@ export class GoalScheduler {
 		try {
 			if (!this.core.state.goal || this.core.state.goal.status !== "active" || !this.core.state.goal.autoContinue || this.denied) throw new Error("Scheduling requires an active auto-continue goal in this session.");
 			invalidateGoalSettingsCache(); // an agent may have just configured the allowance
-			const goal = this.update(ctx, s => {
-				if (!this.available(ctx, s)) throw new Error(this.allowanceReason(ctx));
+			const goal = this.update(ctx, (s, g) => {
+				if (!this.available(ctx, s, g)) throw new Error(this.allowanceReason(ctx));
 				if (input.kind === "ready") {
 					s.phase = "ready"; s.decision = { kind: "ready", purpose: "ready" }; s.wait = undefined;
 				} else if (input.kind === "wait") {
@@ -177,7 +178,7 @@ export class GoalScheduler {
 			this.core.runtime.markTurnStopped(goal.id);
 			const wait = goal.scheduler?.wait;
 			return { content: [{ type: "text", text: `Scheduling decision saved. Stop this execution.\n${schedulerSummary(goal.scheduler, this.limit(ctx), loadGoalSettings(ctx.cwd).showAutonomousRuns)}${wait ? `\nWake token: ${wait.token}. Register this token with the producer before completion; adapters must retain early results.` : ""}` }], details: { goal, ...(wait ? { wait_id: wait.id, waitToken: wait.token } : {}) }, terminate: true };
-		} catch (error) { return { content: [{ type: "text", text: `Scheduling decision NOT saved: ${error instanceof Error ? error.message : String(error)}` }], details: { error: true }, terminate: false }; }
+		} catch (error) { return { content: [{ type: "text", text: `Scheduling decision NOT saved: ${error instanceof Error ? error.message : String(error)}` }], details: { error: true }, terminate: false, isError: true }; }
 	}
 
 	/** One logical run can contain multiple agent_start events during native retry/compaction. */
@@ -307,7 +308,7 @@ export class GoalScheduler {
 			let result: Record<string, unknown> | null = null;
 			this.update(ctx, (s, g) => {
 				if (s.generation !== generation) throw new Error("Scheduling generation changed.");
-				if (g.status !== "active" || !g.autoContinue || budgetReached(g) || !this.available(ctx, s)) throw new Error(this.allowanceReason(ctx));
+				if (g.status !== "active" || !g.autoContinue || budgetReached(g) || !this.available(ctx, s, g)) throw new Error(this.allowanceReason(ctx));
 				if (s.wait && Date.now() >= s.wait.deadline) throw new Error("Wait deadline reached.");
 				if (s.phase === "ready" && s.decision?.kind === "ready" && s.decision.purpose === "repair" && !this.strict(ctx, s)) this.implicitReady(s);
 				let kind = s.phase === "ready" && s.decision?.kind === "ready" ? s.decision.purpose : undefined;

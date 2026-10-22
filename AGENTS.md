@@ -11,3 +11,7 @@ When a user steers behavior mid-workflow, update `PRODUCT.md` first when behavio
 Keep `README.md` as the existing user overview through Settings, followed by License. Do not append feature explanations, release notes, compatibility/version notices, troubleshooting, implementation details, validation results, or links advertising additional documentation unless the user explicitly requests that README change. A code change does not by itself authorize expanding the README.
 
 Make only necessary factual corrections within existing sections; keep them brief and preserve the layout and examples. Put detailed usage and troubleshooting in `docs/`, release changes in `CHANGELOG.md`, and implementation/validation notes in the relevant spec. Preserve automated ranking badge updates.
+
+## Fork budget flow
+
+For conversational goal-budget changes and their tests, see `skills/goal-budgets/SKILL.md`.

@@ -25,6 +25,7 @@ import {
 import { clearGoalCommandMessage, validateResumeGoal } from "./goal-policy.ts";
 import { invalidateGoalLedgerCache, readGoalLedger } from "./goal-ledger.ts";
 import { buildGoalStatusText } from "./goal-status.ts";
+import { formatConfiguredRunAllowance } from "./goal-run-budget.ts";
 import { effectiveSettingsReport, invalidateGoalSettingsCache, loadGoalSettingsFileConfig } from "./goal-settings.ts";
 import { invalidateGoalPoolCache, mergeGoalPromptFromDisk, readActiveGoalPool } from "./storage/goal-files.ts";
 import { nowIso, type GoalMode, type GoalRecord } from "./goal-record.ts";
@@ -280,6 +281,7 @@ export function registerGoalCommands(core: GoalCore): void {
 		const ledger = readGoalLedger(ctx);
 		const text = buildGoalStatusText({
 			maxAutonomousRuns: loadGoalSettings(ctx.cwd).maxAutonomousRuns,
+			showAutonomousRuns: loadGoalSettings(ctx.cwd).showAutonomousRuns,
 			goal: view,
 			focused: view !== null && core.focusedGoalId === view.id,
 			otherOpenGoals: otherCount,
@@ -397,7 +399,7 @@ export function registerGoalCommands(core: GoalCore): void {
 			return config[key] === true ? "true" : "false";
 		}
 		if (key === "subtaskDepth") return config.subtaskDepth !== undefined ? String(config.subtaskDepth) : "1";
-		if (key === "maxAutonomousRuns") return config.maxAutonomousRuns === 0 ? "0 (disabled)" : String(config.maxAutonomousRuns ?? "unlimited (default)");
+		if (key === "maxAutonomousRuns") return config.maxAutonomousRuns === undefined ? `${formatConfiguredRunAllowance(undefined)} (default)` : formatConfiguredRunAllowance(config.maxAutonomousRuns);
 		if (key === "stallTimeoutMinutes") return config.stallTimeoutMinutes !== undefined ? String(config.stallTimeoutMinutes) : "0";
 		if (key === "objectiveMaxChars") return config.objectiveMaxChars !== undefined ? String(config.objectiveMaxChars) : "0";
 		if (key === "keybindings") return config.keybindings ? `${config.keybindings.dashboard.toggleExpand}, ${config.keybindings.dashboard.scrollUp}, ${config.keybindings.dashboard.scrollDown}` : "(default)";

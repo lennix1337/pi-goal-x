@@ -547,3 +547,17 @@ test("normalizeTaskItem preserves lightweightSubtasks flag", () => {
 	assert.equal(item.lightweightSubtasks, true);
 	assert.equal(item.subtasks?.length, 1);
 });
+
+test("effectiveSettingsReport: unset run allowance is labelled as the new-goal default, not unlimited", () => {
+	withTempDir((dir) => {
+		const row = effectiveSettingsReport(dir, {}).find((l) => l.startsWith("  autonomous run allowance"));
+		assert.ok(row, "report includes the run allowance row");
+		assert.equal(row, "  autonomous run allowance: 30 for new goals (default)");
+	});
+	withTempDir((dir) => {
+		const configPath = goalSettingsPath(dir);
+		fs.mkdirSync(path.dirname(configPath), { recursive: true });
+		fs.writeFileSync(configPath, JSON.stringify({ maxAutonomousRuns: 12 }), "utf8");
+		assert.match(effectiveSettingsReport(dir, {}).find((l) => l.startsWith("  autonomous run allowance"))!, /12 \(project\)/);
+	});
+});

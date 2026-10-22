@@ -26,6 +26,7 @@ import goalExtension from "../extensions/goal.ts";
 import { createGoal, goalFocusDetails, normalizeGoalRecord } from "../extensions/goal-record.ts";
 import { parseGoalFile, writeActiveGoalFile } from "../extensions/storage/goal-files.ts";
 import { goalLedgerPath } from "../extensions/goal-ledger.ts";
+import { buildBlockerFingerprint, consumeOracleFollowupMarker, hasPendingOracleAdviceForFocusedGoal, runBlockerOracle } from "../extensions/goal-oracle.ts";
 import { STATE_ENTRY } from "../extensions/goal-format.ts";
 
 interface HarnessOptions {
@@ -36,6 +37,7 @@ interface HarnessOptions {
 	settings?: Record<string, unknown>;
 	uiCustom?: (...args: any[]) => Promise<any>;
 	onSendMessage?: (message: any, opts?: any) => void;
+	runBlockerOracle?: (args: any) => Promise<any>;
 }
 
 function createHarness(options: HarnessOptions) {
@@ -77,7 +79,7 @@ function createHarness(options: HarnessOptions) {
 		hasPendingMessages: () => false,
 		abort: () => {},
 	} as unknown as ExtensionContext;
-	goalExtension(pi as any, { runCompletionAuditor: options.runCompletionAuditor });
+	goalExtension(pi as any, { runCompletionAuditor: options.runCompletionAuditor, runBlockerOracle: options.runBlockerOracle as never });
 	return {
 		handlers,
 		commands,
@@ -371,6 +373,7 @@ test("update_goal(complete) with a rejection keeps the goal open with feedback",
 		const result = await (update.execute as any)("update-2", { status: "complete" }, undefined, undefined, h.ctx);
 		const text = result.content?.[0]?.text ?? "";
 		assert.ok(text.includes("Goal audit rejected"), "rejection feedback returned");
+		assert.notEqual(result.isError, true, "audit rejection is a legitimate outcome");
 		assert.equal(activeGoalFiles(f.cwd).length, 1, "goal stays open");
 		const events = ledgerEvents(f.cwd);
 		assert.ok(events.some((e) => e.type === "audit_result" && (e as any).verdict === "disapproved"), "disapproved audit recorded");
@@ -654,4 +657,375 @@ test("create_goal rejects fractional, zero, and unsafe token_budget values", asy
 	} finally {
 		f.cleanup();
 	}
+});
+
+// ── AXI: explicit unlimited allowance and native handler errors ─────────────
+
+function runsFixture(opts: { maxAutonomousRuns?: number | null; settings?: Record<string, unknown> }) {
+	const f = makeFixture({ objective: "Runs line goal" });
+	if (opts.settings) writeFileSync(path.join(f.cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify(opts.settings));
+	if (opts.maxAutonomousRuns !== undefined) f.goal.maxAutonomousRuns = opts.maxAutonomousRuns;
+	writeActiveGoalFile({ cwd: f.cwd }, f.goal);
+	return f;
+}
+
+async function getGoalText(f: ReturnType<typeof runsFixture>, params: Record<string, unknown> = {}): Promise<string> {
+	const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries });
+	await start(h);
+	const result = await (h.tools.get("get_goal")!.execute as any)("g-runs", params, undefined, undefined, h.ctx);
+	return result.content?.[0]?.text ?? "";
+}
+
+test("get_goal states an explicit unlimited run allowance in compact and verbose output", async () => {
+	const f = runsFixture({ maxAutonomousRuns: null });
+	try {
+		for (const params of [{}, { verbose: true }]) {
+			const text = await getGoalText(f, params);
+			assert.match(text, /^Autonomous runs: unlimited \(0 used\)\.$/m, JSON.stringify(params));
+			assert.notEqual(text.split("\n")[1], "", "no blank line after the header");
+		}
+	} finally { f.cleanup(); }
+});
+
+test("get_goal reports legacy inherited unlimited, finite and configured allowances truthfully", async () => {
+	const legacy = runsFixture({});
+	const finite = runsFixture({ maxAutonomousRuns: 5 });
+	const configured = runsFixture({ settings: { maxAutonomousRuns: 7 } });
+	try {
+		assert.match(await getGoalText(legacy), /^Autonomous runs: unlimited \(0 used\)\.$/m);
+		assert.match(await getGoalText(finite), /^Autonomous runs: 0\/5\.$/m);
+		assert.match(await getGoalText(configured), /^Autonomous runs: 0\/7\.$/m);
+	} finally { legacy.cleanup(); finite.cleanup(); configured.cleanup(); }
+});
+
+test("get_goal honors showAutonomousRuns=false without leaving a blank line", async () => {
+	const f = runsFixture({ maxAutonomousRuns: null, settings: { showAutonomousRuns: false } });
+	try {
+		for (const params of [{}, { verbose: true }]) {
+			const text = await getGoalText(f, params);
+			assert.doesNotMatch(text, /Autonomous runs/);
+			assert.match(text, /^Goal [^\n]+\nObjective: Runs line goal/, "objective follows the header directly");
+		}
+	} finally { f.cleanup(); }
+});
+
+test("get_goal detail-retrieval validation failures are native errors; valid and empty reads are not", async () => {
+	const f = makeFixture();
+	try {
+		const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries });
+		await start(h);
+		const get = h.tools.get("get_goal")!;
+		const call = (params: Record<string, unknown>) => (get.execute as any)("g-err", params, undefined, undefined, h.ctx);
+		for (const params of [
+			{ cursor: "abc" },
+			{ task_id: "t1" },
+			{ section: "objective", task_id: "t1" },
+			{ section: "tasks", task_id: "missing" },
+			{ section: "objective", cursor: "stale" },
+		]) {
+			const result = await call(params);
+			assert.equal(result.isError, true, JSON.stringify(params));
+			assert.ok(result.content[0].text.length > 0);
+		}
+		const ok = await call({ section: "objective" });
+		assert.notEqual(ok.isError, true);
+		assert.match(ok.content[0].text, /End of section/);
+		const tasksNone = await call({ section: "tasks" });
+		assert.notEqual(tasksNone.isError, true, "an empty task list is a successful empty state");
+		const summary = await call({});
+		assert.notEqual(summary.isError, true);
+	} finally { f.cleanup(); }
+});
+
+test("get_goal with no goal is a successful empty state", async () => {
+	const cwd = mkdtempSync(path.join(tmpdir(), "goal-core-axi-none-"));
+	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });
+	try {
+		const h = createHarness({ cwd, sessionEntries: [] });
+		await start(h);
+		const result = await (h.tools.get("get_goal")!.execute as any)("g-none", {}, undefined, undefined, h.ctx);
+		assert.notEqual(result.isError, true);
+		assert.match(result.content[0].text, /No goal is set/);
+	} finally { try { rmSync(cwd, { recursive: true, force: true }); } catch {} }
+});
+
+test("create_goal handler validation failures are native errors and create nothing", async () => {
+	const f = makeFixture();
+	writeFileSync(path.join(f.cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify({ objectiveMaxChars: 10 }));
+	try {
+		const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries });
+		await start(h);
+		const create = h.tools.get("create_goal")!;
+		const before = activeGoalFiles(f.cwd).length;
+		for (const params of [
+			{ objective: "this objective is far too long" },
+			{ objective: "short", max_autonomous_runs: -1 },
+			{ objective: "short", max_autonomous_runs: 1.5 },
+			{ objective: "short", token_budget: 0 },
+		]) {
+			const result = await (create.execute as any)("create-axi", params, undefined, undefined, h.ctx);
+			assert.equal(result.isError, true, JSON.stringify(params));
+		}
+		assert.equal(activeGoalFiles(f.cwd).length, before, "no goal created by rejected input");
+		const created = await (create.execute as any)("create-axi-ok", { objective: "short", max_autonomous_runs: null }, undefined, undefined, h.ctx);
+		assert.notEqual(created.isError, true);
+	} finally { f.cleanup(); }
+});
+
+test("update_goal handler validation and rejected-mutation failures are native errors", async () => {
+	const f = makeFixture();
+	try {
+		const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries });
+		await start(h);
+		const update = h.tools.get("update_goal")!;
+		const call = (params: Record<string, unknown>) => (update.execute as any)("u-axi", params, undefined, undefined, h.ctx);
+		assert.equal((await call({})).isError, true, "no lifecycle field");
+		assert.equal((await call({ status: "complete", continuation: { kind: "ready" } })).isError, true, "mixed fields");
+		assert.equal((await call({ status: "blocked" })).isError, true, "blocked requires reason");
+		assert.equal((await call({ status: "paused" })).isError, true, "paused requires reason");
+		const service = h.core.goalService;
+		const originalApply = service.apply.bind(service);
+		service.apply = () => ({ ok: false, message: "simulated conflict" });
+		try {
+			assert.equal((await call({ status: "blocked", reason: "r" })).isError, true, "rejected blocked mutation");
+			assert.equal((await call({ status: "paused", reason: "r" })).isError, true, "rejected paused mutation");
+		} finally { service.apply = originalApply; }
+		assert.equal(parseGoalFile(path.join(f.cwd, ".pi", "goals", activeGoalFiles(f.cwd)[0]!))?.status, "active");
+	} finally { f.cleanup(); }
+});
+
+test("update_goal gate failures from a non-active goal and unsaved scheduling are native errors", async () => {
+	const paused = makeFixture({ pauseReason: "waiting on user" });
+	try {
+		const h = createHarness({ cwd: paused.cwd, sessionEntries: paused.sessionEntries });
+		await start(h);
+		const update = h.tools.get("update_goal")!;
+		const blocked = await (update.execute as any)("u-gate", { status: "blocked", reason: "x" }, undefined, undefined, h.ctx);
+		assert.equal(blocked.isError, true);
+		const scheduled = await (update.execute as any)("u-sched", { continuation: { kind: "ready" } }, undefined, undefined, h.ctx);
+		assert.equal(scheduled.isError, true, "scheduling NOT saved is an error");
+	} finally { paused.cleanup(); }
+});
+
+
+test("Oracle configuration failures are native errors without provider execution", async () => {
+ const f = makeFixture();
+ try {
+  writeFileSync(path.join(f.cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify({ oracle: { enabled: true } }));
+  const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries });
+  await start(h);
+  const result = await (h.tools.get("update_goal")!.execute as any)("oracle-config", { status: "blocked", reason: "Missing dependency" }, undefined, undefined, h.ctx);
+  assert.match(result.content[0].text, /Oracle consultation failed \(config\)/);
+  assert.equal(result.isError, true);
+  assert.equal(activeGoalFiles(f.cwd).length, 1);
+ } finally { f.cleanup(); }
+});
+
+test("completion task gates are native errors and never invoke the auditor", async () => {
+ const f = makeFixture();
+ try {
+  f.goal.taskList = { tasks: [{ id: "t1", title: "Pending", status: "pending" }], blockCompletion: true, proposedAt: f.goal.updatedAt };
+  writeActiveGoalFile({ cwd: f.cwd }, f.goal);
+  let audits = 0;
+  const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries, runCompletionAuditor: async () => { audits++; throw new Error("auditor must not run"); } });
+  await start(h);
+  const result = await (h.tools.get("update_goal")!.execute as any)("task-gate", { status: "complete" }, undefined, undefined, h.ctx);
+  assert.equal(result.isError, true);
+  assert.equal(audits, 0);
+  assert.equal(activeGoalFiles(f.cwd).length, 1);
+ } finally { f.cleanup(); }
+});
+
+// Oracle blocked flow decided from durable ledger state: no consultation runs, so no provider is reachable.
+async function withOutboundRejected<T>(body: () => Promise<T>): Promise<T> {
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = (() => { throw new Error("outbound request attempted"); }) as typeof fetch;
+	try { return await body(); } finally { globalThis.fetch = originalFetch; }
+}
+
+function oracleFixture(maxFailedAttemptsPerBlocker = 2) {
+	const f = makeFixture();
+	writeFileSync(path.join(f.cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify({ oracle: { enabled: true, provider: "stub", model: "stub", maxFailedAttemptsPerBlocker } }));
+	return f;
+}
+
+const ORACLE_REASON = "Schema lock held";
+
+async function blockWithOracleLedger(events: (goalId: string, fingerprint: string) => Array<Record<string, unknown>>, maxFailedAttemptsPerBlocker?: number) {
+	const f = oracleFixture(maxFailedAttemptsPerBlocker);
+	try {
+		return await withOutboundRejected(async () => {
+			const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries });
+			await start(h);
+			const goal = h.core.state.goal!;
+			for (const event of events(goal.id, buildBlockerFingerprint(goal, ORACLE_REASON))) appendGoalEvent(h.ctx, { ...event, at: new Date().toISOString() } as never);
+			const result = await (h.tools.get("update_goal")!.execute as any)("oracle-ledger", { status: "blocked", reason: ORACLE_REASON }, undefined, undefined, h.ctx);
+			const parsed = parseGoalFile(path.join(f.cwd, ".pi", "goals", activeGoalFiles(f.cwd)[0]!))!;
+			return { result, status: parsed.status, events: ledgerEvents(f.cwd) };
+		});
+	} finally { f.cleanup(); }
+}
+
+const oracleResult = (disposition: string) => (goalId: string, fingerprint: string) => [{ type: "oracle_result", goalId, fingerprint, adviceId: "adv", disposition, summary: "Drain the pool first." }];
+
+test("Oracle actionable advice without a follow-up refuses the block as guidance, not an error", async () => {
+	const r = await blockWithOracleLedger(oracleResult("actionable"));
+	assert.equal(r.result.isError, undefined);
+	assert.equal(r.result.terminate, false);
+	assert.match(r.result.content[0].text, /Drain the pool first[\s\S]*was NOT marked blocked/);
+	assert.equal(r.status, "active");
+	assert.equal(r.events.some((e) => e.type === "oracle_started" || e.type === "goal_blocked"), false);
+});
+
+test("Oracle actionable advice followed by attempted work lets the same blocker commit", async () => {
+	const r = await blockWithOracleLedger((goalId, fingerprint) => [
+		...oracleResult("actionable")(goalId, fingerprint),
+		{ type: "oracle_followup_attempted", goalId, fingerprint, adviceId: "adv", firstToolName: "bash" },
+	]);
+	assert.equal(r.result.isError, undefined);
+	assert.equal(r.result.terminate, true);
+	assert.equal(r.status, "blocked");
+});
+
+test("Oracle needs_human advice commits the block without consulting again", async () => {
+	const r = await blockWithOracleLedger(oracleResult("needs_human"));
+	assert.equal(r.result.terminate, true);
+	assert.equal(r.status, "blocked");
+	assert.equal(r.events.some((e) => e.type === "oracle_started"), false);
+});
+
+test("Oracle failure limit blocks with a durable failure annotation instead of consulting again", async () => {
+	const r = await blockWithOracleLedger((goalId, fingerprint) => [{ type: "oracle_failed", goalId, fingerprint, attempt: 1, errorCode: "provider", message: "provider unavailable" }], 1);
+	assert.equal(r.status, "blocked");
+	assert.equal(r.events.filter((e) => e.type === "oracle_failed").length, 2);
+	assert.equal(r.events.some((e) => e.type === "oracle_started"), false);
+});
+
+// Registered update_goal(blocked) driving a runner injected at the registration boundary; fetch is rejected.
+const adviceFor = (disposition: "actionable" | "needs_human" | "insufficient_context") => ({ diagnosis: "Stale pool holds the lock.", alternatives: [{ title: "Drain the pool", rationale: "Lock clears.", steps: ["Close connections"], expectedEvidence: ["migration OK"] }], recommendedIndex: 0, unresolvedQuestions: [], disposition });
+// Delegates to the REAL runBlockerOracle with a scripted session; no provider is launched.
+const scriptedOracle = (script: (submit: (advice: unknown) => Promise<unknown>) => Promise<void>) => (args: any) => runBlockerOracle({
+	...args,
+	ctx: { ...args.ctx, modelRegistry: { find: () => ({ provider: "stub", id: "stub" }) } },
+	createSession: async (opts: any) => ({ session: { abort: () => {}, prompt: () => script((advice) => opts.customTools[0].execute("sub", advice)) } }),
+});
+
+interface OracleFlow {
+	h: ReturnType<typeof createHarness>;
+	goalId: string;
+	block: (signal?: AbortSignal) => Promise<any>;
+	goalFile: () => any;
+	events: () => Array<Record<string, unknown>>;
+}
+
+async function oracleToolFlow(runner: (args: any) => Promise<any>, body: (flow: OracleFlow) => Promise<void>) {
+	const f = oracleFixture(2);
+	try {
+		await withOutboundRejected(async () => {
+			const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries, runBlockerOracle: runner });
+			await start(h);
+			const goalId = h.core.state.goal!.id;
+			try {
+				await body({
+					h,
+					goalId,
+					block: (signal) => (h.tools.get("update_goal")!.execute as any)("oracle-flow", { status: "blocked", reason: ORACLE_REASON, attempted_actions: ["retried twice"] }, signal, undefined, h.ctx),
+					goalFile: () => parseGoalFile(path.join(f.cwd, ".pi", "goals", activeGoalFiles(f.cwd)[0]!))!,
+					events: () => ledgerEvents(f.cwd),
+				});
+			} finally { consumeOracleFollowupMarker(goalId); }
+		});
+	} finally { f.cleanup(); }
+}
+const oracleTypes = (events: Array<Record<string, unknown>>) => events.map((e) => e.type).filter((t) => String(t).startsWith("oracle_") || t === "goal_blocked");
+
+test("update_goal blocked: one real-runner consultation arms advice, refuses re-block until work is attempted, then commits without replay", async () => {
+	let calls = 0;
+	const runner = scriptedOracle((submit) => submit(adviceFor("actionable")).then(() => {}));
+	await oracleToolFlow((args) => { calls++; return runner(args); }, async ({ h, goalId, block, goalFile, events }) => {
+		const first = await block();
+		assert.match(first.content[0].text, /Oracle diagnosis: Stale pool holds the lock[\s\S]*Drain the pool/);
+		assert.deepEqual([first.isError, first.terminate, goalFile().status], [undefined, false, "active"]);
+		assert.equal(hasPendingOracleAdviceForFocusedGoal(goalId), true);
+		const immediate = await block();
+		assert.match(immediate.content[0].text, /was NOT marked blocked/);
+		assert.deepEqual([immediate.isError, immediate.terminate, goalFile().status, calls], [undefined, false, "active", 1]);
+		await h.handlers.get("tool_call")!({ toolName: "bash", args: { command: "ls" } }, h.ctx);
+		assert.equal(hasPendingOracleAdviceForFocusedGoal(goalId), false);
+		const committed = await block();
+		assert.deepEqual([committed.isError, committed.terminate, goalFile().status, goalFile().pauseReason, calls], [undefined, true, "blocked", ORACLE_REASON, 1]);
+		assert.deepEqual(oracleTypes(events()), ["oracle_started", "oracle_result", "oracle_followup_attempted", "goal_blocked"]);
+		assert.equal(h.core.currentTurnStoppedGoalId(), goalId);
+	});
+});
+
+test("update_goal blocked: unconsumed advice re-arms from the ledger so the attempted work can unlock the block", async () => {
+	let calls = 0;
+	await oracleToolFlow(async () => { calls++; throw new Error("runner must not be consulted again"); }, async ({ h, goalId, block, goalFile }) => {
+		const fingerprint = buildBlockerFingerprint(h.core.state.goal!, ORACLE_REASON);
+		appendGoalEvent(h.ctx, { type: "oracle_result", goalId, fingerprint, adviceId: "adv", disposition: "actionable", summary: "Drain the pool first.", at: new Date().toISOString() } as never);
+		const reminder = await block();
+		assert.match(reminder.content[0].text, /Drain the pool first[\s\S]*was NOT marked blocked/);
+		assert.equal(hasPendingOracleAdviceForFocusedGoal(goalId), true, "reminder re-arms so work is recorded as the follow-up");
+		await h.handlers.get("tool_call")!({ toolName: "bash", args: { command: "ls" } }, h.ctx);
+		const committed = await block();
+		assert.deepEqual([committed.terminate, goalFile().status, calls], [true, "blocked", 0]);
+	});
+});
+
+for (const disposition of ["needs_human", "insufficient_context"] as const) {
+	test(`update_goal blocked: real-runner ${disposition} advice commits the block and leaves no armed advice`, async () => {
+		await oracleToolFlow(scriptedOracle((submit) => submit(adviceFor(disposition)).then(() => {})), async ({ h, goalId, block, goalFile, events }) => {
+			const result = await block();
+			assert.deepEqual([result.isError, result.terminate, goalFile().status], [undefined, true, "blocked"]);
+			assert.deepEqual(oracleTypes(events()), ["oracle_started", "oracle_result", "goal_blocked"]);
+			assert.equal(events().find((e) => e.type === "oracle_result")!.disposition, disposition);
+			assert.equal(hasPendingOracleAdviceForFocusedGoal(goalId), false);
+			assert.equal(h.core.currentTurnStoppedGoalId(), goalId);
+		});
+	});
+}
+
+test("update_goal blocked: provider and invalid-output failures are native errors that stay active, and the retry limit then blocks without consulting", async () => {
+	const outcomes = [
+		async () => ({ ok: false, errorCode: "provider", message: "provider unavailable" }),
+		scriptedOracle(async () => {}), // real runner whose session never submits advice -> invalid_output
+	];
+	let calls = 0;
+	await oracleToolFlow((args) => outcomes[calls++]!(args), async ({ goalId, block, goalFile, events }) => {
+		const first = await block();
+		assert.match(first.content[0].text, /failed \(provider\).*try again/);
+		const second = await block();
+		assert.match(second.content[0].text, /failed \(invalid_output\)/);
+		assert.doesNotMatch(second.content[0].text, /try again/);
+		for (const r of [first, second]) assert.deepEqual([r.isError, r.terminate, goalFile().status], [true, false, "active"]);
+		const third = await block();
+		assert.deepEqual([third.isError, third.terminate, goalFile().status, calls], [undefined, true, "blocked", 2]);
+		assert.deepEqual(events().filter((e) => e.type === "oracle_failed").map((e) => [e.attempt, e.errorCode]), [[1, "provider"], [2, "invalid_output"], [2, "invalid_output"]]);
+		assert.equal(events().filter((e) => e.type === "oracle_started").length, 2);
+		assert.equal(hasPendingOracleAdviceForFocusedGoal(goalId), false);
+	});
+});
+
+test("update_goal blocked: the tool abort signal reaches the real runner and yields a non-error aborted outcome", async () => {
+	const controller = new AbortController();
+	await oracleToolFlow(scriptedOracle(async () => { controller.abort(); }), async ({ block, goalFile, events }) => {
+		const result = await block(controller.signal);
+		assert.equal(result.content[0].text, "Oracle consultation was aborted; the goal remains active.");
+		assert.deepEqual([result.isError, result.terminate, goalFile().status], [undefined, false, "active"]);
+		assert.deepEqual(events().filter((e) => e.type === "oracle_failed").map((e) => [e.attempt, e.errorCode]), [[1, "aborted"]]);
+	});
+});
+
+test("update_goal blocked: losing focus during the consultation cancels without persisting advice or blocking", async () => {
+	let loseFocus = () => {};
+	await oracleToolFlow(async () => { loseFocus(); return { ok: true, advice: adviceFor("needs_human") }; }, async ({ h, goalId, block, goalFile, events }) => {
+		loseFocus = () => h.core.setFocusedGoalId(null, h.ctx, "unfocused");
+		const result = await block();
+		assert.match(result.content[0].text, /Blocker Oracle cancelled because goal .* no longer focused/);
+		assert.equal(result.terminate, true);
+		assert.deepEqual(oracleTypes(events()), ["oracle_started"]);
+		assert.equal(goalFile().status, "active");
+		assert.equal(hasPendingOracleAdviceForFocusedGoal(goalId), false);
+	});
 });

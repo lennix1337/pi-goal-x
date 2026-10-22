@@ -1,3 +1,4 @@
+import { normalizeRunLimit } from "./goal-run-budget.ts";
 import { normalizeGoalScheduler, type GoalSchedulerState } from "./goal-scheduler-state.ts";
 export type GoalStatus = "active" | "paused" | "blocked" | "budget_limited" | "complete";
 export type StopReason = "user" | "agent";
@@ -57,6 +58,8 @@ export interface GoalRecord {
 	revision?: number;
 	/** Optional token budget (whole tokens). When accounted usage reaches it, the runtime marks the goal budget_limited. */
 	tokenBudget?: number;
+	/** Per-goal run allowance: null = unlimited, absent = inherit settings. */
+	maxAutonomousRuns?: number | null;
 	scheduler?: GoalSchedulerState;
 	/**
 	 * Execution focus: the id of the task (or subtask) the agent is working on.
@@ -137,6 +140,7 @@ export type GoalEventEntryDetails = GoalCheckpointDetailsV3 | GoalCheckpointDeta
 export type GoalEventDetails = LegacyGoalEventDetails;
 
 export interface GoalCreationConfig {
+	maxAutonomousRuns?: number | null;
 	objective: string;
 	autoContinue: boolean;
 	sisyphus: boolean;
@@ -227,6 +231,7 @@ export function createGoal(config: GoalCreationConfig, now = Date.now()): GoalRe
 		status: "active",
 		autoContinue: config.autoContinue,
 		usage: emptyUsage(),
+		...(config.maxAutonomousRuns !== undefined ? {maxAutonomousRuns: config.maxAutonomousRuns} : {}),
 		sisyphus: config.sisyphus,
 		skipAuditor: config.skipAuditor === true ? true : undefined,
 		revision: 0,
@@ -380,6 +385,7 @@ export function normalizeGoalRecord(value: unknown): GoalRecord | null {
 		skipAuditor: raw.skipAuditor === true ? true : undefined,
 		revision: Number.isSafeInteger(raw.revision) && (raw.revision as number) >= 0 ? (raw.revision as number) : 0,
 		tokenBudget: normalizePositiveSafeInteger(raw.tokenBudget),
+		...(raw.maxAutonomousRuns !== undefined ? {maxAutonomousRuns: normalizeRunLimit(raw.maxAutonomousRuns)} : {}),
 		...(raw.scheduler !== undefined ? { scheduler: normalizeGoalScheduler(raw.scheduler) } : {}),
 		taskList,
 		currentTaskId,

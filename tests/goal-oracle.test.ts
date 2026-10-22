@@ -14,8 +14,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import {
+	armOracleAdvice,
 	buildBlockerFingerprint,
 	buildBlockerOraclePrompt,
+	consumeOracleFollowupMarker,
+	hasPendingOracleAdviceForFocusedGoal,
 	oracleStateForFingerprint,
 	resolveOracleModel,
 	runBlockerOracle,
@@ -252,3 +255,29 @@ function writeLedger(dir: string, events: unknown[]): void {
 	fs.mkdirSync(path.join(dir, ".pi", "goals"), { recursive: true });
 	fs.writeFileSync(path.join(dir, ".pi", "goals", "goal_events.jsonl"), events.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf8");
 }
+
+describe("armed Oracle advice marker", () => {
+	it("arms the recommended path, reports it pending, and is consumed exactly once", () => {
+		const goalId = "armed-goal";
+		assert.equal(hasPendingOracleAdviceForFocusedGoal(goalId), false);
+		const adviceId = armOracleAdvice(goalId, "fp123", ACTIONABLE);
+		assert.equal(adviceId, "fp123-Drain_the_pool_before_mi");
+		assert.equal(hasPendingOracleAdviceForFocusedGoal(goalId), true);
+		const armed = consumeOracleFollowupMarker(goalId);
+		assert.equal(armed?.adviceId, adviceId);
+		assert.match(armed!.text, /Drain the pool before migrating[\s\S]*1\. Stop the app server[\s\S]*Expected evidence: migration output shows OK[\s\S]*Attempt this path/);
+		assert.equal(hasPendingOracleAdviceForFocusedGoal(goalId), false);
+		assert.equal(consumeOracleFollowupMarker(goalId), undefined);
+	});
+
+	it("keeps armed advice scoped to its own goal", () => {
+		armOracleAdvice("goal-a", "fp-a", ACTIONABLE);
+		try {
+			assert.equal(hasPendingOracleAdviceForFocusedGoal("goal-b"), false);
+			assert.equal(consumeOracleFollowupMarker("goal-b"), undefined);
+			assert.equal(hasPendingOracleAdviceForFocusedGoal("goal-a"), true);
+		} finally {
+			consumeOracleFollowupMarker("goal-a");
+		}
+	});
+});

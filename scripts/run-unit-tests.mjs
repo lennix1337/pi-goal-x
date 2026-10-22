@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { readdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const testsRoot = join(projectRoot, "tests");
@@ -85,7 +85,7 @@ const isolationArgs = isolationProbe.status === 0 ? ["--test-isolation=none"] : 
 const result = spawnSync(
 	process.execPath,
 	[
-		"--import", join(projectRoot, "scripts", "test-adapter-hooks.mjs"),
+		"--import", pathToFileURL(join(projectRoot, "scripts", "test-adapter-hooks.mjs")).href,
 		"--experimental-strip-types",
 		"--test",
 		...isolationArgs,

@@ -344,7 +344,7 @@ for (const budget of [undefined, null, 5, 50000]) {
  });
 }
 
-for (const barrier of ["foreign", "interrupted", "claimed", "allowance"]) {
+for (const barrier of ["foreign", "interrupted", "claimed", "allowance", "inherited-allowance"]) {
  test(`budget recovery respects ${barrier} scheduling barrier`,async t=>{
   const cwd=newTmpDir("tweak-budget-barrier-");const h=createHarness(cwd);
   t.after(()=>{h.core.scheduler.shutdown();h.core.clearContinuationState();rmSync(cwd,{recursive:true,force:true});});
@@ -353,7 +353,12 @@ for (const barrier of ["foreign", "interrupted", "claimed", "allowance"]) {
   goal.scheduler={...newGoalScheduler(barrier === "foreign" ? "other" : "tweak-status-session"),used:3};
   if(barrier === "interrupted")goal.scheduler.phase="interrupted";
   if(barrier === "claimed"){goal.scheduler.phase="claimed";goal.scheduler.dispatch={id:"old",kind:"ready",claimedAt:Date.now()};}
-  if(barrier === "allowance") { const {saveGoalSettingsFileConfig}=await import("../extensions/goal-settings.ts");saveGoalSettingsFileConfig(cwd,{maxAutonomousRuns:3}); }
+  if(barrier === "allowance") goal.maxAutonomousRuns = 3;
+  if(barrier === "inherited-allowance") {
+   delete goal.maxAutonomousRuns;
+   const {saveGoalSettingsFileConfig}=await import("../extensions/goal-settings.ts");
+   saveGoalSettingsFileConfig(cwd,{maxAutonomousRuns:3});
+  }
   writeActiveGoalFile(h.ctx,goal);h.core.reconcileFocusedGoalFromDisk(h.ctx);
   await h.commands.get("goal-tweak")!.handler("Remove budget",h.ctx);
   await confirmDialog(h,runProposal(h,proposalParams(goal.objective,{token_budget:null})));

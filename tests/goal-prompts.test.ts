@@ -451,3 +451,11 @@ test("allowance configuration refreshes cached guidance without bloating disable
 	assert.doesNotMatch(zero, /Saved decisions terminate/);
 	assert.match(zero, /0\/0 \(automatic continuation disabled\)/);
 });
+
+
+test("lifecycle policy distinguishes the new-goal default from legacy inheritance", () => {
+ const text = goalPrompt(goal());
+ assert.match(text, /New goals default to 30 autonomous runs/);
+ assert.doesNotMatch(text, /Automatic runs default to unlimited/);
+ assert.match(text, /inherit.*unlimited if none/);
+});

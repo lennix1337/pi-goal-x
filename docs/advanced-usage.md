@@ -14,9 +14,11 @@ Set an appropriate allowance in `/goal-settings`, or in `.pi/pi-goal-x-settings.
 { "maxAutonomousRuns": 20 }
 ```
 
-The `Autonomous runs: used/limit` line reports a finite allowance and is left out when
-allowance is unlimited. Set `showAutonomousRuns` to `false` to drop it for a finite
-allowance as well; it defaults to `true`.
+`get_goal` and the dashboard report `Autonomous runs: used/limit` for a finite allowance and
+`Autonomous runs: unlimited (N used).` when there is none. Set `showAutonomousRuns` to `false`
+to drop the line; it defaults to `true`. Model prompt counters are unchanged. Goals created
+without a limit get 30 runs (or your configured allowance); earlier goals without an
+override inherit the configured allowance (unlimited if none).
 
 Agents may edit this setting. Changing it does not replenish consumed runs; explicit `/goal-resume` renews the period and continues now, including from a waiting goal. No configured allowance is required unless the effective limit is zero, which disables resume. Tool calls within a run are not separate runs. Existing token budgets still apply.
 

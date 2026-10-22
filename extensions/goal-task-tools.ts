@@ -276,18 +276,21 @@ pi.registerTool(defineTool({
 			return {
 				content: [{ type: "text", text: "No goal is set; set_goal_tasks requires a focused active or paused goal." }],
 				details: goalDetails(core.state.goal),
+				isError: true,
 			};
 		}
 		if (loadGoalSettings(ctx.cwd).disableTasks) {
 			return {
 				content: [{ type: "text", text: "set_goal_tasks is disabled by settings (disableTasks: true)." }],
 				details: goalDetails(core.state.goal),
+				isError: true,
 			};
 		}
 		if (core.state.goal.status !== "active" && core.state.goal.status !== "paused") {
 			return {
 				content: [{ type: "text", text: `set_goal_tasks applies to an active or paused goal; this goal is ${statusLabel(core.state.goal)}.` }],
 				details: goalDetails(core.state.goal),
+				isError: true,
 			};
 		}
 		const settings = loadGoalSettings(ctx.cwd);
@@ -296,6 +299,7 @@ pi.registerTool(defineTool({
 			return {
 				content: [{ type: "text", text: converted.message }],
 				details: goalDetails(core.state.goal),
+				isError: true,
 			};
 		}
 		const blockCompletion = params.block_completion === true;
@@ -369,6 +373,7 @@ pi.registerTool(defineTool({
 			return {
 				content: [{ type: "text", text: `Task list not applied: ${applyResult.message ?? "the state mutation was rejected"}. Review the current goal and re-propose the task list.` }],
 				details: goalDetails(core.state.goal),
+				isError: true,
 			};
 		}
 		core.runtime.markTurnStopped(core.state.goal.id);
@@ -406,7 +411,8 @@ pi.registerTool(defineTool({
 	executionMode: "sequential",
 	async execute(_toolCallId, rawParams, _signal, _onUpdate, ctx) {
   if (rawParams.updates !== undefined) {
-   const fail = (text: string) => ({content: [{type: "text" as const, text}], details: goalDetails(core.state.goal)});
+   const reply = (text: string, isError?: true) => ({content: [{type: "text" as const, text}], details: goalDetails(core.state.goal), ...(isError ? {isError} : {})});
+   const fail = (text: string) => reply(text, true);
    if ([rawParams.task_id, rawParams.status, rawParams.evidence, rawParams.reason].some(v => v !== undefined)) return fail("Use either updates or single-task fields, never both.");
    const updates = rawParams.updates;
    if (!Array.isArray(updates) || updates.length < 1 || updates.length > 100 || updates.some(u => !u || typeof u.task_id !== "string" || !u.task_id.trim() || !["start", "complete", "skipped", "pending"].includes(u.status) || (u.evidence !== undefined && typeof u.evidence !== "string") || (u.reason !== undefined && typeof u.reason !== "string"))) return fail("updates must contain 1–100 valid task updates.");
@@ -417,30 +423,32 @@ pi.registerTool(defineTool({
    const result = core.goalService.updateTasks(ctx, updates.map(u => progressSpec(u, core, ctx)));
    if (!result.ok) return fail(result.message);
    core.updateUI(ctx);
-   return fail(`${updates.map(u => `${u.task_id} ${u.status}`).join("; ")}. ${buildTaskSummary(result.goal.taskList!)}.`);
+   return reply(`${updates.map(u => `${u.task_id} ${u.status}`).join("; ")}. ${buildTaskSummary(result.goal.taskList!)}.`);
   }
-  if (!rawParams.task_id || !rawParams.status) return {content: [{type: "text", text: "Provide task_id and status, or an updates batch."}], details: goalDetails(core.state.goal)};
+  if (!rawParams.task_id || !rawParams.status) return {content: [{type: "text", text: "Provide task_id and status, or an updates batch."}], details: goalDetails(core.state.goal), isError: true};
   const params = rawParams as TaskProgressInput;
 		core.reconcileFocusedGoalFromDisk(ctx);
 		if (loadGoalSettings(ctx.cwd).disableTasks) {
 			return {
 				content: [{ type: "text", text: "update_goal_task is disabled by settings (disableTasks: true)." }],
 				details: goalDetails(core.state.goal),
+				isError: true,
 			};
 		}
 		// update_goal_task applies only to an active goal with an existing task
 		// list; invalid lifecycle calls return a state-aware failure.
 		if (!core.state.goal) {
-			return { content: [{ type: "text", text: "No goal is focused." }], details: goalDetails(core.state.goal) };
+			return { content: [{ type: "text", text: "No goal is focused." }], details: goalDetails(core.state.goal), isError: true };
 		}
 		if (core.state.goal.status !== "active") {
 			return {
 				content: [{ type: "text", text: `update_goal_task applies only to an active goal (current status: ${core.state.goal.status}).` }],
 				details: goalDetails(core.state.goal),
+				isError: true,
 			};
 		}
 		if (!core.state.goal.taskList) {
-			return { content: [{ type: "text", text: "The goal has no task list." }], details: goalDetails(core.state.goal) };
+			return { content: [{ type: "text", text: "The goal has no task list." }], details: goalDetails(core.state.goal), isError: true };
 		}
 		const settings = loadGoalSettings(ctx.cwd);
 		const now = nowIso();
@@ -468,7 +476,7 @@ pi.registerTool(defineTool({
 				}],
 			});
 			if (!result.ok) {
-				return { content: [{ type: "text", text: result.message }], details: goalDetails(core.state.goal) };
+				return { content: [{ type: "text", text: result.message }], details: goalDetails(core.state.goal), isError: true };
 			}
 			core.updateUI(ctx);
 			// §8.1: surface the task contract so the next continuation prompt and
@@ -506,7 +514,7 @@ pi.registerTool(defineTool({
 				}],
 			});
 			if (!result.ok) {
-				return { content: [{ type: "text", text: result.message }], details: goalDetails(core.state.goal) };
+				return { content: [{ type: "text", text: result.message }], details: goalDetails(core.state.goal), isError: true };
 			}
 			core.updateUI(ctx);
 			return {
@@ -521,6 +529,7 @@ pi.registerTool(defineTool({
 				return {
 					content: [{ type: "text", text: "update_goal_task(status=skipped) requires a non-empty reason." }],
 					details: goalDetails(core.state.goal),
+					isError: true,
 				};
 			}
 			const result = core.goalService.updateTask(ctx, {
@@ -546,7 +555,7 @@ pi.registerTool(defineTool({
 				}],
 			});
 			if (!result.ok) {
-				return { content: [{ type: "text", text: result.message }], details: goalDetails(core.state.goal) };
+				return { content: [{ type: "text", text: result.message }], details: goalDetails(core.state.goal), isError: true };
 			}
 			core.updateUI(ctx);
 			return {
@@ -580,7 +589,7 @@ pi.registerTool(defineTool({
 			}],
 		});
 		if (!result.ok) {
-			return { content: [{ type: "text", text: result.message }], details: goalDetails(core.state.goal) };
+			return { content: [{ type: "text", text: result.message }], details: goalDetails(core.state.goal), isError: true };
 		}
 		core.updateUI(ctx);
 		return {

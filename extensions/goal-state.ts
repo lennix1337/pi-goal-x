@@ -1,3 +1,4 @@
+import { newGoalRunLimit, formatRunLimit, effectiveRunLimit } from "./goal-run-budget.ts";
 import * as path from "node:path";
 import { goalStorageContext, goalStorageRoot } from "./storage/goal-root.ts";
 import { type AgentToolResult, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -47,8 +48,15 @@ import { buildGoalRunningNotification } from "./widgets/goal-notifications.ts";
 import { GOAL_WIDGET_KEY, GoalWidgetComponent, liveDisplayGoal, makeGoalWidgetFactory, type AuditorWidgetProgress } from "./widgets/goal-widget.ts";
 import type { AuditVerdict } from "./widgets/auditor-dashboard-model.ts";
 import { runGoalCompletionAuditor } from "./goal-auditor.ts";
+import type { runBlockerOracle } from "./goal-oracle.ts";
 
 
+
+/** Injectable runners; production defaults are the real auditor and Oracle. */
+export interface GoalCoreDependencies {
+	runCompletionAuditor?: typeof runGoalCompletionAuditor;
+	runBlockerOracle?: typeof runBlockerOracle;
+}
 
 /**
  * The shared mutable core of the goal extension. All state lives here; the
@@ -58,7 +66,7 @@ import { runGoalCompletionAuditor } from "./goal-auditor.ts";
  */
 export interface GoalCore {
 	pi: ExtensionAPI;
-	dependencies: { runCompletionAuditor?: typeof runGoalCompletionAuditor };
+	dependencies: GoalCoreDependencies;
 	state: { goal: GoalRecord | null };
 	readonly goalsById: Map<string, GoalRecord>;
 	readonly focusedGoalId: string | null;
@@ -140,7 +148,7 @@ export interface GoalCore {
 
 export function createGoalCore(
 	pi: ExtensionAPI,
-	dependencies: { runCompletionAuditor?: typeof runGoalCompletionAuditor } = {},
+	dependencies: GoalCoreDependencies = {},
 ): GoalCore {
 	let goalsById = new Map<string, GoalRecord>();
 	let focusedGoalId: string | null = null;
@@ -893,7 +901,7 @@ export function createGoalCore(
 	}
 
 	function replaceGoal(config: GoalCreationConfig, ctx: ExtensionContext, startNow = true, verificationContract?: string, tokenBudget?: number): void {
-		const goal = createGoal(config);
+		const goal = createGoal({...config, maxAutonomousRuns: newGoalRunLimit(config.maxAutonomousRuns, loadGoalSettings(ctx.cwd).maxAutonomousRuns)});
 		goal.scheduler = newGoalScheduler(ctx.sessionManager.getSessionId());
 		if (verificationContract) goal.verificationContract = verificationContract;
 		if (config.taskList) goal.taskList = config.taskList;
@@ -920,7 +928,7 @@ export function createGoalCore(
 		});
 		if (result.focusChanged) appendFocusEntry(result.goalId, "created");
 		beginAccounting();
-		ctx.ui.notify(`${buildGoalRunningNotification(config)}\nBudget: ${goal.tokenBudget === undefined ? "none" : `${goal.tokenBudget} tokens`}`, "info");
+		ctx.ui.notify(`${buildGoalRunningNotification(config)}\nBudget: ${goal.tokenBudget === undefined ? "none" : `${goal.tokenBudget} tokens`}\n${formatRunLimit(effectiveRunLimit(goal, loadGoalSettings(ctx.cwd).maxAutonomousRuns))}`, "info");
 		if (startNow && state.goal?.autoContinue) scheduler.kickoff(ctx);
 	}
 

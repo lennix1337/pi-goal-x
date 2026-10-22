@@ -258,6 +258,25 @@ test("goal-settings: autonomous allowance accepts an explicit zero override", as
 	}
 });
 
+test("goal-settings: unset autonomous allowance row names the new-goal default", async () => {
+	const cwd = mkdtempSync(path.join(tmpdir(), "goal-settings-default-label-"));
+	const h = createHarness(cwd);
+	try {
+		(h.ctx as { hasUI: boolean }).hasUI = true;
+		let row: string | undefined;
+		h.ctx.ui.select = async (_title, options) => {
+			row = options.find(o => o.includes("autonomous run allowance"));
+			return "Done";
+		};
+		await h.commands.get("goal-settings")!.handler("", h.ctx);
+		assert.ok(row, "settings menu lists the allowance row");
+		assert.ok(row!.includes("30 for new goals (default)"), row);
+		assert.ok(!row!.includes("unlimited"), row);
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("goal-settings: subtaskDepth rejects 0 (min 1) and never saves it", async () => {
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-settings-bound-"));
 	mkdirSync(path.join(cwd, ".pi"), { recursive: true });

@@ -23,7 +23,7 @@ import type { GoalMutationOutcome } from "./goal-service.ts";
 // UNTRUSTED executor claim — never evidence and never an approval bypass.
 export async function runGoalCompletionFlow(core: GoalCore, ctx: ExtensionContext, completionSummary?: string): Promise<AgentToolResult<unknown>> {
  const flushError = core.goalService.flushForAudit(ctx);
- if (flushError) return {content: [{type: "text", text: flushError}], details: goalDetails(core.state.goal)};
+ if (flushError) return {content: [{type: "text", text: flushError}], details: goalDetails(core.state.goal), isError: true};
 	core.reconcileFocusedGoalFromDisk(ctx);
 
 	// -- Completion --
@@ -32,6 +32,7 @@ export async function runGoalCompletionFlow(core: GoalCore, ctx: ExtensionContex
 		return {
 			content: [{ type: "text", text: completionGate.message }],
 			details: goalDetails(core.state.goal),
+			isError: true,
 		};
 	}
 	if (!core.state.goal) throw new Error("Goal disappeared during completion validation.");
@@ -44,6 +45,7 @@ export async function runGoalCompletionFlow(core: GoalCore, ctx: ExtensionContex
 			return {
 				content: [{ type: "text", text: taskWarning }],
 				details: goalDetails(core.state.goal),
+				isError: true,
 			};
 		}
 	}
@@ -108,6 +110,7 @@ function commitGoalCompletion(core: GoalCore, ctx: ExtensionContext, opts: {
 			content: [{ type: "text", text: `Goal completion failed: ${completeResult.message ?? "the state mutation was rejected"}. The goal was not completed.` }],
 			details: goalDetails(core.state.goal),
 			terminate: false,
+			isError: true,
 		};
 	}
 	if (completeResult.goal) core.runtime.markTurnStopped(completeResult.goal.id);

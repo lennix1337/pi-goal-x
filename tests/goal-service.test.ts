@@ -12,8 +12,8 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { GoalService, type GoalServiceRef } from "../extensions/goal-service.ts";
-import { cloneGoal, createGoal, type GoalRecord } from "../extensions/goal-record.ts";
+import { GoalService, type GoalServiceRef, type GoalTaskUpdateSpec } from "../extensions/goal-service.ts";
+import { cloneGoal, createGoal, type GoalRecord, type TaskStatus } from "../extensions/goal-record.ts";
 import { writeActiveGoalFile, parseGoalFile, serializeGoalFile } from "../extensions/storage/goal-files.ts";
 import { goalLedgerPath } from "../extensions/goal-ledger.ts";
 import { acquireGoalLock } from "../extensions/storage/goal-lock.ts";
@@ -668,6 +668,76 @@ describe("persist additive usage merge on revision conflict", () => {
 			assert.equal(merged.usage.activeSeconds, 30);
 			assert.ok(merged.objective.includes("B wins"), "authoritative disk objective must be preserved");
 			assert.equal(merged.revision, (diskGoal!.revision ?? 0) + 2);
+		} finally {
+			f.cleanup();
+		}
+	});
+});
+
+describe("GoalService.updateTasks ordered atomic batch", () => {
+	const seedTasks = (f: ReturnType<typeof fixture>) => f.service.apply({ cwd: f.cwd }, {
+		reconcile: false,
+		mutate: (g) => ({
+			...g,
+			taskList: { tasks: [
+				{ id: "t1", title: "One", status: "pending" as const },
+				{ id: "t2", title: "Two", status: "pending" as const },
+			], blockCompletion: false, proposedAt: new Date().toISOString() },
+		}),
+	});
+	const diskGoal = (cwd: string) => parseGoalFile(path.join(cwd, ".pi", "goals", activeFiles(cwd)[0]!))!;
+	const setStatus = (taskId: string, status: TaskStatus, validate?: GoalTaskUpdateSpec["validate"]): GoalTaskUpdateSpec => ({
+		taskId,
+		validate,
+		update: (task) => ({ ...task, status }),
+	});
+
+	it("commits every update in order with one revision increment", () => {
+		const f = fixture();
+		try {
+			assert.ok(seedTasks(f).ok);
+			const before = diskGoal(f.cwd).revision ?? 0;
+			const seen: string[] = [];
+			const result = f.service.updateTasks({ cwd: f.cwd }, [
+				setStatus("t1", "skipped", (task) => { seen.push(task.status); return { ok: true }; }),
+				setStatus("t1", "pending", (task) => { seen.push(task.status); return { ok: true }; }),
+				setStatus("t2", "complete"),
+			]);
+			assert.equal(result.ok, true);
+			assert.deepEqual(seen, ["pending", "skipped"], "later validators see earlier batch changes");
+			const disk = diskGoal(f.cwd);
+			assert.deepEqual(disk.taskList?.tasks.map((t) => t.status), ["pending", "complete"]);
+			assert.equal(disk.revision, before + 1);
+		} finally {
+			f.cleanup();
+		}
+	});
+
+	it("rejects the whole batch when a later update is missing or fails validation", () => {
+		const f = fixture();
+		try {
+			assert.ok(seedTasks(f).ok);
+			const before = diskGoal(f.cwd);
+			const missing = f.service.updateTasks({ cwd: f.cwd }, [setStatus("t1", "complete"), setStatus("ghost", "complete")]);
+			assert.equal(missing.ok, false);
+			if (!missing.ok) assert.match(missing.message, /"ghost" not found/);
+			const rejected = f.service.updateTasks({ cwd: f.cwd }, [
+				setStatus("t1", "complete"),
+				setStatus("t2", "complete", () => ({ ok: false, message: "t2 is not ready" })),
+			]);
+			assert.deepEqual(rejected, { ok: false, message: "t2 is not ready" });
+			const after = diskGoal(f.cwd);
+			assert.equal(after.revision, before.revision);
+			assert.deepEqual(after.taskList?.tasks.map((t) => t.status), ["pending", "pending"]);
+		} finally {
+			f.cleanup();
+		}
+	});
+
+	it("reports a goal without a task list", () => {
+		const f = fixture();
+		try {
+			assert.deepEqual(f.service.updateTasks({ cwd: f.cwd }, [setStatus("t1", "complete")]), { ok: false, message: "The goal has no task list." });
 		} finally {
 			f.cleanup();
 		}

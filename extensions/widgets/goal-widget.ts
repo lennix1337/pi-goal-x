@@ -555,6 +555,7 @@ export class GoalWidgetComponent implements Component {
 			ledgerEvents: this.getLedgerEvents(),
 			tasksDisabled: settings.disableTasks === true,
 			maxAutonomousRuns: settings.maxAutonomousRuns,
+			showAutonomousRuns: settings.showAutonomousRuns,
 		}) : null;
 		this.maybeReanchor(model);
 		const lines = renderGoalWidgetLines(this.getGoal(), this.theme, safeWidth, {

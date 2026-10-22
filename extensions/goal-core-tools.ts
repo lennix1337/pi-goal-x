@@ -1,4 +1,5 @@
-import { schedulerSummary, type GoalContinuation } from "./goal-scheduler-state.ts";
+import { effectiveRunLimit, validateRunLimit, formatRunLimit } from "./goal-run-budget.ts";
+import { schedulerDisplaySummary, type GoalContinuation } from "./goal-scheduler-state.ts";
 import { goalDetailPage, type GoalDetailSection } from "./goal-detail.ts";
 import { taskIndex } from "./goal-task-index.ts";
 import { StringEnum, Type } from "@earendil-works/pi-ai";
@@ -22,7 +23,7 @@ import {
 	armOracleAdvice,
 	buildBlockerFingerprint,
 	consumeOracleFollowupMarker,
-	hasPendingOracleAdviceForFocusedGoal,
+	ensureOracleAdviceArmed,
 	renderActionableOracleAdvice,
 	renderOracleAdviceReminder,
 	runBlockerOracle,
@@ -36,6 +37,12 @@ function conciseTaskPointers(goal: GoalRecord): { findCurrentTask?: GoalTask; fi
 	const firstPendingTask = index.pending.find(task => task.id !== goal.currentTaskId);
 	const findCurrentTask = goal.currentTaskId ? index.byId.get(goal.currentTaskId) : undefined;
 	return { findCurrentTask, firstPendingTask };
+}
+
+/** Header plus the run-allowance line; a hidden runs line leaves no blank line. */
+function goalHeaderLines(goal: GoalRecord, ctx: ExtensionContext): string[] {
+	const settings = loadGoalSettings(ctx.cwd);
+	return [`Goal ${goal.id}: ${statusLabel(goal)}, ${goal.sisyphus ? "sisyphus" : "regular"}`, schedulerDisplaySummary(goal.scheduler, effectiveRunLimit(goal, settings.maxAutonomousRuns), settings.showAutonomousRuns)].filter(Boolean);
 }
 
 export function registerCoreTools(
@@ -80,14 +87,14 @@ pi.registerTool(defineTool({
 			};
 		}
   if (params.section && params.section !== "summary") {
-   if (!["objective", "tasks", "history"].includes(params.section)) return {content: [{type: "text", text: "Unknown goal section."}], details: goalDetails(view)};
+   if (!["objective", "tasks", "history"].includes(params.section)) return {content: [{type: "text", text: "Unknown goal section."}], details: goalDetails(view), isError: true};
    const history = params.section === "history" ? readGoalLedger(ctx) : undefined;
    const page = goalDetailPage(view, {section: params.section, task_id: params.task_id, cursor: params.cursor}, history?.events, history?.revision);
-   return {content: [{type: "text", text: page.text}], details: {...goalDetails(view), ...(page.ok ? {page: {content: page.content, nextCursor: page.nextCursor, totalChars: page.totalChars}} : {})}};
+   return {content: [{type: "text", text: page.text}], details: {...goalDetails(view), ...(page.ok ? {page: {content: page.content, nextCursor: page.nextCursor, totalChars: page.totalChars}} : {})}, ...(page.ok ? {} : {isError: true})};
   }
-  if (params.cursor || params.task_id) return {content: [{type: "text", text: "Use section=objective, tasks, or history for detail retrieval; task_id requires tasks."}], details: goalDetails(view)};
+  if (params.cursor || params.task_id) return {content: [{type: "text", text: "Use section=objective, tasks, or history for detail retrieval; task_id requires tasks."}], details: goalDetails(view), isError: true};
 		if (verbose && !params.section) {
-			const lines: string[] = [`Goal ${view.id}: ${statusLabel(view)}, ${view.sisyphus ? "sisyphus" : "regular"}`, schedulerSummary(view.scheduler, loadGoalSettings(ctx.cwd).maxAutonomousRuns, loadGoalSettings(ctx.cwd).showAutonomousRuns)];
+			const lines: string[] = goalHeaderLines(view, ctx);
 			lines.push(`Objective: ${view.objective}`, "");
 			lines.push(`Status: ${statusLabel(view)}`);
 			lines.push(`Mode: ${view.sisyphus ? "sisyphus" : "regular"}`);
@@ -130,7 +137,7 @@ pi.registerTool(defineTool({
 		}
 
 		// Compact state read; full requirements remain available through detail pages.
-		const lines: string[] = [`Goal ${view.id}: ${statusLabel(view)}, ${view.sisyphus ? "sisyphus" : "regular"}`, schedulerSummary(view.scheduler, loadGoalSettings(ctx.cwd).maxAutonomousRuns, loadGoalSettings(ctx.cwd).showAutonomousRuns)];
+		const lines: string[] = goalHeaderLines(view, ctx);
 		lines.push(`Objective: ${truncateText(view.objective, 180)}${view.objective.length > 180 ? " (full: get_goal section=objective)" : ""}`);
 		if (view.taskList) {
 			const { findCurrentTask, firstPendingTask } = conciseTaskPointers(view);
@@ -172,11 +179,12 @@ pi.registerTool(defineTool({
 	label: "Create Goal",
 	description: "Create and focus a persistent goal only on explicit user request; other open goals remain unchanged.",
 	promptSnippet: "Create a goal only when explicitly requested.",
-	promptGuidelines: ["Never infer persistent goals, Sisyphus mode, or token budgets from an ordinary task. The objective must faithfully preserve all user requirements and ordered steps."],
+	promptGuidelines: ["Never infer persistent goals, Sisyphus mode, or token budgets from an ordinary task. The objective must faithfully preserve all user requirements and ordered steps. Translate explicit conversational run/token limits into the structured fields; when omitted state the 30-run default (or configured default) and unlimited tokens. Ask only if the requested limits are ambiguous."],
 	parameters: Type.Object({
 		objective: Type.String({ description: "Full objective; preserve ordered steps and done criteria." }),
 		mode: Type.Optional(StringEnum(["regular", "sisyphus"] as const, { description: "Default regular; sisyphus only if requested." })),
-		token_budget: Type.Optional(Type.Integer({ minimum: 1, description: "Whole-token budget, only if supplied by the user." })),
+		token_budget: Type.Optional(Type.Union([Type.Integer({ minimum: 1 }), Type.Null()], {description: "User-requested whole-token limit; null = unlimited; omitted = unlimited."})),
+		max_autonomous_runs: Type.Optional(Type.Union([Type.Integer({minimum: 0}), Type.Null()], {description: "Requested autonomous runs (not tool calls); null = unlimited; omit for configured default or 30."})),
 	}, { additionalProperties: false }),
 	executionMode: "sequential",
 	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -188,24 +196,28 @@ pi.registerTool(defineTool({
 			return {
 				content: [{ type: "text", text: `create_goal objective exceeds ${objectiveMaxChars} characters (${objective.length}). Shorten the objective or raise the max objective length setting.` }],
 				details: goalDetails(core.state.goal),
+				isError: true,
 			};
 		}
 		const sisyphusFlag = params.mode === "sisyphus";
+		const runError = validateRunLimit(params.max_autonomous_runs);
+		if (runError) return {content: [{type: "text", text: runError}], details: goalDetails(core.state.goal), isError: true};
 		let tokenBudget: number | undefined;
-		if (params.token_budget !== undefined) {
+		if (params.token_budget !== undefined && params.token_budget !== null) {
 			// Tool callers are untrusted: re-validate the budget beyond the schema.
 			const budgetGate = validateTokenBudgetInput(params.token_budget);
 			if (!budgetGate.ok) {
 				return {
 					content: [{ type: "text", text: budgetGate.message }],
 					details: goalDetails(core.state.goal),
+					isError: true,
 				};
 			}
 			tokenBudget = budgetGate.value;
 		}
 		const { objective: cleanedObjective, verificationContract } = extractVerificationContract(objective);
 		core.replaceGoal(
-			{ objective: cleanedObjective, autoContinue: true, sisyphus: sisyphusFlag },
+			{ objective: cleanedObjective, autoContinue: true, sisyphus: sisyphusFlag, maxAutonomousRuns: params.max_autonomous_runs },
 			ctx,
 			true,
 			verificationContract,
@@ -223,7 +235,7 @@ pi.registerTool(defineTool({
 			? `\n\nThe objective contains ${derived.length} ordered step${derived.length === 1 ? "" : "s"}; propose them as the task tree with set_goal_tasks if the user wants tracked milestones.`
 			: "";
 		return {
-			content: [{ type: "text", text: `${buildGoalCreatedReport({ objective: created?.objective ?? objective, detailedSummary: detailedSummary(created), tokenBudget: created?.tokenBudget })}${bootstrapLine}${otherLine}` }],
+			content: [{ type: "text", text: `${buildGoalCreatedReport({ objective: created?.objective ?? objective, detailedSummary: detailedSummary(created), tokenBudget: created?.tokenBudget })}\n${formatRunLimit(effectiveRunLimit(created, loadGoalSettings(ctx.cwd).maxAutonomousRuns))}${bootstrapLine}${otherLine}` }],
 			details: goalDetails(created),
 			terminate: true,
 		};
@@ -241,13 +253,14 @@ pi.registerTool(defineTool({
 // complete → the independent auditor verifies from actual evidence (no
 // paperwork field); blocked → a distinct agent-blocked state that stops
 // continuation. The three-consecutive-turn blocker rule is prompt policy.
-	async function runGoalBlockedFlow(ctx: ExtensionContext, reasonInput?: string, attemptedActions: string[] = []): Promise<AgentToolResult<unknown>> {
+	async function runGoalBlockedFlow(ctx: ExtensionContext, reasonInput?: string, attemptedActions: string[] = [], signal?: AbortSignal): Promise<AgentToolResult<unknown>> {
 	core.reconcileFocusedGoalFromDisk(ctx);
 	const gate = validateGoalBlock({ goal: core.state.goal, runningGoalId: core.runningGoalId });
 	if (!gate.ok) {
 		return {
 			content: [{ type: "text", text: gate.message }],
 			details: goalDetails(core.state.goal),
+			isError: true,
 		};
 	}
 	if (!core.state.goal) throw new Error("Goal disappeared during blocked validation.");
@@ -260,6 +273,7 @@ pi.registerTool(defineTool({
 			content: [{ type: "text", text: 'update_goal({ status: "blocked" }) requires a "reason" describing the concrete blocker. The goal remains active.' }],
 			details: goalDetails(core.state.goal),
 			terminate: false,
+			isError: true,
 		};
 	}
 
@@ -287,6 +301,7 @@ pi.registerTool(defineTool({
 				content: [{ type: "text", text: `Goal blocked state update failed: ${result.message ?? "the state mutation was rejected"}. The goal was NOT marked blocked. Retry after resolving the conflict.` }],
 				details: goalDetails(core.state.goal),
 				terminate: false,
+				isError: true,
 			};
 		}
 		core.clearContinuationState();
@@ -314,18 +329,20 @@ pi.registerTool(defineTool({
 	const fingerprint = buildBlockerFingerprint(goalAtBlock, reason);
 	const consult = goalOracleState(ctx, goalAtBlock.id, fingerprint);
 
-	// One actionable result already exists.
+	// One actionable result already exists: refuse the block until its
+	// recommended path was attempted, whether or not the marker is still armed.
 	if (consult.result?.disposition === "actionable") {
-		if (!consult.followupAttempted && !hasPendingOracleAdviceForFocusedGoal(goalAtBlock.id)) {
-			// Re-arm without consulting again and refuse the block.
-			const adviceText = renderOracleAdviceReminder({
+		if (!consult.followupAttempted) {
+			const adviceText = renderOracleAdviceReminder(ensureOracleAdviceArmed({
 				goalId: goalAtBlock.id,
 				fingerprint,
 				adviceId: consult.result.adviceId,
 				text: consult.result.summary,
-			});
+			}));
 			return {
-				content: [{ type: "text", text: `${adviceText}\n\nThe goal was NOT marked blocked.` }],
+				content: [{ type: "text", text: `${adviceText}
+
+The goal was NOT marked blocked.` }],
 				details: goalDetails(goalAtBlock),
 				terminate: false,
 			};
@@ -364,13 +381,14 @@ pi.registerTool(defineTool({
 		}]);
 	} catch { /* ledger append is best-effort for the started marker */ }
 
-	const run = await runBlockerOracle({
+	const run = await (core.dependencies.runBlockerOracle ?? runBlockerOracle)({
 		ctx,
 		goal: goalAtBlock,
 		reason,
 		attemptedActions: attemptedActions.slice(0, 8),
 		settings: oracleSettings as ResolvedGoalOracleSettings,
 		recentEvidence: "",
+		signal,
 	});
 
 	if (!core.isFocusedOperationCurrent(focusToken)) {
@@ -412,6 +430,7 @@ pi.registerTool(defineTool({
 			content: [{ type: "text", text: `Oracle consultation failed (${run.errorCode}): ${run.message.slice(0, 200)}${retryable ? " The goal remains active; try again or continue working." : ""}` }],
 			details: goalDetails(goalAtBlock),
 			terminate: false,
+			isError: true,
 		};
 	}
 
@@ -455,11 +474,11 @@ async function runGoalAgentPauseFlow(ctx: ExtensionContext, reason: string | und
 	core.reconcileFocusedGoalFromDisk(ctx);
 	const gate = validateGoalAgentPause({ goal: core.state.goal, runningGoalId: core.runningGoalId });
 	if (!gate.ok) {
-		return { content: [{ type: "text", text: gate.message }], details: goalDetails(core.state.goal) };
+		return { content: [{ type: "text", text: gate.message }], details: goalDetails(core.state.goal), isError: true };
 	}
 	const trimmedReason = reason?.trim() ?? "";
 	if (!trimmedReason) {
-		return { content: [{ type: "text", text: 'update_goal({ status: "paused" }) requires a "reason" describing why the work is pausing.' }], details: goalDetails(core.state.goal) };
+		return { content: [{ type: "text", text: 'update_goal({ status: "paused" }) requires a "reason" describing why the work is pausing.' }], details: goalDetails(core.state.goal), isError: true };
 	}
 	if (!core.state.goal) throw new Error("Goal disappeared during pause validation.");
 	core.accountProgress(ctx);
@@ -503,6 +522,7 @@ async function runGoalAgentPauseFlow(ctx: ExtensionContext, reason: string | und
 		content: [{ type: "text", text: `Goal pause update failed: ${result.message ?? "the state mutation was rejected"}. The goal was NOT paused. Retry after resolving the conflict.` }],
 		details: goalDetails(core.state.goal),
 		terminate: false,
+		isError: true,
 	};
 }
 
@@ -524,19 +544,19 @@ pi.registerTool(defineTool({
 		completion_summary: Type.Optional(Type.String({ description: "Untrusted completion claim; never evidence." })),
 	}, { additionalProperties: false }),
 	executionMode: "sequential",
-	async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+	async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 		// P1-3: persist any buffered in-turn mutations now so the auditor and
 		// status transitions observe the current task/state, not the stale disk.
 		core.flushGoalTransaction(ctx);
 		if (!!params.continuation === !!params.status || (params.continuation && (params.reason !== undefined || params.attempted_actions !== undefined || params.suggested_action !== undefined || params.completion_summary !== undefined))) {
-			return { content: [{ type: "text", text: "Provide exactly one lifecycle status or continuation, without mixing their fields." }], details: {}, terminate: false };
+			return { content: [{ type: "text", text: "Provide exactly one lifecycle status or continuation, without mixing their fields." }], details: {}, terminate: false, isError: true };
 		}
 		if (params.continuation) return core.scheduler.declare(ctx, params.continuation as GoalContinuation);
 		if (params.status === "blocked") {
 			const attempted = Array.isArray((params as { attempted_actions?: unknown }).attempted_actions)
 				? ((params as { attempted_actions: unknown[] }).attempted_actions.filter((a): a is string => typeof a === "string"))
 				: [];
-			return runGoalBlockedFlow(ctx, params.reason, attempted);
+			return runGoalBlockedFlow(ctx, params.reason, attempted, signal);
 		}
 		if (params.status === "paused") {
 			return runGoalAgentPauseFlow(ctx, params.reason, params.suggested_action);

@@ -522,3 +522,16 @@ test("activity respects the configured limit and excludes other goals", () => {
 		["Completed “Review reports page and data source”.", "Completed “Implement filtered CSV export”."],
 	);
 });
+
+test("dashboard scheduling states an unlimited allowance and honors showAutonomousRuns", () => {
+	const unlimited = deriveGoalDashboardModel(goal({ maxAutonomousRuns: null }), { focused: true, otherOpenGoals: 0 })!;
+	assert.deepEqual(unlimited.scheduling, ["Autonomous runs: unlimited (0 used)."]);
+	const legacy = deriveGoalDashboardModel(goal(), { focused: true, otherOpenGoals: 0 })!;
+	assert.deepEqual(legacy.scheduling, ["Autonomous runs: unlimited (0 used)."], "legacy record without a configured limit is unlimited");
+	const inherited = deriveGoalDashboardModel(goal(), { focused: true, otherOpenGoals: 0, maxAutonomousRuns: 9 })!;
+	assert.deepEqual(inherited.scheduling, ["Autonomous runs: 0/9."], "legacy record inherits the configured limit");
+	const finite = deriveGoalDashboardModel(goal({ maxAutonomousRuns: 4 }), { focused: true, otherOpenGoals: 0, maxAutonomousRuns: 9 })!;
+	assert.deepEqual(finite.scheduling, ["Autonomous runs: 0/4."]);
+	const hidden = deriveGoalDashboardModel(goal({ maxAutonomousRuns: null }), { focused: true, otherOpenGoals: 0, showAutonomousRuns: false })!;
+	assert.deepEqual(hidden.scheduling, []);
+});

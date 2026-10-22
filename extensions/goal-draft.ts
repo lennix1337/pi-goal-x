@@ -142,6 +142,7 @@ export function goalDraftingPrompt(topic: string, focus: GoalDraftingFocus): str
 		"Confirmation protocol:",
 		"- Treat this as a lightweight conversation with the user, not a separate long-running runtime phase.",
 		"- If the topic is vague, ask one focused question with a recommended default. Use goal_question or goal_questionnaire when a structured answer would help, but plain conversation is acceptable.",
+		"- Translate conversational limits into propose_goal_draft fields: max_autonomous_runs (nonnegative integer; null = unlimited), token_budget (positive integer; null = unlimited). If omitted, state the configured run default or 30 autonomous runs and unlimited tokens in the proposal; do not require /goal-settings. Ask one focused question only for ambiguous limits. Runs count extension-scheduled continuations, not tool calls.",
 		"- Targeted read-only research is allowed when it helps define a better goal contract; do not start implementation before confirmation.",
 		"- If the topic is already concrete, you may proceed directly to propose_goal_draft.",
 		"- The goal contract should make the objective, success criteria, boundaries, constraints, and blocker rule explicit.",

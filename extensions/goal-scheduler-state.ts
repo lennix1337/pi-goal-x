@@ -86,3 +86,14 @@ export function schedulerSummary(s: GoalSchedulerState | undefined, limit?: numb
 	const { runs, instructions } = schedulerSummaryParts(s, limit, showRuns);
 	return [runs, instructions].filter(Boolean).join("\n");
 }
+
+/**
+ * Human/model-facing state read. Unlike the prompt counters (schedulerSummaryParts),
+ * an unlimited allowance is stated explicitly so it is not confused with a hidden or
+ * unreported one. showAutonomousRuns=false still hides the runs line entirely.
+ */
+export function schedulerDisplaySummary(s: GoalSchedulerState | undefined, limit?: number, showRuns = true): string {
+	const { runs, instructions } = schedulerSummaryParts(s, limit, showRuns);
+	const line = runs || (limit === undefined && showRuns ? `Autonomous runs: unlimited (${s?.used ?? 0} used).` : "");
+	return [line, instructions].filter(Boolean).join("\n");
+}
