@@ -116,8 +116,13 @@ export class GoalScheduler {
 
 	/** Only explicit user resume resets spent allowance, including while already active/waiting. */
 	resume(ctx: ExtensionContext): boolean {
+		const result = this.resumeResult(ctx);
+		if (!result.ok) ctx.ui.notify(result.message, "warning");
+		return result.ok;
+	}
+	resumeResult(ctx: ExtensionContext): { ok: true } | { ok: false; message: string } {
 		invalidateGoalSettingsCache();
-		if (this.limit(ctx) === 0) { ctx.ui.notify(this.allowanceReason(ctx), "warning"); return false; }
+		if (this.limit(ctx) === 0) return { ok: false, message: this.allowanceReason(ctx) };
 		try {
 			this.cancelTimer();
 			this.core.runtime.clearContinuationState();
@@ -130,8 +135,8 @@ export class GoalScheduler {
 			// still invalidates it through turn(), just like a declaration.
 			this.declared = this.inRun;
 			this.schedule(ctx);
-			return true;
-		} catch (error) { ctx.ui.notify(String(error), "warning"); return false; }
+			return { ok: true };
+		} catch (error) { return { ok: false, message: String(error) }; }
 	}
 	kickoff(ctx: ExtensionContext): void {
 		if (this.inRun) return; // creating a goal within a user run needs no extra run

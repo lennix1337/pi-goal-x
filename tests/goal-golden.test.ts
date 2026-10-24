@@ -149,8 +149,8 @@ test("golden: prompt body is authoritative over the JSON header objective", () =
 		writeFixtureGoal(cwd);
 		const filePath = path.join(cwd, FIXTURE_GOAL_RELPATH);
 		const edited = readFileSync(filePath, "utf8").replace(
-			"# Goal Prompt\n\nGolden fixture goal objective",
-			"# Goal Prompt\n\nEdited objective from the prompt body",
+			/(# Goal Prompt\r?\n\r?\n)Golden fixture goal objective/,
+			"$1Edited objective from the prompt body",
 		);
 		writeFileSync(filePath, edited);
 

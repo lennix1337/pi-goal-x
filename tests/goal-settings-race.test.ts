@@ -13,7 +13,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Worker } from "node:worker_threads";
 
-const WORKER = new URL("settings-race-worker.mjs", import.meta.url).pathname;
+const WORKER = new URL("settings-race-worker.mjs", import.meta.url);
 
 test("two concurrent processes editing different keys never lose an update", async () => {
 	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "goal-settings-race-")));
@@ -24,6 +24,7 @@ test("two concurrent processes editing different keys never lose an update", asy
 		const runWriter = (key: string, iterations: number) =>
 			new Promise<void>((resolve, reject) => {
 				const worker = new Worker(WORKER, { workerData: { globalFile, key, iterations } });
+				worker.on("error", reject);
 				worker.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`worker ${key} exited ${code}`))));
 			});
 

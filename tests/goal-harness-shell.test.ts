@@ -6,14 +6,20 @@
  * discovery.
  */
 
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 
 test("experiment harness shell tests pass", () => {
 	const script = path.resolve(import.meta.dirname, "shell", "harness.test.sh");
-	const result = spawnSync("bash", [script], { encoding: "utf8", timeout: 120_000 });
+	const windows = process.platform === "win32";
+	// Windows may resolve `bash` to WSL, which cannot consume native paths or igncr.
+	const bash = windows ? path.resolve(execFileSync("git", ["--exec-path"], { encoding: "utf8" }).trim(), "../../../bin/bash.exe") : "bash";
+	const result = spawnSync(bash, windows ? ["-o", "igncr", script.replace(/\\/g, "/")] : [script], {
+		encoding: "utf8", timeout: 120_000,
+		env: windows ? { ...process.env, SHELLOPTS: [process.env.SHELLOPTS, "igncr"].filter(Boolean).join(":") } : process.env,
+	});
 	assert.equal(
 		result.status,
 		0,

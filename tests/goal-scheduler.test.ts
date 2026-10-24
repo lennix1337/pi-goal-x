@@ -1,6 +1,6 @@
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -10,6 +10,7 @@ import { createGoal, goalFocusDetails, cloneGoal, normalizeGoalRecord } from "..
 import { writeActiveGoalFile, parseGoalFile } from "../extensions/storage/goal-files.ts";
 import { invalidateGoalSettingsCache, parseGoalSettings, saveGoalSettingsFileConfig, loadGoalSettings } from "../extensions/goal-settings.ts";
 import { newGoalScheduler, normalizeGoalScheduler, schedulerSummary } from "../extensions/goal-scheduler-state.ts";
+import { goalLedgerPath } from "../extensions/goal-ledger.ts";
 
 async function fixture(t: TestContext, limit?: number, owner = "owner", existing?: string, strict = true) {
 	const cwd = existing ?? mkdtempSync(path.join(tmpdir(), "goal-scheduler-"));
@@ -25,11 +26,12 @@ async function fixture(t: TestContext, limit?: number, owner = "owner", existing
 	if (!existing) writeActiveGoalFile({ cwd }, goal);
 	const handlers: Record<string, Function> = {};
 	const tools = new Map<string, any>();
+	const commands = new Map<string, any>();
 	const sent: any[] = [];
 	const notifications: string[] = [];
 	const listeners = new Map<string, Function>();
 	let aborts = 0;
-	const pi = { registerTool: (tool: any) => tools.set(tool.name, tool), registerCommand: () => {}, on: (event: string, handler: Function) => { handlers[event] = handler; }, getActiveTools: () => ["read", "write", "bash"], setActiveTools: () => {}, appendEntry: () => {}, registerMessageRenderer: () => {}, sendMessage: (message: unknown) => { sent.push(message); }, events: { on: (name: string, fn: Function) => { listeners.set(name, fn); return () => listeners.delete(name); }, emit: (name: string, event: unknown) => listeners.get(name)?.(event) } };
+	const pi = { registerTool: (tool: any) => tools.set(tool.name, tool), registerCommand: (name: string, command: any) => commands.set(name, command), on: (event: string, handler: Function) => { handlers[event] = handler; }, getActiveTools: () => ["read", "write", "bash"], setActiveTools: () => {}, appendEntry: () => {}, registerMessageRenderer: () => {}, sendMessage: (message: unknown) => { sent.push(message); }, events: { on: (name: string, fn: Function) => { listeners.set(name, fn); return () => listeners.delete(name); }, emit: (name: string, event: unknown) => listeners.get(name)?.(event) } };
 	const ctx = { cwd, hasUI: false, isIdle: () => true, hasPendingMessages: () => false, abort: () => { aborts++; }, getSystemPrompt: () => "base", sessionManager: { getSessionId: () => owner, getCwd: () => cwd, getRoot: () => cwd, getBranch: () => [{ type: "custom", customType: "pi-goal-focus", data: goalFocusDetails(goal.id, "created") }] }, ui: { notify: (message: string) => notifications.push(message), setStatus: () => {}, setWidget: () => {} } } as unknown as ExtensionContext;
 	goalExtension(pi as any);
 	const core = (pi as any)._goalCore as GoalCore;
@@ -45,7 +47,121 @@ async function fixture(t: TestContext, limit?: number, owner = "owner", existing
 	const admit = () => { begin(); core.scheduler.message(ctx, { ...sent.at(-1), role: "custom" }); };
 	const ready = () => core.scheduler.declare(ctx, { kind: "ready" });
 	const wait = () => core.scheduler.declare(ctx, { kind: "wait", reason: "Await fixture job", deadline: new Date(Date.now() + 10000).toISOString(), polling: { interval_seconds: 1, max_checks: 2 } });
-	return { cwd, ctx, core, handlers, tools, sent, notifications, begin, admit, ready, wait, pi, aborts: () => aborts };
+	return { cwd, ctx, core, handlers, tools, commands, sent, notifications, begin, admit, ready, wait, pi, aborts: () => aborts };
+}
+
+for (const stoppedStatus of ["paused", "blocked"] as const) {
+test(`conversational resume from ${stoppedStatus} preserves progress, renews once, and dispatches one fresh continuation`, async t => {
+	const h = await fixture(t, 5);
+	t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+	const update = h.tools.get("update_goal");
+	assert.ok(JSON.stringify(update.parameters.properties.status).includes('"active"'), "active must be advertised before calling the tool");
+	h.core.goalService.apply(h.ctx, { mutate: g => ({ ...g, status: stoppedStatus, autoContinue: false, pauseReason: "Quota unavailable",
+		tokenBudget: 10000, maxAutonomousRuns: 5, usage: { ...g.usage, tokensUsed: 123 }, currentTaskId: "task-1",
+		taskList: { tasks: [{ id: "task-1", title: "Keep focus", status: "pending" }, { id: "done", title: "Keep progress", status: "complete" }], blockCompletion: true, proposedAt: new Date().toISOString() },
+		scheduler: { ...newGoalScheduler("owner"), used: 5, phase: "interrupted" } }) });
+	const before = parseGoalFile(path.resolve(h.cwd, h.core.state.goal!.activePath!))!;
+	await h.handlers.before_agent_start!({ prompt: "Resume the focused goal now", systemPrompt: "host policy" }, h.ctx);
+	await h.handlers.agent_start!({}, h.ctx);
+	await h.handlers.turn_start!({}, h.ctx);
+	const admission = await h.handlers.tool_call!({ toolName: "update_goal", args: { status: "active" } }, h.ctx);
+	assert.notEqual(admission?.block, true, "a fresh user turn may call resume");
+	const result = await update.execute("resume", { status: "active" }, undefined, undefined, h.ctx);
+	assert.notEqual(result.isError, true);
+	assert.equal(h.core.state.goal?.status, "active");
+	assert.equal(h.core.state.goal?.autoContinue, true);
+	const resumed = parseGoalFile(path.resolve(h.cwd, before.activePath!))!;
+	for (const key of ["id", "objective", "taskList", "currentTaskId", "tokenBudget", "maxAutonomousRuns", "usage"] as const) assert.deepEqual(resumed[key], before[key], key);
+	assert.equal(resumed.scheduler?.used, 0);
+	assert.equal(resumed.scheduler?.dispatch, undefined, "an interrupted dispatch must not be replayed");
+	assert.equal(resumed.pauseReason, undefined);
+	const duplicate = await update.execute("resume-again", { status: "active" }, undefined, undefined, h.ctx);
+	assert.notEqual(duplicate.isError, true);
+	assert.equal(h.core.state.goal?.revision, resumed.revision, "duplicate resume is not a write");
+	assert.equal(h.sent.length, 0, "no dispatch during the active host turn");
+	h.core.scheduler.settled(h.ctx); t.mock.timers.tick(1);
+	assert.equal(h.sent.length, 1);
+	assert.equal(h.core.state.goal?.scheduler?.used, 1);
+	assert.match(h.sent[0].content, /pi_goal_continuation/);
+	const events = readFileSync(goalLedgerPath(h.ctx), "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line));
+	assert.equal(events.filter(e => e.type === "goal_resumed").length, 1);
+});
+}
+
+for (const status of ["paused", "blocked"] as const) {
+	test(`conversational resume discovery is available in the ${status} request context`, async t => {
+		const h = await fixture(t, 5);
+		h.core.goalService.apply(h.ctx, { mutate: g => ({ ...g, status, autoContinue: false }) });
+		const context = await h.handlers.context!({ messages: [{ role: "user", content: "Resume this goal", timestamp: 1 }] }, h.ctx);
+		const text = JSON.stringify(context.messages);
+		assert.match(text, /update_goal/);
+		assert.match(text, /active/);
+		assert.match(text, /explicit user|user explicitly/i);
+	});
+}
+
+test("conversational resume remains blocked on a stale hidden checkpoint", async t => {
+	const h = await fixture(t, 5);
+	h.core.goalService.apply(h.ctx, { mutate: g => ({ ...g, status: "paused", autoContinue: false }) });
+	h.core.runtime.setCheckpoint(h.core.state.goal!.id);
+	const admission = await h.handlers.tool_call!({ toolName: "update_goal", args: { status: "active" } }, h.ctx);
+	assert.equal(admission?.block, true);
+	assert.equal(h.core.state.goal?.status, "paused");
+	assert.equal(h.sent.length, 0);
+});
+
+test("conversational resume surfaces storage failure without claiming success", async t => {
+	const h = await fixture(t, 5);
+	t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+	h.core.goalService.apply(h.ctx, { mutate: g => ({ ...g, status: "paused", autoContinue: false }) });
+	h.core.reconcileFocusedGoalFromDisk(h.ctx);
+	const before = JSON.stringify(h.core.state.goal);
+	t.mock.method(h.core.goalService, "apply", () => ({ ok: false, message: "Fixture revision conflict" }));
+	const result = await h.tools.get("update_goal").execute("storage-failure", { status: "active" }, undefined, undefined, h.ctx);
+	assert.equal(result.isError, true);
+	assert.match(result.content[0].text, /revision conflict/);
+	assert.equal(JSON.stringify(h.core.state.goal), before);
+	t.mock.timers.tick(10000);
+	assert.equal(h.sent.length, 0);
+});
+
+test("conversational resume and slash resume share the scheduler but only slash renews an active allowance", async t => {
+	const h = await fixture(t, 5);
+	t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+	h.core.goalService.apply(h.ctx, { mutate: g => ({ ...g, scheduler: { ...newGoalScheduler("owner"), used: 3, phase: "interrupted" } }) });
+	const result = await h.tools.get("update_goal").execute("interrupted-resume", { status: "active" }, undefined, undefined, h.ctx);
+	assert.notEqual(result.isError, true);
+	t.mock.timers.tick(1);
+	assert.equal(h.sent.length, 1);
+	assert.equal(h.core.state.goal?.scheduler?.used, 1);
+	const generation = h.core.state.goal?.scheduler?.generation;
+	await h.commands.get("goal-resume").handler("", h.ctx);
+	assert.equal(h.core.state.goal?.scheduler?.used, 0, "explicit slash resume still renews an active goal");
+	assert.notEqual(h.core.state.goal?.scheduler?.generation, generation);
+	t.mock.timers.tick(1);
+	assert.equal(h.sent.length, 2);
+});
+
+for (const refusal of ["complete", "token-budget", "zero-runs", "foreign-owner", "foreign-owner-disabled", "missing"] as const) {
+	test(`conversational resume refuses ${refusal} without mutation or dispatch`, async t => {
+		const h = await fixture(t, refusal === "zero-runs" ? 0 : 5);
+		t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+		const update = h.tools.get("update_goal");
+		assert.ok(JSON.stringify(update.parameters.properties.status).includes('"active"'));
+		h.core.goalService.apply(h.ctx, { mutate: g => ({ ...g,
+			status: refusal === "complete" ? "complete" : refusal.startsWith("foreign-owner") ? "active" : "paused",
+			autoContinue: refusal === "foreign-owner",
+			...(refusal === "token-budget" ? { tokenBudget: 1, usage: { ...g.usage, tokensUsed: 1 } } : {}),
+			scheduler: newGoalScheduler(refusal.startsWith("foreign-owner") ? "other-session" : "owner") }) });
+		if (refusal === "missing") h.core.state.goal = null;
+		h.core.reconcileFocusedGoalFromDisk(h.ctx);
+		const before = JSON.stringify(h.core.state.goal);
+		const result = await update.execute("refused-resume", { status: "active" }, undefined, undefined, h.ctx);
+		assert.equal(result.isError, true);
+		assert.equal(JSON.stringify(h.core.state.goal), before);
+		t.mock.timers.tick(10000);
+		assert.equal(h.sent.length, 0);
+	});
 }
 
 test("explicit zero means no automatic model runs, even for missing disposition", async t => {

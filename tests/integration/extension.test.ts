@@ -8,7 +8,7 @@
  * `npm run test:integration`.
  */
 
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, appendFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, appendFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -19,6 +19,7 @@ import goalExtension from "../../extensions/goal.ts";
 import { createGoal, goalFocusDetails } from "../../extensions/goal-record.ts";
 import { activePathForGoal, parseGoalFile, serializeGoalFile, writeActiveGoalFile } from "../../extensions/storage/goal-files.ts";
 import { goalLedgerPath } from "../../extensions/goal-ledger.ts";
+import { denyAtomicReplacement } from "../atomic-write-fixture.ts";
 
 interface Harness {
 	handlers: Map<string, Function>;
@@ -881,14 +882,12 @@ describe("confirmation and audit UX (follow-up Stage 2)", () => {
 });
 
 describe("completion transaction hardening (follow-up Stage 3)", () => {
-	it("completion commit write failure never reports success and never clears focus", async () => {
+	it("completion commit write failure never reports success and never clears focus", async (t) => {
 		const f = fixture();
 		const goalsDir = path.join(f.cwd, ".pi", "goals");
+		let restore: (() => void) | undefined;
 		try {
-			// Pre-create the ledger file so its fallback append path works even
-			// when the goals directory is read-only (append needs write on the
-			// file, not the directory; the atomic goal write needs a writable
-			// directory and therefore fails).
+			// Keep real ledger appends available while refusing only the authoritative replacement.
 			writeFileSync(goalLedgerPath({ cwd: f.cwd }), "", "utf8");
 			const h = createHarness({
 				cwd: f.cwd, sessionEntries: f.sessionEntries,
@@ -896,8 +895,8 @@ describe("completion transaction hardening (follow-up Stage 3)", () => {
 					({ approved: true, disapproved: false, output: "All good\n<approved/>", model: "fixture" }),
 			});
 			await start(h);
-			// Block the authoritative active-file write (reads still work).
-			chmodSync(goalsDir, 0o555);
+			// Explicit fault injection works on Windows and under privileged POSIX users too.
+			restore = denyAtomicReplacement(t, path.join(goalsDir, activeGoalFiles(f.cwd)[0]!));
 			const update = h.tools.get("update_goal")!;
 			const result = await (update.execute as any)("fail-write-1", { status: "complete" }, new AbortController().signal, undefined, h.ctx);
 			const text = result.content?.[0]?.text ?? "";
@@ -916,7 +915,7 @@ describe("completion transaction hardening (follow-up Stage 3)", () => {
 			const snapText = snapshot.content?.[0]?.text ?? "";
 			assert.match(snapText, /Goal \S+: running/, `goal still open and active: ${snapText.slice(0, 100)}`);
 		} finally {
-			try { chmodSync(goalsDir, 0o755); } catch {}
+			restore?.();
 			f.cleanup();
 		}
 	});

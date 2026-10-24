@@ -8,7 +8,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import * as fs from "node:fs";
+import fs from "node:fs";
+import { denyAtomicReplacement } from "./atomic-write-fixture.ts";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -225,26 +226,27 @@ describe("scoped mutation", () => {
 		});
 	});
 
-	it("failed write preserves the original file (fault injection)", () => {
+	it("failed write preserves the original file (fault injection)", (t) => {
 		withTempDir((dir) => {
 			const env = { PI_GOAL_GLOBAL_SETTINGS_FILE: path.join(dir, "g.json") };
 			const target = scopeTarget(dir, "global");
 			writeJson(target, { provider: "keep" });
+			const original = fs.readFileSync(target);
 			invalidateGoalSettingsCache();
-			// Make the directory read-only AFTER the original file exists so the
-			// temp-file creation fails; the original must remain intact.
-			fs.chmodSync(dir, 0o555);
+			// Fail the actual atomic replacement, independent of OS permissions or root privileges.
+			const restore = denyAtomicReplacement(t, target);
 			try {
 				assert.throws(() =>
 					mutateSettingsLayer({ scope: "global", cwd: dir, env, mutation: { op: "set", path: ["provider"], value: "changed" } }),
+					/Injected atomic replacement denied/,
 				);
 			} finally {
-				fs.chmodSync(dir, 0o755);
+				restore();
 			}
 			invalidateGoalSettingsCache();
-			const layer = readSettingsLayer(target, "global").layer;
-			assert.equal(layer.provider, "keep", "original preserved after failed write");
-			assert.equal(typeof JSON.parse(fs.readFileSync(target, "utf8")).provider, "string");
+			assert.equal(readSettingsLayer(target, "global").layer.provider, "keep");
+			assert.deepEqual(fs.readFileSync(target), original, "original bytes preserved after failed replacement");
+			assert.ok(!fs.existsSync(`${target}.lock`), "failed replacement releases the lock");
 		});
 	});
 

@@ -187,12 +187,12 @@ export function sisyphusDisciplineBlock(goal: GoalRecord): string {
 function lifecyclePolicyBlock(autonomous: boolean, strict: boolean): string {
  return [
   "[OUTCOMES]",
-  '- New goals default to 30 autonomous runs unless configured; earlier goals without an override inherit maxAutonomousRuns (unlimited if none). maxAutonomousRuns in .pi/pi-goal-x-settings.json caps runs; 0 disables (agents may set it). Only creation or user /goal-resume renews usage.',
+  '- New goals default to 30 autonomous runs unless configured; earlier goals without an override inherit maxAutonomousRuns (unlimited if none). maxAutonomousRuns in .pi/pi-goal-x-settings.json caps runs; 0 disables (agents may set it). Only creation or explicit user-authorized resume renews usage.',
   ...(autonomous && strict ? ['- End execution with update_goal: ready for runnable work, wait for an external condition, or a status below. Saved decisions terminate; further work invalidates them. Missing decisions allow one repair. Never busy-poll.'] : []),
   ...(autonomous && !strict ? ['- Continue pursuing the goal automatically after each execution; no scheduling declaration is required. New waits require user opt-in to strictExecutionContract; do not enable it merely to continue.'] : []),
   '- update_goal({status: "complete"}) only when every requirement is satisfied; the independent completion auditor checks actual evidence. Approval archives; rejection requires rework.',
   '- update_goal({status: "blocked"}) only after the SAME blocker recurs on three consecutive goal turns; keep trying concrete steps before then.',
-  '- update_goal({status: "paused", reason: "…"}) pauses immediately. User controls: /goal-pause, /goal-resume, /goal-clear.',
+  '- update_goal({status: "paused", reason: "…"}) pauses immediately. update_goal({status: "active"}) resumes only on an explicit user request; never infer permission from a checkpoint or quota recovery. User commands: /goal-pause, /goal-resume, /goal-clear.',
   '- The objective is immutable: never edit it yourself; ask the user to run /goal-tweak.',
   '- Use work tools directly. Do not call get_goal repeatedly when the needed state is already visible.',
   '- Retrieve omitted requirements before acting on them. Re-read changed requirements and details lost after compaction. Full objective/contracts: get_goal(section="objective"); tasks: get_goal(section="tasks").',

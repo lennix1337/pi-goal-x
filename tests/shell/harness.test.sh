@@ -21,10 +21,12 @@ FAILURES=0
 check() {
   local name="$1"
   shift
-  if "$@" >/dev/null 2>&1; then
+  local output
+  if output="$("$@" 2>&1)"; then
     echo "ok - ${name}"
   else
     echo "FAIL - ${name}"
+    printf '%s\n' "${output}" >&2
     FAILURES=$((FAILURES + 1))
   fi
 }
@@ -43,6 +45,10 @@ check_not() {
 # ---- Sandbox: controlled SUPPORTED_CASES.json + cases ---------------------
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/goal-harness-test.XXXXXX")"
 trap 'rm -rf "${SANDBOX}"' EXIT
+# Sourcing the harness must not read real provider credentials in an offline test.
+export HOME="${SANDBOX}/home" PI_GOAL_TEST_PROVIDER=offline-fixture
+export SANDBOX_CURL_BODY="${SANDBOX}/curl-body"
+mkdir -p "${HOME}"
 mkdir -p "${SANDBOX}/cases/C20-core-tool-selection" "${SANDBOX}/cases/C21-unsupported" "${SANDBOX}/bin"
 cat > "${SANDBOX}/SUPPORTED_CASES.json" <<'JSON'
 {
@@ -170,8 +176,11 @@ run_prefix() {
 
 # Minimal PATH with node + dirname but NO timeout/gtimeout, so the harness
 # must fall back to the Node watchdog.
-ln -s "$(command -v node)" "${SANDBOX}/bin/node"
-ln -s "$(command -v dirname)" "${SANDBOX}/bin/dirname"
+# Native MSYS executables copied/symlinked into a restricted PATH lose their DLLs.
+# Only discovery is under test for node; delegate dirname to its original location.
+printf '#!/bin/sh\nexit 0\n' > "${SANDBOX}/bin/node"
+printf '#!/bin/bash\nexec %q "$@"\n' "$(command -v dirname)" > "${SANDBOX}/bin/dirname"
+chmod +x "${SANDBOX}/bin/node" "${SANDBOX}/bin/dirname"
 check "node watchdog selected when no timeout binary exists" \
   bash -c 'PATH="$1" source "$2"; [[ "${TIMEOUT_PREFIX}" == "node $3/watchdog.mjs" ]]' _ "${SANDBOX}/bin" "${HARNESS_DIR}/lib.sh" "${HARNESS_DIR}"
 
@@ -180,14 +189,14 @@ touch "${SANDBOX}/bin-gtimeout/gtimeout"
 chmod +x "${SANDBOX}/bin-gtimeout/gtimeout"
 # The harness resolves its own directory with dirname before it probes the
 # timeout commands. Keep that dependency available in each restricted PATH.
-ln -s "$(command -v dirname)" "${SANDBOX}/bin-gtimeout/dirname"
+cp "${SANDBOX}/bin/dirname" "${SANDBOX}/bin-gtimeout/dirname"
 check "gtimeout preferred over the watchdog" \
   bash -c 'PATH="$1" source "$2"; [[ "${TIMEOUT_PREFIX}" == "gtimeout" ]]' _ "${SANDBOX}/bin-gtimeout" "${HARNESS_DIR}/lib.sh"
 
 mkdir -p "${SANDBOX}/bin-timeout"
 touch "${SANDBOX}/bin-timeout/timeout"
 chmod +x "${SANDBOX}/bin-timeout/timeout"
-ln -s "$(command -v dirname)" "${SANDBOX}/bin-timeout/dirname"
+cp "${SANDBOX}/bin/dirname" "${SANDBOX}/bin-timeout/dirname"
 check "timeout preferred over gtimeout" \
   bash -c 'PATH="$1" source "$2"; [[ "${TIMEOUT_PREFIX}" == "timeout --foreground" ]]' _ "${SANDBOX}/bin-timeout" "${HARNESS_DIR}/lib.sh"
 

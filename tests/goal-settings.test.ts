@@ -119,7 +119,7 @@ test("parseGoalSettings: multiple unknown keys rejected with the full list", () 
 test("goalSettingsPath: resolves under .pi/ with new filename", () => {
 	const p = goalSettingsPath("/tmp/project");
 	assert.ok(p.endsWith(path.join(".pi", "pi-goal-x-settings.json")));
-	assert.ok(p.startsWith("/tmp/project"));
+	assert.equal(p, path.join("/tmp/project", ".pi", "pi-goal-x-settings.json"));
 });
 
 test("goalSettingsPath: respects PI_GOAL_SETTINGS_FILE env var", () => {

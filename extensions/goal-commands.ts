@@ -32,6 +32,7 @@ import { nowIso, type GoalMode, type GoalRecord } from "./goal-record.ts";
 import { clearGoalDrafting, hasActiveDraft, startGoalDrafting } from "./goal-drafting.ts";
 import { formatRecoveryReport, runRecoveryReport, runRecoveryRepair } from "./goal-recovery.ts";
 import { formatCheckpointHealthReport, readSessionCheckpointHealth } from "./goal-session-health.ts";
+import { resumeFocusedGoal } from "./goal-resume.ts";
 
 export interface GoalRefreshState {
 	poolIds: Iterable<string>;
@@ -337,20 +338,8 @@ export function registerGoalCommands(core: GoalCore): void {
 			const selected = await chooseOpenGoal(ctx, "Resume or focus open goal");
 			if (!selected) return;
 		}
-		if (!core.state.goal) { ctx.ui.notify("No goal is focused.", "warning"); return; }
-		if (!core.scheduler.resume(ctx)) return;
-		ctx.ui.notify("Goal resumed; autonomous allowance renewed.", "info");
-		// Append ledger event for resumption
-		try {
-			core.goalService.appendEvents(ctx, [{
-				type: "goal_resumed",
-				goalId: core.state.goal.id,
-				reason: "user",
-				at: nowIso(),
-			}]);
-		} catch {
-			// Ledger append failure should not crash resume
-		}
+		const result = resumeFocusedGoal(core, ctx, true);
+		ctx.ui.notify(result.message, result.ok ? "info" : "warning");
 	}
 
 	/**

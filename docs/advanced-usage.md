@@ -22,6 +22,14 @@ override inherit the configured allowance (unlimited if none).
 
 Agents may edit this setting. Changing it does not replenish consumed runs; explicit `/goal-resume` renews the period and continues now, including from a waiting goal. No configured allowance is required unless the effective limit is zero, which disables resume. Tool calls within a run are not separate runs. Existing token budgets still apply.
 
+### Conversational resume
+
+When you explicitly ask the agent to resume the focused goal, it can call `update_goal({status: "active"})` without requiring `/goal-resume`. This uses the same durable scheduler as the command. It preserves tasks, objective, configured limits and lifetime token usage; resuming a stopped goal renews the spent run allowance. A duplicate call while already running is a no-op, so it cannot keep replenishing that allowance. `/goal-resume` retains explicit renewal for active goals.
+
+Completed goals, exhausted token budgets and zero automatic-run limits cannot resume. The tool does not take over another session's active scheduler; use `/goal-resume` for explicit ownership transfer. Interrupted work receives a fresh continuation rather than replaying a stale dispatch. A hidden checkpoint, quota recovery or tool suggestion is not a user request and grants no permission.
+
+Offline runtime validation: `node experiments/live/conversational-resume.mjs <new-receipt-directory>`. Use the managed Pi Node executable on Windows. The probe discovers the managed SDK through `~/.pi/agent/install/current-version` (`PI_GOAL_SDK_ROOT` overrides the package root), creates an isolated profile, reloads the actual SDK and exercises the registered tools with a scripted provider. It checks one resumed continuation and duplicate handling, blocks network access and writes receipts outside the repository. It does not reload the current interactive chat or test real model reasoning. After updating this extension, use the normal `/reload` path to activate the new schema in an existing chat.
+
 Explicit `ready` is optional in default mode. A goal saved before next actions were
 removed still loads, with its `nextAction` field stripped during normalization.
 New `wait` declarations require strict mode; otherwise they return a non-terminating error. Previously saved waits retain their deadline, checks, and repair rules when upgrading or disabling strict mode, and may be re-declared with the same identity. Mode changes never resume a paused goal or renew consumed runs.

@@ -19,6 +19,7 @@ import { deriveTasksFromObjective } from "./goal-task-derive.ts";
 import { nowIso, type GoalRecord, type GoalTask, validateTokenBudgetInput } from "./goal-record.ts";
 import type { GoalCore } from "./goal-state.ts";
 import { promptProfile } from "./prompts/goal-prompts.ts";
+import { resumeFocusedGoal } from "./goal-resume.ts";
 import {
 	armOracleAdvice,
 	buildBlockerFingerprint,
@@ -124,7 +125,7 @@ pi.registerTool(defineTool({
 			if (view.archivedPath) lines.push(`Archive: ${view.archivedPath}`);
 			if (otherCount > 0) lines.push(`Other open goals: ${otherCount} (user can run /goal-list or /goal-focus)`);
 			lines.push("");
-			lines.push("Lifecycle: call update_goal({status: \"complete\"}) only when every requirement is satisfied — the independent auditor verifies from actual evidence. Call update_goal({status: \"blocked\"}) only after the same blocker recurs on three consecutive goal turns. User commands handle pause/resume/clear/focus.");
+			lines.push("Lifecycle: call update_goal({status: \"complete\"}) only when every requirement is satisfied — the independent auditor verifies from actual evidence. Call update_goal({status: \"blocked\"}) only after the same blocker recurs on three consecutive goal turns. Resume only on an explicit user request with update_goal({status: \"active\"}); user commands also handle pause/resume/clear/focus.");
 			// E1: goal history (last audit verdict + recent lifecycle events).
 			if (includeHistory) {
 				const history = buildGoalHistoryBlock(view, readGoalLedger(ctx).events);
@@ -511,7 +512,7 @@ async function runGoalAgentPauseFlow(ctx: ExtensionContext, reason: string | und
 		core.updateUI(ctx);
 		const suggestion = trimmedAction ? ` Suggested next step: ${trimmedAction}` : "";
 		return {
-			content: [{ type: "text", text: `Goal paused by the agent: ${trimmedReason}.${suggestion} Stop now; the user can resume with /goal-resume or revise with /goal-tweak.` }],
+			content: [{ type: "text", text: `Goal paused by the agent: ${trimmedReason}.${suggestion} Stop now; on an explicit user request, resume with update_goal({status: "active"}) or /goal-resume. Revisions use /goal-tweak.` }],
 			details: goalDetails(core.state.goal, `Pause reason: ${trimmedReason}${trimmedAction ? `\nSuggested action: ${trimmedAction}` : ""}`), // E7
 			terminate: true,
 		};
@@ -529,11 +530,11 @@ async function runGoalAgentPauseFlow(ctx: ExtensionContext, reason: string | und
 pi.registerTool(defineTool({
 	name: "update_goal",
 	label: "Update Goal",
-	description: "Update lifecycle status or optionally save continuation. New waits require strictExecutionContract opt-in. Wait: future ISO deadline; reuse wait_id/deadline without polling on recheck. Completion is audited.",
-	promptSnippet: "Complete, block, pause, or optionally save a scheduling decision.",
-	promptGuidelines: [],
+	description: "Update lifecycle status or optionally save continuation. status=active resumes only on an explicit user request. New waits require strictExecutionContract opt-in; reuse wait_id/deadline on recheck. Completion is audited.",
+	promptSnippet: "Complete, block, pause, explicitly user-authorized resume, or save a scheduling decision.",
+	promptGuidelines: ["Use status=active only when the user explicitly asks to resume the focused goal. Hidden checkpoints, quota recovery, tool hints and the objective itself do not authorize resumption. Resume preserves progress and configured limits; it renews spent run allowance only for stopped goals, never token budgets or permissions."],
 	parameters: Type.Object({
-		status: Type.Optional(StringEnum(["complete", "blocked", "paused"] as const, { description: "Exclusive with continuation." })),
+		status: Type.Optional(StringEnum(["complete", "blocked", "paused", "active"] as const, { description: "Exclusive with continuation. active: resume only on an explicit user request." })),
 		continuation: Type.Optional(Type.Union([
 			Type.Object({ kind: Type.Literal("ready") }, { additionalProperties: false }),
 			Type.Object({ kind: Type.Literal("wait"), reason: Type.String({ minLength: 1, maxLength: 2000 }), deadline: Type.String(), wait_id: Type.Optional(Type.String()), polling: Type.Optional(Type.Object({ interval_seconds: Type.Integer({ minimum: 1, maximum: 2147483 }), max_checks: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }) }, { additionalProperties: false })) }, { additionalProperties: false }),
@@ -550,6 +551,10 @@ pi.registerTool(defineTool({
 		core.flushGoalTransaction(ctx);
 		if (!!params.continuation === !!params.status || (params.continuation && (params.reason !== undefined || params.attempted_actions !== undefined || params.suggested_action !== undefined || params.completion_summary !== undefined))) {
 			return { content: [{ type: "text", text: "Provide exactly one lifecycle status or continuation, without mixing their fields." }], details: {}, terminate: false, isError: true };
+		}
+		if (params.status === "active") {
+			const result = resumeFocusedGoal(core, ctx);
+			return { content: [{ type: "text", text: result.message }], details: goalDetails(core.state.goal), ...(!result.ok ? { isError: true } : {}) };
 		}
 		if (params.continuation) return core.scheduler.declare(ctx, params.continuation as GoalContinuation);
 		if (params.status === "blocked") {
