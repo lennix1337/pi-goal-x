@@ -28,3 +28,8 @@
 - **not verified:** automatic provider-quota recovery remains a separate pending task.
 
 No commit, push, package mirror, external model request, production goal-file patch or active-chat reload was performed at this checkpoint. Next: review and publish the scoped change, mirror its source pin, and activate through the normal authorized reload path. The isolated runtime probe is discoverable from docs/advanced-usage.md. Its first attempt exposed the create-tool terminating boundary; its second assumed the continuation marker was the last context message, but live context comes after it. The final probe checks the actual context and runtime bookkeeping boundaries; no production workaround was introduced for probe mistakes. Failure sandboxes/receipts were preserved.
+
+## Automatic resume amendment (branch feat/agent-auto-resume)
+
+- Policy reversal per user request; see the PRODUCT.md amendment. Regression tests were written first and observed failing (12 red in `tests/goal-scheduler.test.ts` and `tests/goal-network-recovery.test.ts`) before the source changes; the old "renews once" and "explicit user" assertions were rewritten to the new contract, not removed.
+- Environment note: the test suites need `PI_SUBAGENT_CHILD`/`PI_SUBAGENT_DEPTH` unset when run from inside a delegated subagent session, because `goal.ts` registers nothing (no `_goalCore`) for delegated sessions; this fails on main identically.

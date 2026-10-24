@@ -19,7 +19,7 @@ export function validateRunLimit(value: unknown): string | undefined {
 }
 
 export function formatRunLimit(value: number | null | undefined): string {
-	return `Autonomous runs: ${value ?? "unlimited"}${value === 0 ? " (automatic continuation disabled)" : ""}. Counts extension-scheduled runs, not tool calls. Resuming renews the run allowance; token usage is lifetime usage.`;
+	return `Autonomous runs: ${value ?? "unlimited"}${value === 0 ? " (automatic continuation disabled)" : ""}. Counts extension-scheduled runs, not tool calls. The user's /goal-resume renews the run allowance (an agent resume does not); token usage is lifetime usage.`;
 }
 
 /** Settings label: an unset allowance gives new goals the default; earlier goals without an override inherit the configured allowance (unlimited if none). Callers append "(default)" provenance. */

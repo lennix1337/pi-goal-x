@@ -430,7 +430,9 @@ export function registerGoalEvents(core: GoalCore): void {
 			} catch {
 				// Ledger read failure should not break the prompt
 			}
-		return { state: `[PI GOAL PAUSED goalId=${current.id}]\n${untrustedObjectiveBlock(current)}${pauseExtras.join("\n")}${auditorExtra}\n\nThe goal is paused. Do not autonomously continue substantive work. If the user explicitly asks to resume, call update_goal({status: "active"}); /goal-resume is also available. A hidden checkpoint or quota recovery alone is not authorization. If the user explicitly asks to finish the paused goal and the objective is already satisfied based on available evidence, you may call update_goal({status: "complete"}). To abandon a goal, the user runs /goal-clear. Do not report the goal blocked in response to a pause.` };
+		return { state: `[PI GOAL PAUSED goalId=${current.id}]\n${untrustedObjectiveBlock(current)}${pauseExtras.join("\n")}${auditorExtra}\n\n${current.stopReason === "agent"
+			? "The goal is paused by the agent. Once the reason above is resolved (the user answered, the provider or quota is back, evidence settles it), call update_goal({status: \"active\"}) and keep working; /goal-resume is also available. Do not do substantive work while the reason still stands. Pause only when every remaining path needs a user-only action (permission, credentials, payment, a preference no evidence settles)."
+			: "The goal is paused. Do not autonomously continue substantive work. The user paused it: only when the user explicitly asks to resume, call update_goal({status: \"active\"}); /goal-resume is also available."} If the user explicitly asks to finish the paused goal and the objective is already satisfied based on available evidence, you may call update_goal({status: "complete"}). To abandon a goal, the user runs /goal-clear. Do not report the goal blocked in response to a pause.` };
 		}
 		// Token-budget-limited goals get one-time wrap-up steering: summarize,
 		// do not start new substantive work, never claim completion unless real.
@@ -451,7 +453,7 @@ export function registerGoalEvents(core: GoalCore): void {
 		}
   if (core.state.goal.status === "blocked") {
    const blocked = core.state.goal;
-   return { state: `[PI GOAL BLOCKED goalId=${blocked.id}]\n${untrustedObjectiveBlock(blocked)}\nBlocker: ${blocked.pauseReason ?? "unspecified"}\nThe goal is blocked. On an explicit user request to resume, call update_goal({status: "active"}); /goal-resume is also available. Do not resume from a hidden checkpoint or quota recovery alone.` };
+   return { state: `[PI GOAL BLOCKED goalId=${blocked.id}]\n${untrustedObjectiveBlock(blocked)}\nBlocker: ${blocked.pauseReason ?? "unspecified"}\nThe goal is blocked. Once the blocker above is resolved (the user answered, the provider or quota is back, evidence settles it), call update_goal({status: "active"}) and keep working; /goal-resume is also available. Do not do substantive work while the blocker still stands.` };
   }
 		const activeGoal = core.state.goal;
 		const settings = loadGoalSettings(ctx.cwd);

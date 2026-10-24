@@ -51,15 +51,15 @@ async function fixture(t: TestContext, limit?: number, owner = "owner", existing
 }
 
 for (const stoppedStatus of ["paused", "blocked"] as const) {
-test(`conversational resume from ${stoppedStatus} preserves progress, renews once, and dispatches one fresh continuation`, async t => {
+test(`agent resume from ${stoppedStatus} preserves progress and spent allowance, and dispatches one fresh continuation`, async t => {
 	const h = await fixture(t, 5);
 	t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
 	const update = h.tools.get("update_goal");
 	assert.ok(JSON.stringify(update.parameters.properties.status).includes('"active"'), "active must be advertised before calling the tool");
-	h.core.goalService.apply(h.ctx, { mutate: g => ({ ...g, status: stoppedStatus, autoContinue: false, pauseReason: "Quota unavailable",
+	h.core.goalService.apply(h.ctx, { mutate: g => ({ ...g, status: stoppedStatus, autoContinue: false, stopReason: "agent", pauseReason: "Quota unavailable",
 		tokenBudget: 10000, maxAutonomousRuns: 5, usage: { ...g.usage, tokensUsed: 123 }, currentTaskId: "task-1",
 		taskList: { tasks: [{ id: "task-1", title: "Keep focus", status: "pending" }, { id: "done", title: "Keep progress", status: "complete" }], blockCompletion: true, proposedAt: new Date().toISOString() },
-		scheduler: { ...newGoalScheduler("owner"), used: 5, phase: "interrupted" } }) });
+		scheduler: { ...newGoalScheduler("owner"), used: 2, phase: "interrupted" } }) });
 	const before = parseGoalFile(path.resolve(h.cwd, h.core.state.goal!.activePath!))!;
 	await h.handlers.before_agent_start!({ prompt: "Resume the focused goal now", systemPrompt: "host policy" }, h.ctx);
 	await h.handlers.agent_start!({}, h.ctx);
@@ -72,7 +72,7 @@ test(`conversational resume from ${stoppedStatus} preserves progress, renews onc
 	assert.equal(h.core.state.goal?.autoContinue, true);
 	const resumed = parseGoalFile(path.resolve(h.cwd, before.activePath!))!;
 	for (const key of ["id", "objective", "taskList", "currentTaskId", "tokenBudget", "maxAutonomousRuns", "usage"] as const) assert.deepEqual(resumed[key], before[key], key);
-	assert.equal(resumed.scheduler?.used, 0);
+	assert.equal(resumed.scheduler?.used, 2, "an agent resume never renews the user's run allowance");
 	assert.equal(resumed.scheduler?.dispatch, undefined, "an interrupted dispatch must not be replayed");
 	assert.equal(resumed.pauseReason, undefined);
 	const duplicate = await update.execute("resume-again", { status: "active" }, undefined, undefined, h.ctx);
@@ -81,24 +81,66 @@ test(`conversational resume from ${stoppedStatus} preserves progress, renews onc
 	assert.equal(h.sent.length, 0, "no dispatch during the active host turn");
 	h.core.scheduler.settled(h.ctx); t.mock.timers.tick(1);
 	assert.equal(h.sent.length, 1);
-	assert.equal(h.core.state.goal?.scheduler?.used, 1);
+	assert.equal(h.core.state.goal?.scheduler?.used, 3);
 	assert.match(h.sent[0].content, /pi_goal_continuation/);
 	const events = readFileSync(goalLedgerPath(h.ctx), "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line));
-	assert.equal(events.filter(e => e.type === "goal_resumed").length, 1);
+	const resumedEvents = events.filter(e => e.type === "goal_resumed");
+	assert.equal(resumedEvents.length, 1);
+	assert.equal(resumedEvents[0].reason, "agent");
+});
+
+test(`agent resume from ${stoppedStatus} with an exhausted allowance is refused and points to /goal-tweak or /goal-resume`, async t => {
+	const h = await fixture(t, 5);
+	t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+	h.core.goalService.apply(h.ctx, { mutate: g => ({ ...g, status: stoppedStatus, autoContinue: false, stopReason: "agent", pauseReason: "Allowance exhausted",
+		scheduler: { ...newGoalScheduler("owner"), used: 5 } }) });
+	h.core.reconcileFocusedGoalFromDisk(h.ctx);
+	const before = JSON.stringify(h.core.state.goal);
+	const result = await h.tools.get("update_goal").execute("exhausted-resume", { status: "active" }, undefined, undefined, h.ctx);
+	assert.equal(result.isError, true);
+	assert.match(result.content[0].text, /\/goal-tweak/);
+	assert.match(result.content[0].text, /\/goal-resume/);
+	assert.equal(JSON.stringify(h.core.state.goal), before, "refusal must not mutate the goal");
+	t.mock.timers.tick(10000);
+	assert.equal(h.sent.length, 0);
+	await h.commands.get("goal-resume").handler("", h.ctx);
+	assert.equal(h.core.state.goal?.status, "active");
+	assert.equal(h.core.state.goal?.scheduler?.used, 0, "the slash command still renews an exhausted allowance");
+	t.mock.timers.tick(1);
+	assert.equal(h.sent.length, 1);
 });
 }
 
 for (const status of ["paused", "blocked"] as const) {
 	test(`conversational resume discovery is available in the ${status} request context`, async t => {
 		const h = await fixture(t, 5);
-		h.core.goalService.apply(h.ctx, { mutate: g => ({ ...g, status, autoContinue: false }) });
+		h.core.goalService.apply(h.ctx, { mutate: g => ({ ...g, status, autoContinue: false, stopReason: "agent", pauseReason: "Waiting for the user's answer" }) });
 		const context = await h.handlers.context!({ messages: [{ role: "user", content: "Resume this goal", timestamp: 1 }] }, h.ctx);
 		const text = JSON.stringify(context.messages);
 		assert.match(text, /update_goal/);
 		assert.match(text, /active/);
-		assert.match(text, /explicit user|user explicitly/i);
+		assert.match(text, /resume.*once.*resolved/i, "the agent is told it may resume its own pause");
+		assert.doesNotMatch(text, /not authorization|explicit user request/i);
 	});
 }
+
+test("a user-paused goal is described as resuming only on the user's request", async t => {
+	const h = await fixture(t, 5);
+	h.core.goalService.apply(h.ctx, { mutate: g => ({ ...g, status: "paused", autoContinue: false, stopReason: "user" }) });
+	const context = await h.handlers.context!({ messages: [{ role: "user", content: "Resume this goal", timestamp: 1 }] }, h.ctx);
+	assert.match(JSON.stringify(context.messages), /user explicitly asks to resume/i);
+});
+
+test("update_goal guidance lets the agent resume its own pause and limits pausing to user-only actions", async t => {
+	const h = await fixture(t, 5);
+	const update = h.tools.get("update_goal");
+	const text = [update.description, ...update.promptGuidelines].join("\n");
+	assert.match(text, /agent-paused|paused by the agent/i);
+	assert.match(text, /user-only|only the user can/i);
+	assert.doesNotMatch(text, /quota recovery[^.]*do not authorize|resumes only on an explicit user request/i);
+	const state = await h.tools.get("get_goal").execute("get", { section: "full" }, undefined, undefined, h.ctx);
+	assert.doesNotMatch(JSON.stringify(state), /Resume only on an explicit user request/);
+});
 
 test("conversational resume remains blocked on a stale hidden checkpoint", async t => {
 	const h = await fixture(t, 5);
@@ -125,7 +167,7 @@ test("conversational resume surfaces storage failure without claiming success", 
 	assert.equal(h.sent.length, 0);
 });
 
-test("conversational resume and slash resume share the scheduler but only slash renews an active allowance", async t => {
+test("agent resume and slash resume share the scheduler but only slash renews an active allowance", async t => {
 	const h = await fixture(t, 5);
 	t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
 	h.core.goalService.apply(h.ctx, { mutate: g => ({ ...g, scheduler: { ...newGoalScheduler("owner"), used: 3, phase: "interrupted" } }) });
@@ -133,7 +175,7 @@ test("conversational resume and slash resume share the scheduler but only slash 
 	assert.notEqual(result.isError, true);
 	t.mock.timers.tick(1);
 	assert.equal(h.sent.length, 1);
-	assert.equal(h.core.state.goal?.scheduler?.used, 1);
+	assert.equal(h.core.state.goal?.scheduler?.used, 4, "the agent path keeps the 3 spent runs and the dispatch adds one");
 	const generation = h.core.state.goal?.scheduler?.generation;
 	await h.commands.get("goal-resume").handler("", h.ctx);
 	assert.equal(h.core.state.goal?.scheduler?.used, 0, "explicit slash resume still renews an active goal");
@@ -150,7 +192,7 @@ for (const refusal of ["complete", "token-budget", "zero-runs", "foreign-owner",
 		assert.ok(JSON.stringify(update.parameters.properties.status).includes('"active"'));
 		h.core.goalService.apply(h.ctx, { mutate: g => ({ ...g,
 			status: refusal === "complete" ? "complete" : refusal.startsWith("foreign-owner") ? "active" : "paused",
-			autoContinue: refusal === "foreign-owner",
+			autoContinue: refusal === "foreign-owner", stopReason: "agent",
 			...(refusal === "token-budget" ? { tokenBudget: 1, usage: { ...g.usage, tokensUsed: 1 } } : {}),
 			scheduler: newGoalScheduler(refusal.startsWith("foreign-owner") ? "other-session" : "owner") }) });
 		if (refusal === "missing") h.core.state.goal = null;
@@ -289,7 +331,7 @@ test("checks retain identity, deadline and finite count across redeclaration", a
 	assert.equal(h.sent.length, 2);
 });
 
-test("waiting restores with no catch-up; claimed dispatch never replays", async t => {
+test("waiting restores with no catch-up; a claimed dispatch is never replayed but one fresh continuation is sent", async t => {
 	const h = await fixture(t, 5);
 	t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
 	h.begin(); h.wait(); h.core.scheduler.settled(h.ctx); h.core.scheduler.shutdown();
@@ -297,11 +339,40 @@ test("waiting restores with no catch-up; claimed dispatch never replays", async 
 	const resumed = await fixture(t, undefined, "owner", h.cwd);
 	resumed.core.scheduler.restore(resumed.ctx); t.mock.timers.tick(1);
 	assert.equal(resumed.sent.length, 1, "missed checks coalesce into one");
+	const oldDispatch = resumed.core.state.goal?.scheduler?.dispatch;
+	assert.equal(oldDispatch?.kind, "check");
+	assert.equal(resumed.core.state.goal?.scheduler?.phase, "claimed");
 	resumed.core.scheduler.shutdown();
 	const interrupted = await fixture(t, undefined, "owner", h.cwd);
-	interrupted.core.scheduler.restore(interrupted.ctx); t.mock.timers.tick(10000);
-	assert.equal(interrupted.sent.length, 0);
-	assert.equal(interrupted.core.state.goal?.status, "paused");
+	interrupted.core.scheduler.restore(interrupted.ctx); t.mock.timers.tick(1);
+	assert.equal(interrupted.sent.length, 1, "exactly one fresh continuation after the interrupted dispatch");
+	assert.equal(interrupted.core.state.goal?.status, "active");
+	const fresh = interrupted.core.state.goal?.scheduler?.dispatch;
+	assert.equal(fresh?.kind, "recovery");
+	assert.notEqual(fresh?.id, oldDispatch?.id, "the old dispatch id is never replayed");
+	assert.equal(interrupted.core.state.goal?.scheduler?.used, 2, "the recovery run is charged to the allowance");
+	t.mock.timers.tick(10000);
+	assert.equal(interrupted.sent.length, 1, "no further continuation without a new settlement");
+});
+
+test("restore of an interrupted dispatch respects an exhausted allowance and dispatches nothing", async t => {
+	const h = await fixture(t, 1);
+	t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+	h.core.scheduler.resume(h.ctx); t.mock.timers.tick(1);
+	assert.equal(h.sent.length, 1);
+	assert.equal(h.core.state.goal?.scheduler?.phase, "claimed");
+	h.core.scheduler.shutdown();
+	const restored = await fixture(t, undefined, "owner", h.cwd);
+	restored.core.scheduler.restore(restored.ctx); t.mock.timers.tick(10000);
+	assert.equal(restored.sent.length, 0);
+	assert.equal(restored.core.state.goal?.status, "paused");
+	assert.match(restored.core.state.goal?.pauseReason ?? "", /allowance exhausted/i);
+});
+
+test("the recovery dispatch tells the model the previous run was interrupted", () => {
+	const s = { ...newGoalScheduler("owner"), phase: "claimed" as const, dispatch: { id: "d", kind: "recovery" as const, claimedAt: 1 } };
+	assert.match(schedulerSummary(s, 5), /previous .*interrupted.*verify.*(?:do not|never) repeat/i);
+	assert.doesNotMatch(schedulerSummary({ ...s, dispatch: { id: "d", kind: "check" as const, claimedAt: 1 } }, 5), /verify/i);
 });
 
 test("deadline expiration and another session cannot wake a sleeping goal", async t => {

@@ -7,4 +7,4 @@ Use `propose_goal_draft` within the user's guided draft. Translate requested lim
 
 State defaults in the confirmation; ask one focused question only for ambiguous limits. Preserve the objective, tasks, mode and auditor on a budget-only tweak. Report actual persisted limits from the tool response.
 
-Runs count extension-scheduled continuations, not tool calls or every assistant message. Changing a limit retains spent runs and tokens; explicit resume renews the run allowance. Budgets never grant permission for external actions.
+Runs count extension-scheduled continuations, not tool calls or every assistant message. Changing a limit retains spent runs and tokens; the user's `/goal-resume` renews the run allowance, while an agent resume (`update_goal({status: "active"})`) keeps the spent runs. Budgets never grant permission for external actions.

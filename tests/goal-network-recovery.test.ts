@@ -266,6 +266,23 @@ test("classification: non-transient errors stay non-recoverable", () => {
 	}
 });
 
+test("classification: SDK 'Connection error.' and undici 'terminated' stream aborts are transient", () => {
+	for (const message of ["Connection error.", "terminated", "TypeError: terminated", "Retry failed after 3 attempts: Connection error."]) {
+		assert.equal(
+			isNetworkErrorAssistantMessage({ role: "assistant", stopReason: "error", errorMessage: message }),
+			true,
+			`must engage goal-level recovery: ${message}`,
+		);
+	}
+	for (const message of ["Connection error. insufficient_quota", "interconnection errors in the config", "determinated value"]) {
+		assert.equal(
+			isNetworkErrorAssistantMessage({ role: "assistant", stopReason: "error", errorMessage: message }),
+			false,
+			`must not classify (quota stays non-transient; matches are word-bounded): ${message}`,
+		);
+	}
+});
+
 test("classification: generic provider finish_reason: error is transient", () => {
 	assert.equal(
 		isNetworkErrorAssistantMessage({

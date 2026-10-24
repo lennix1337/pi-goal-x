@@ -108,29 +108,32 @@ export class GoalScheduler {
 			const s = goal.scheduler;
 			if (s.owner !== this.owner(ctx)) { ctx.ui.notify("Goal owned by another session. Use /goal-resume to take ownership.", "info"); return; }
 			if (["claimed", "running", "interrupted"].includes(s.phase)) {
-				this.pause(ctx, "Previous autonomous execution was interrupted. Use /goal-resume; its dispatch will not be replayed.");
-				return;
+				// The old dispatch is never replayed: one fresh recovery continuation replaces it
+				// and still passes the normal allowance and budget checks in schedule().
+				this.write(ctx, g => ({ ...g, scheduler: { ...g.scheduler!, generation: randomUUID(), phase: "ready", dispatch: undefined, decision: { kind: "ready", purpose: "recovery" } } }));
 			}
 			this.schedule(ctx);
 		});
 	}
 
-	/** Only explicit user resume resets spent allowance, including while already active/waiting. */
+	/** Only the user's resume resets spent allowance, including while already active/waiting; the agent's keeps it. */
 	resume(ctx: ExtensionContext): boolean {
 		const result = this.resumeResult(ctx);
 		if (!result.ok) ctx.ui.notify(result.message, "warning");
 		return result.ok;
 	}
-	resumeResult(ctx: ExtensionContext): { ok: true } | { ok: false; message: string } {
+	resumeResult(ctx: ExtensionContext, options: { preserveAllowance?: boolean } = {}): { ok: true } | { ok: false; message: string } {
 		invalidateGoalSettingsCache();
 		if (this.limit(ctx) === 0) return { ok: false, message: this.allowanceReason(ctx) };
+		const spent = this.core.state.goal?.scheduler?.used ?? 0;
+		if (options.preserveAllowance && !this.available(ctx, { ...newGoalScheduler(this.owner(ctx)), used: spent })) return { ok: false, message: this.allowanceReason(ctx) };
 		try {
 			this.cancelTimer();
 			this.core.runtime.clearContinuationState();
 			this.write(ctx, g => {
 				if (g.status === "complete" || budgetReached(g)) throw new Error("A completed or token-budget-limited goal cannot resume.");
 				return { ...g, status: "active", autoContinue: true, stopReason: undefined, pauseReason: undefined, pauseSuggestedAction: undefined,
-					scheduler: { ...newGoalScheduler(this.owner(ctx)), phase: "ready", decision: { kind: "ready", purpose: "kickoff" } } };
+					scheduler: { ...newGoalScheduler(this.owner(ctx)), used: options.preserveAllowance ? g.scheduler?.used ?? 0 : 0, phase: "ready", decision: { kind: "ready", purpose: "kickoff" } } };
 			});
 			// A resume during host work waits for settlement; another model turn
 			// still invalidates it through turn(), just like a declaration.

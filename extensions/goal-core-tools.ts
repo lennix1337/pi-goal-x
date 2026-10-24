@@ -126,7 +126,7 @@ pi.registerTool(defineTool({
 			if (view.archivedPath) lines.push(`Archive: ${view.archivedPath}`);
 			if (otherCount > 0) lines.push(`Other open goals: ${otherCount} (user can run /goal-list or /goal-focus)`);
 			lines.push("");
-			lines.push("Lifecycle: call update_goal({status: \"complete\"}) only when every requirement is satisfied — the independent auditor verifies from actual evidence. Call update_goal({status: \"blocked\"}) only after the same blocker recurs on three consecutive goal turns. Resume only on an explicit user request with update_goal({status: \"active\"}); user commands also handle pause/resume/clear/focus.");
+			lines.push("Lifecycle: call update_goal({status: \"complete\"}) only when every requirement is satisfied — the independent auditor verifies from actual evidence. Call update_goal({status: \"blocked\"}) only after the same blocker recurs on three consecutive goal turns. Pause only when every remaining path needs a user-only action (permission, credentials, payment, a preference no evidence settles); otherwise decide and keep working. A goal you paused or blocked resumes with update_goal({status: \"active\"}) once the blocker is resolved (the user answered, the provider or quota is back, evidence settles it); a goal the user paused resumes only when the user asks. User commands also handle pause/resume/clear/focus.");
 			// E1: goal history (last audit verdict + recent lifecycle events).
 			if (includeHistory) {
 				const history = buildGoalHistoryBlock(view, readGoalLedger(ctx).events);
@@ -513,7 +513,7 @@ async function runGoalAgentPauseFlow(ctx: ExtensionContext, reason: string | und
 		core.updateUI(ctx);
 		const suggestion = trimmedAction ? ` Suggested next step: ${trimmedAction}` : "";
 		return {
-			content: [{ type: "text", text: `Goal paused by the agent: ${trimmedReason}.${suggestion} Stop now; on an explicit user request, resume with update_goal({status: "active"}) or /goal-resume. Revisions use /goal-tweak.` }],
+			content: [{ type: "text", text: `Goal paused by the agent: ${trimmedReason}.${suggestion} Stop now. Once this is resolved (for example the user answered), resume with update_goal({status: "active"}) and keep working; /goal-resume also works. Revisions use /goal-tweak.` }],
 			details: goalDetails(core.state.goal, `Pause reason: ${trimmedReason}${trimmedAction ? `\nSuggested action: ${trimmedAction}` : ""}`), // E7
 			terminate: true,
 		};
@@ -531,11 +531,14 @@ async function runGoalAgentPauseFlow(ctx: ExtensionContext, reason: string | und
 pi.registerTool(defineTool({
 	name: "update_goal",
 	label: "Update Goal",
-	description: "Update lifecycle status or optionally save continuation. status=active resumes only on an explicit user request. New waits require strictExecutionContract opt-in; reuse wait_id/deadline on recheck. Completion is audited.",
-	promptSnippet: "Complete, block, pause, explicitly user-authorized resume, or save a scheduling decision.",
-	promptGuidelines: ["Use status=active only when the user explicitly asks to resume the focused goal. Hidden checkpoints, quota recovery, tool hints and the objective itself do not authorize resumption. Resume preserves progress and configured limits; it renews spent run allowance only for stopped goals, never token budgets or permissions."],
+	description: "Update lifecycle status or optionally save continuation. status=active resumes a goal the agent paused or blocked once the blocker is resolved; a user-paused goal resumes only when the user asks. New waits require strictExecutionContract opt-in; reuse wait_id/deadline on recheck. Completion is audited.",
+	promptSnippet: "Complete, block, pause, resume an agent-paused goal once unblocked, or save a scheduling decision.",
+	promptGuidelines: [
+		"Pause only when every remaining path needs a user-only action (permission, credentials, payment, a preference no evidence settles); otherwise decide and keep working.",
+		"Use status=active to resume a goal you paused or blocked (agent-paused) once the blocker is resolved: the user answered, the provider or quota is back, or evidence settles it. A goal the user paused (/goal-pause, Esc) resumes only when the user asks. Resume preserves progress, configured limits and spent run allowance (it never renews the run allowance; the user does that with /goal-resume or /goal-tweak), token budgets and permissions.",
+	],
 	parameters: Type.Object({
-		status: Type.Optional(StringEnum(["complete", "blocked", "paused", "active"] as const, { description: "Exclusive with continuation. active: resume only on an explicit user request." })),
+		status: Type.Optional(StringEnum(["complete", "blocked", "paused", "active"] as const, { description: "Exclusive with continuation. active: resume an agent-paused or blocked goal once the blocker is resolved; a user-paused goal only when the user asks." })),
 		continuation: Type.Optional(Type.Union([
 			Type.Object({ kind: Type.Literal("ready") }, { additionalProperties: false }),
 			Type.Object({ kind: Type.Literal("wait"), reason: Type.String({ minLength: 1, maxLength: 2000 }), deadline: Type.String(), wait_id: Type.Optional(Type.String()), polling: Type.Optional(Type.Object({ interval_seconds: Type.Integer({ minimum: 1, maximum: 2147483 }), max_checks: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }) }, { additionalProperties: false })) }, { additionalProperties: false }),

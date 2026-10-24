@@ -338,7 +338,7 @@ export function registerGoalCommands(core: GoalCore): void {
 			const selected = await chooseOpenGoal(ctx, "Resume or focus open goal");
 			if (!selected) return;
 		}
-		const result = resumeFocusedGoal(core, ctx, true);
+		const result = resumeFocusedGoal(core, ctx, "user");
 		ctx.ui.notify(result.message, result.ok ? "info" : "warning");
 	}
 
