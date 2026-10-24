@@ -77,10 +77,16 @@ export function schedulerSummaryParts(s: GoalSchedulerState | undefined, limit?:
 			lines.push(`Waiting: ${s.wait.reason}; wait_id=${s.wait.id}; deadline=${new Date(s.wait.deadline).toISOString()}.`);
 			if (s.wait.nextCheckAt !== undefined) lines.push(`Next check: ${new Date(s.wait.nextCheckAt).toISOString()}; ${s.wait.remainingChecks} checks remaining.`);
 		}
-		if (s.dispatch?.kind === "recovery" && (s.phase === "claimed" || s.phase === "running")) lines.push("The previous autonomous run was interrupted (restart or provider error). Verify the actual state before acting and do not repeat actions whose effects are uncertain.");
-		else if (s.phase === "interrupted" || s.phase === "claimed") lines.push("Execution requires dispatch admission or explicit /goal-resume after interruption.");
+		const interruption = interruptionLine(s);
+		if (interruption) lines.push(interruption);
 	}
 	return { runs, instructions: lines.join("\n") };
+}
+
+function interruptionLine(s: GoalSchedulerState): string | undefined {
+	if (s.dispatch?.kind === "recovery" && (s.phase === "claimed" || s.phase === "running")) return "The previous autonomous run was interrupted (restart or provider error). Verify the actual state before acting and do not repeat actions whose effects are uncertain.";
+	if (s.phase === "interrupted" || s.phase === "claimed") return "Execution requires dispatch admission or explicit /goal-resume after interruption.";
+	return undefined;
 }
 
 export function schedulerSummary(s: GoalSchedulerState | undefined, limit?: number, showRuns = true): string {
