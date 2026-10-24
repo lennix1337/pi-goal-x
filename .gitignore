@@ -1,6 +1,7 @@
 node_modules/
 .DS_Store
-.pi/
+.pi/*
+!.pi/checks.json
 *.tgz
 experiments/cases/*/runs/
 experiments/runs/

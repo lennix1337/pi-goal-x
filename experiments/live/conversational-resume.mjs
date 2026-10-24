@@ -8,9 +8,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import net from 'node:net';
 
 const output = process.argv[2];
-assert.ok(output, 'Usage: node experiments/live/conversational-resume.mjs <new-receipt-directory>');
-const receipt = resolve(output);
-mkdirSync(receipt, { recursive: false });
+const receipt = output ? resolve(output) : mkdtempSync(join(tmpdir(), 'goal-resume-evidence-'));
+if (output) mkdirSync(receipt, { recursive: false });
 const liveAgent = join(homedir(), '.pi', 'agent');
 const version = readFileSync(join(liveAgent, 'install/current-version'), 'utf8').trim();
 const sdkRoot = process.env.PI_GOAL_SDK_ROOT || join(liveAgent, 'install/releases', version, 'node_modules/@earendil-works');
