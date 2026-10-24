@@ -3,7 +3,8 @@ import { schedulerDisplaySummary, type GoalContinuation } from "./goal-scheduler
 import { goalDetailPage, type GoalDetailSection } from "./goal-detail.ts";
 import { taskIndex } from "./goal-task-index.ts";
 import { StringEnum, Type } from "@earendil-works/pi-ai";
-import { defineTool, type AgentToolResult, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
+import { defineTool, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
+import type { GoalToolResult } from "./goal-tool-result.ts";
 import { Text } from "@earendil-works/pi-tui";
 import { formatDuration, formatTokenValue, statusLabel, truncateText } from "./goal-core.ts";
 import { extractVerificationContract } from "./goal-contract.ts";
@@ -49,7 +50,7 @@ function goalHeaderLines(goal: GoalRecord, ctx: ExtensionContext): string[] {
 export function registerCoreTools(
 	core: GoalCore,
 	deps: {
-		runGoalCompletionFlow: (core: GoalCore, ctx: ExtensionContext, completionSummary?: string) => Promise<AgentToolResult<unknown>>;
+		runGoalCompletionFlow: (core: GoalCore, ctx: ExtensionContext, completionSummary?: string) => Promise<GoalToolResult>;
 	},
 ): void {
 	const { pi } = core;
@@ -254,7 +255,7 @@ pi.registerTool(defineTool({
 // complete → the independent auditor verifies from actual evidence (no
 // paperwork field); blocked → a distinct agent-blocked state that stops
 // continuation. The three-consecutive-turn blocker rule is prompt policy.
-	async function runGoalBlockedFlow(ctx: ExtensionContext, reasonInput?: string, attemptedActions: string[] = [], signal?: AbortSignal): Promise<AgentToolResult<unknown>> {
+	async function runGoalBlockedFlow(ctx: ExtensionContext, reasonInput?: string, attemptedActions: string[] = [], signal?: AbortSignal): Promise<GoalToolResult> {
 	core.reconcileFocusedGoalFromDisk(ctx);
 	const gate = validateGoalBlock({ goal: core.state.goal, runningGoalId: core.runningGoalId });
 	if (!gate.ok) {
@@ -278,7 +279,7 @@ pi.registerTool(defineTool({
 		};
 	}
 
-	const commitBlocked = (): AgentToolResult<unknown> => {
+	const commitBlocked = (): GoalToolResult => {
 		const result = core.goalService.apply(ctx, {
 			reconcile: false,
 			refreshFromDisk: true,
@@ -471,7 +472,7 @@ The goal was NOT marked blocked.` }],
  * (three-consecutive-turn gate) and from the user-owned pause/resume
  * commands.
  */
-async function runGoalAgentPauseFlow(ctx: ExtensionContext, reason: string | undefined, suggestedAction: string | undefined): Promise<AgentToolResult<unknown>> {
+async function runGoalAgentPauseFlow(ctx: ExtensionContext, reason: string | undefined, suggestedAction: string | undefined): Promise<GoalToolResult> {
 	core.reconcileFocusedGoalFromDisk(ctx);
 	const gate = validateGoalAgentPause({ goal: core.state.goal, runningGoalId: core.runningGoalId });
 	if (!gate.ok) {

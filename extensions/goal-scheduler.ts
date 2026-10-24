@@ -1,6 +1,7 @@
 import { effectiveRunLimit } from "./goal-run-budget.ts";
 import { randomUUID } from "node:crypto";
-import type { ExtensionContext, AgentToolResult } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { GoalToolResult } from "./goal-tool-result.ts";
 import type { GoalCore } from "./goal-state.ts";
 import { asRecord, type GoalRecord } from "./goal-record.ts";
 import { budgetReached } from "./goal-accounting.ts";
@@ -149,7 +150,7 @@ export class GoalScheduler {
 		});
 	}
 
-	declare(ctx: ExtensionContext, input: GoalContinuation): AgentToolResult<unknown> {
+	declare(ctx: ExtensionContext, input: GoalContinuation): GoalToolResult {
 		try {
 			if (!this.core.state.goal || this.core.state.goal.status !== "active" || !this.core.state.goal.autoContinue || this.denied) throw new Error("Scheduling requires an active auto-continue goal in this session.");
 			invalidateGoalSettingsCache(); // an agent may have just configured the allowance

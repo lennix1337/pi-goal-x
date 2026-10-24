@@ -19,6 +19,10 @@
 
 The previous baseline excluded active-tool filtering and SDK guidance and did not actually exercise several named states. Replacing it is a measurement correction plus an intentional interface update, not a claim against those earlier incomplete counts. CONTEXT-BEFORE.json and CONTEXT-AFTER.json use identical corrected capture code against original HEAD and the candidate. The committed main context baseline tracks final behavior; historical benchmark campaigns remain untouched.
 
+### 2026-10-24 refresh (fork: conversational budgets and authorized resume)
+
+Fork commits `c97e4a1` (conversational run/token limits, 30-run default stated when omitted) and `61e1f634` (resume only on an explicit user request) changed the model-facing surface; the fork's CI had never run, so the gate first reported the drift on 2026-10-24. A first-parent bisect from `a77891b` passes through `64c5ace` and fails first at `c97e4a1`. Semantic counts are unchanged in all 24 fixtures. Every size field grew: SDK guidance +211 to +558 characters (the drafting rule for explicit limits and the resume rule), tool schemas +226 to +316 (`update_goal` resume), goal-state messages +114 to +251 in 17 fixtures. Estimated tokens over the 24 fixtures went from 69,389 to 75,030 (+8.1%, +114 to +321 per request). The growth is intentional and user-requested; reducing it belongs to a later context campaign, not to this refresh.
+
 ## Delivery
 
 Changes are recorded on `codex/runtime-token-optimization` in three local commits: measurement corrections (`882178a`), runtime improvements (`b3e6364`), then model-facing changes and final evidence. The runtime-only staged tree was independently extracted and passed TypeScript, its full test suite, and a freshly captured context gate before committing, so that phase can be inspected or reverted separately. The final acceptance gate passes: 38.0% lower active-workflow extension context; 100k-event activity p50 12.203 → 0.010 ms; cold rebuild p50 68.135 → 64.959 ms. No changes were pushed remotely.

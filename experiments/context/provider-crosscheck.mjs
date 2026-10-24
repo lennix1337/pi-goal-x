@@ -31,7 +31,10 @@ for(const supportsStrictMode of [undefined,false,true]) {
  }
  const byName=Object.fromEntries(payload.tools.map(tool=>[tool.name,tool]));
  assert.deepEqual(byName.create_goal.parameters.required,['objective']);
- assert.equal(byName.create_goal.parameters.properties.token_budget.minimum,1);
+ // An explicit null means unlimited; a number must still be a positive whole-token limit.
+ const createBudget=byName.create_goal.parameters.properties.token_budget.anyOf;
+ assert.ok(createBudget.some(type=>type.type==='integer'&&type.minimum===1));
+ assert.ok(createBudget.some(type=>type.type==='null'));
  assert.ok(!byName.get_goal.parameters.required?.includes('task_id'));
  assert.ok(!byName.update_goal_task.parameters.required?.includes('updates'));
  assert.ok(!byName.update_goal_task.parameters.required?.includes('task_id'));

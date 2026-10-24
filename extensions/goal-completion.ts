@@ -1,4 +1,5 @@
-import { type AgentToolResult, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { GoalToolResult } from "./goal-tool-result.ts";
 import { GOAL_AUDIT_ENTRY, detailedSummary, goalDetails } from "./goal-format.ts";
 import {
 	buildCompletionReport,
@@ -21,7 +22,7 @@ import type { GoalMutationOutcome } from "./goal-service.ts";
 // requirements from the objective and any verification contract and inspects
 // actual workspace evidence. An optional completion_summary is forwarded as an
 // UNTRUSTED executor claim — never evidence and never an approval bypass.
-export async function runGoalCompletionFlow(core: GoalCore, ctx: ExtensionContext, completionSummary?: string): Promise<AgentToolResult<unknown>> {
+export async function runGoalCompletionFlow(core: GoalCore, ctx: ExtensionContext, completionSummary?: string): Promise<GoalToolResult> {
  const flushError = core.goalService.flushForAudit(ctx);
  if (flushError) return {content: [{type: "text", text: flushError}], details: goalDetails(core.state.goal), isError: true};
 	core.reconcileFocusedGoalFromDisk(ctx);
@@ -79,7 +80,7 @@ export async function runGoalCompletionFlow(core: GoalCore, ctx: ExtensionContex
  * { ok: false, message, terminate: false } — never a completed report and
  * never a termination request (follow-up Stage 3).
  */
-type CompletionCommitResult = AgentToolResult<unknown> & { ok: boolean };
+type CompletionCommitResult = GoalToolResult & { ok: boolean };
 
 function commitGoalCompletion(core: GoalCore, ctx: ExtensionContext, opts: {
 	goal: GoalRecord;
