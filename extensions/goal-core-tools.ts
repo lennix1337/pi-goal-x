@@ -126,7 +126,7 @@ pi.registerTool(defineTool({
 			if (view.archivedPath) lines.push(`Archive: ${view.archivedPath}`);
 			if (otherCount > 0) lines.push(`Other open goals: ${otherCount} (user can run /goal-list or /goal-focus)`);
 			lines.push("");
-			lines.push("Lifecycle: call update_goal({status: \"complete\"}) only when every requirement is satisfied — the independent auditor verifies from actual evidence. Call update_goal({status: \"blocked\"}) only after the same blocker recurs on three consecutive goal turns. Pause only when every remaining path needs a user-only action (permission, credentials, payment, a preference no evidence settles); otherwise decide and keep working. A goal you paused or blocked resumes with update_goal({status: \"active\"}) once the blocker is resolved (the user answered, the provider or quota is back, evidence settles it); a goal the user paused resumes only when the user asks. User commands also handle pause/resume/clear/focus.");
+			lines.push("Lifecycle: call update_goal({status: \"complete\"}) only when every requirement is satisfied — the independent auditor verifies from actual evidence. Call update_goal({status: \"blocked\"}) only after the same blocker recurs on three consecutive goal turns. A goal you paused or blocked resumes with update_goal({status: \"active\"}) once the blocker is resolved (the user answered, the provider or quota is back, evidence settles it); a goal the user paused resumes only when the user asks. User commands also handle pause/resume/clear/focus.");
 			// E1: goal history (last audit verdict + recent lifecycle events).
 			if (includeHistory) {
 				const history = buildGoalHistoryBlock(view, readGoalLedger(ctx).events);
