@@ -14,7 +14,7 @@ import globals from "globals";
  *   scaffolding may use `as any` freely.
  */
 export default tseslint.config(
-	{ ignores: ["node_modules/**", "experiments/**", "specs/**", "docs/**", ".pi/**"] },
+	{ ignores: ["node_modules/**", "experiments/**", "specs/**", "docs/**", ".pi/**", "scratchpad/**"] },
 	js.configs.recommended,
 	{
 		files: ["**/*.ts"],
