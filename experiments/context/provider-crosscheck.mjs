@@ -9,6 +9,9 @@ import {createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager,
 import goalExtension from '../../extensions/goal.ts';
 import {captureOne} from './capture-context.mjs';
 import {FIXTURES} from './fixtures.mjs';
+
+// The SDK renders cwd resolved; on Windows '/tmp/x' becomes 'C:\tmp\x' or 'C:/tmp/x'.
+const maskCwd=(text,cwd)=>{const resolved=path.resolve(cwd);return text.replaceAll(resolved.replaceAll('\\','/'),'/fixture').replaceAll(resolved,'/fixture').replaceAll(cwd,'/fixture');};
 import {runGoalCompletionAuditor} from '../../extensions/goal-auditor.ts';
 import {runBlockerOracle} from '../../extensions/goal-oracle.ts';
 
@@ -65,7 +68,7 @@ try {
   assert.deepEqual(defs.filter(t=>expected.tools.some(x=>x.name===t.name)).map(t=>t.name).sort(),expected.tools.map(t=>t.name).sort());
   for(const tool of expected.tools){const wire=defs.find(t=>t.name===tool.name);assert.equal(wire.description,tool.description);assert.deepEqual(wire.parameters,JSON.parse(JSON.stringify(tool.schema)));}
   const sdkRoot=fs.realpathSync(path.resolve('node_modules/@earendil-works/pi-coding-agent'));
-  const actualSystem=payload.messages.filter(m=>m.role==='system'||m.role==='developer').map(m=>m.content).join('\n').replaceAll(sdkRoot,'/sdk').replaceAll(cwd,'/fixture');
+  const actualSystem=maskCwd(payload.messages.filter(m=>m.role==='system'||m.role==='developer').map(m=>m.content).join('\n').replaceAll(sdkRoot,'/sdk'),cwd);
   const expectedSystem=expected.baseSystem+expected.extensionSystem;
   if(actualSystem!==expectedSystem){fs.writeFileSync(path.join(work,'actual.txt'),actualSystem);fs.writeFileSync(path.join(work,'expected.txt'),expectedSystem);}
   assert.equal(actualSystem,expectedSystem,`${id}: SDK system prompt matches capture (diff in ${work})`);
@@ -92,7 +95,7 @@ try {
   if(id==='oracle-consultation')await runBlockerOracle({ctx,goal:scenario.goal,reason:'Missing dependency',attemptedActions:['Inspect configuration'],recentEvidence:'Dependency is absent',settings:{enabled:true,provider:'capture',model:'fixture',maxFailedAttemptsPerBlocker:2},createSession});
   else await runGoalCompletionAuditor({ctx,goal:scenario.goal,detailedSummary:'fixture',completionSummary:'Implemented and tested',warmContext:'Recent test evidence',createSession});
   assert.ok(payload,`${id}: isolated child provider payload captured`);
-  const actualSystem=payload.messages.filter(m=>m.role==='system'||m.role==='developer').map(m=>m.content).join('\n').replaceAll(cwd,'/fixture');
+  const actualSystem=maskCwd(payload.messages.filter(m=>m.role==='system'||m.role==='developer').map(m=>m.content).join('\n'),cwd);
   assert.equal(actualSystem,expected.system,`${id}: isolated system matches`);
   assert.deepEqual(payload.tools.map(t=>t.function.name).sort(),expected.tools.map(t=>t.name).sort());
   assert.ok(JSON.stringify(payload.messages).includes(JSON.stringify(expected.messages[0].content).slice(1,-1)),`${id}: full child request matches`);
