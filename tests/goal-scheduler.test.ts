@@ -378,6 +378,44 @@ test("a run that ended in a provider error (quota) is recovered once after a rel
 	assert.equal(restored.sent.length, 1, "no further continuation without a new settlement");
 });
 
+test("quota auto-resume: each exhaustion cycle waits idle, then the failover resume lets the goal continue exactly once", async t => {
+	const h = await fixture(t, 10, "owner", undefined, false);
+	t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+	h.core.scheduler.resume(h.ctx); t.mock.timers.tick(1);
+	h.admit();
+	assert.equal(h.sent.length, 1);
+	for (let cycle = 1; cycle <= 3; cycle++) {
+		// Every account refuses: the goal stays active and idle and schedules nothing while quota is out.
+		h.core.scheduler.message(h.ctx, { role: "user", content: "Provider failover activated: continue" });
+		h.core.scheduler.settled(h.ctx, false);
+		assert.equal(h.core.state.goal?.status, "active", `cycle ${cycle}: quota never pauses the goal`);
+		assert.equal(h.core.state.goal?.scheduler?.phase, "idle");
+		t.mock.timers.tick(3_600_000);
+		assert.equal(h.sent.length, cycle, `cycle ${cycle}: no goal dispatch while quota is out`);
+		// The failover extension resumes the interrupted turn by itself; that run succeeds.
+		h.core.scheduler.begin(h.ctx);
+		h.core.scheduler.settled(h.ctx, true); t.mock.timers.tick(1);
+		assert.equal(h.sent.length, cycle + 1, `cycle ${cycle}: the goal continues once after the resume`);
+		h.admit();
+		t.mock.timers.tick(3_600_000);
+		assert.equal(h.sent.length, cycle + 1, `cycle ${cycle}: no double resume`);
+	}
+	assert.equal(h.core.state.goal?.status, "active");
+});
+
+test("quota auto-resume: a goal the user paused while quota was out is not resumed by the recovery", async t => {
+	const h = await fixture(t, 10, "owner", undefined, false);
+	t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+	h.core.scheduler.resume(h.ctx); t.mock.timers.tick(1);
+	h.admit();
+	h.core.scheduler.settled(h.ctx, false);
+	await h.commands.get("goal-pause").handler("", h.ctx);
+	assert.equal(h.core.state.goal?.status, "paused");
+	h.core.scheduler.begin(h.ctx); h.core.scheduler.settled(h.ctx, true); t.mock.timers.tick(3_600_000);
+	assert.equal(h.sent.length, 1, "a user pause stands: nothing is dispatched");
+	assert.equal(h.core.state.goal?.status, "paused");
+});
+
 test("restore of an interrupted dispatch respects an exhausted allowance and dispatches nothing", async t => {
 	const h = await fixture(t, 1);
 	t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
