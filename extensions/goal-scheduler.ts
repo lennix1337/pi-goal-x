@@ -107,7 +107,10 @@ export class GoalScheduler {
 			if (!goal || goal.status !== "active" || !goal.autoContinue || !goal.scheduler) return;
 			const s = goal.scheduler;
 			if (s.owner !== this.owner(ctx)) { ctx.ui.notify("Goal owned by another session. Use /goal-resume to take ownership.", "info"); return; }
-			if (["claimed", "running", "interrupted"].includes(s.phase)) {
+			// "idle" on an active goal means its last run ended without settling successfully (a
+			// provider error such as quota): every successful settlement leaves it ready or waiting.
+			// The failover extension drops its own wake on reload, so the goal must not wait for it.
+			if (["idle", "claimed", "running", "interrupted"].includes(s.phase)) {
 				// The old dispatch is never replayed: one fresh recovery continuation replaces it
 				// and still passes the normal allowance and budget checks in schedule().
 				this.write(ctx, g => ({ ...g, scheduler: { ...g.scheduler!, generation: randomUUID(), phase: "ready", dispatch: undefined, decision: { kind: "ready", purpose: "recovery" } } }));

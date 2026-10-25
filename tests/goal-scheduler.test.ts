@@ -355,6 +355,29 @@ test("waiting restores with no catch-up; a claimed dispatch is never replayed bu
 	assert.equal(interrupted.sent.length, 1, "no further continuation without a new settlement");
 });
 
+test("a run that ended in a provider error (quota) is recovered once after a reload, never stranded", async t => {
+	const h = await fixture(t, 5);
+	t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+	h.core.scheduler.resume(h.ctx); t.mock.timers.tick(1);
+	assert.equal(h.sent.length, 1);
+	h.admit();
+	// The failover extension's own continuation prompt supersedes the claim, then every account refuses.
+	h.core.scheduler.message(h.ctx, { role: "user", content: "Provider failover activated: continue" });
+	h.core.scheduler.settled(h.ctx, false);
+	assert.equal(h.core.state.goal?.status, "active");
+	assert.equal(h.core.state.goal?.scheduler?.phase, "idle");
+	t.mock.timers.tick(10000);
+	assert.equal(h.sent.length, 1, "an unsuccessful run schedules nothing in the live session");
+	h.core.scheduler.shutdown();
+	const restored = await fixture(t, undefined, "owner", h.cwd);
+	restored.core.scheduler.restore(restored.ctx); t.mock.timers.tick(1);
+	assert.equal(restored.sent.length, 1, "one recovery continuation after reload");
+	assert.equal(restored.core.state.goal?.scheduler?.dispatch?.kind, "recovery");
+	assert.equal(restored.core.state.goal?.scheduler?.used, 2, "the recovery run is charged to the allowance");
+	t.mock.timers.tick(10000);
+	assert.equal(restored.sent.length, 1, "no further continuation without a new settlement");
+});
+
 test("restore of an interrupted dispatch respects an exhausted allowance and dispatches nothing", async t => {
 	const h = await fixture(t, 1);
 	t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
