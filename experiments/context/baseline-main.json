@@ -1,6 +1,6 @@
 {
   "generatedAtCommit": "main",
-  "measuredAt": "2026-10-24",
+  "measuredAt": "2026-10-28",
   "fixtures": [
     {
       "fixture": "active-regular-10-tasks",
@@ -149,20 +149,20 @@
     {
       "fixture": "blocked-goal",
       "breakdown": {
-        "sdkGuidanceChars": 504,
+        "sdkGuidanceChars": 1230,
         "hostToolSchemaChars": 2555,
         "childRequestChars": 0,
         "extensionMessageChars": 1272,
-        "extensionAttributableChars": 3165,
-        "baseSystemChars": 3034,
+        "extensionAttributableChars": 5641,
+        "baseSystemChars": 3760,
         "extensionSystemChars": 0,
         "goalStateChars": 517,
         "checkpointChars": 207,
         "historicalCheckpointChars": 138,
-        "toolSchemaChars": 1389,
+        "toolSchemaChars": 3139,
         "messageChars": 1672,
-        "totalSerializedChars": 8653,
-        "estimatedTokens": 2164
+        "totalSerializedChars": 11129,
+        "estimatedTokens": 2783
       },
       "semantic": {
         "objective": 1,
@@ -260,17 +260,17 @@
         "sdkGuidanceChars": 1997,
         "hostToolSchemaChars": 2555,
         "childRequestChars": 0,
-        "extensionMessageChars": 5469,
-        "extensionAttributableChars": 12518,
+        "extensionMessageChars": 5541,
+        "extensionAttributableChars": 12590,
         "baseSystemChars": 4527,
         "extensionSystemChars": 0,
         "goalStateChars": 2674,
         "checkpointChars": 210,
         "historicalCheckpointChars": 140,
         "toolSchemaChars": 5052,
-        "messageChars": 5872,
-        "totalSerializedChars": 18009,
-        "estimatedTokens": 4503
+        "messageChars": 5944,
+        "totalSerializedChars": 18081,
+        "estimatedTokens": 4521
       },
       "semantic": {
         "objective": 3,
@@ -868,10 +868,10 @@
     }
   ],
   "totals": {
-    "totalSerializedChars": 312617,
-    "estimatedTokens": 78164,
+    "totalSerializedChars": 315165,
+    "estimatedTokens": 78801,
     "childRequestChars": 15228,
-    "combinedSerializedChars": 327845,
-    "extensionAttributableChars": 197376
+    "combinedSerializedChars": 330393,
+    "extensionAttributableChars": 199924
   }
 }
