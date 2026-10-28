@@ -77,9 +77,10 @@ test("standard mode renders the compact dashboard from the shared model (§13.1)
 	assert.match(text, /goal: running \[12m47s 18\.2K\] \(\+2 open\)/);
 	// The top-level task list is part of the compact dashboard now (step-11).
 	assert.match(text, /├─ Tasks /);
-	assert.match(text, /✓ t1  Review reports page and data source/);
-	// The five-task list overflows the medium-status width (78 cols).
-	assert.match(text, /… \+1 more task/);
+	// The five-task list overflows the medium-status width (78 cols); t3 is in
+	// progress, so the window starts at t2 and the finished t1 is scrolled away.
+	assert.match(text, /✓ t2  Implement filtered CSV export/);
+	assert.match(text, /↑ 1 more task\b/);
 	assert.match(text, /Tasks · ✓3 done · 2 open/);
 	assert.match(text, /Current  t3 · Add the download button/);
 	assert.match(text, /· Sub 2\/3 \[.*\]/, "subtask bar sits beside the task bar in the compact header");
@@ -107,9 +108,9 @@ test("standard mode includes no effective settings noise by default", () => {
 });
 
 test("standard mode shows the anchored task window — parity with the widget default (§9.6)", () => {
-	// 30 top-level tasks; t5 and t20 completed (t20 latest). The status
+	// 30 top-level tasks; t5 and t20 completed, t21 current. The status
 	// width (78 cols, medium) budgets 4 task rows, so the anchored window is
-	// t17..t20 — the most recently completed task visible, earliest hidden,
+	// t20..t23: the task in progress with the latest completion above it,
 	// exactly like the compact widget's default rendering.
 	const tasks: GoalTask[] = Array.from({ length: 30 }, (_, i) => ({
 		id: `t${i + 1}`,
@@ -123,9 +124,9 @@ test("standard mode shows the anchored task window — parity with the widget de
 		focused: true,
 		otherOpenGoals: 0,
 	});
-	assert.match(text, /↑ 16 more tasks/, "the anchored window hides the earliest tasks");
-	assert.match(text, /Task number 20/, "the latest completion is the last visible row");
-	assert.match(text, /… \+10 more tasks/, "pending tasks after the anchor stay reachable below");
+	assert.match(text, /↑ 19 more tasks/, "the anchored window hides the earliest tasks");
+	assert.match(text, /Task number 20[\s\S]*▸ t21  Task number 21/, "the task in progress follows the latest completion");
+	assert.match(text, /… \+7 more tasks/, "pending tasks after the window stay reachable below");
 	assert.doesNotMatch(text, /[✓▸·~] t1\s/, "the earliest task row is not rendered");
 	// Width-safe including the indicator rows.
 	for (const line of text.split("\n")) {

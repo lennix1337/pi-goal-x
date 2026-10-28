@@ -13,6 +13,7 @@ import test from "node:test";
 import type { GoalLedgerEvent } from "../extensions/goal-ledger.ts";
 import type { GoalRecord, GoalTask } from "../extensions/goal-record.ts";
 import {
+	activeNodeIndex,
 	anchoredScrollOffset,
 	clampScrollOffset,
 	compactTaskViewportRows,
@@ -279,39 +280,37 @@ test("latestCompletedNodeIndex returns -1 without completed/timestamped tasks", 
 	assert.equal(latestCompletedNodeIndex(skipped), -1);
 });
 
-test("anchoredScrollOffset bottom-anchors the latest completion as the last visible row", () => {
-	// t5 completed last (index 4); a 3-row window ends at t5 → offset 2
+test("anchoredScrollOffset leads with the task in progress, one row of context above it", () => {
+	// t1, t2 done; t3 is the first open task → with 3+ rows the window starts at t2
 	const nodes = nodesWithCompletions([
 		["t1", "2026-01-01T10:00:00.000Z"],
 		["t2", "2026-01-01T11:00:00.000Z"],
-		["t5", "2026-01-01T12:00:00.000Z"],
 	]);
-	assert.equal(anchoredScrollOffset(nodes, 3), 2); // rows t3..t5, t5 at the bottom
-	assert.equal(anchoredScrollOffset(nodes, 5), 0); // t5 already the bottom row of the initial window
-	// anchor near the end clamps to the tail
-	const tail = nodesWithCompletions([["t6", "2026-01-01T12:00:00.000Z"]]);
-	assert.equal(anchoredScrollOffset(tail, 3), 3); // rows t4..t6, t6 at the bottom
-	// early completion with everything else pending stays at the top
-	const early = nodesWithCompletions([["t2", "2026-01-01T10:00:00.000Z"]]);
-	assert.equal(anchoredScrollOffset(early, 5), 0);
-	// no completions → top
+	assert.equal(activeNodeIndex(nodes), 2);
+	assert.equal(anchoredScrollOffset(nodes, 3), 1); // rows t2..t4
+	assert.equal(anchoredScrollOffset(nodes, 2), 2); // no room for context: t3, t4
+	// an explicit current task wins over the first pending one
+	const withCurrent = nodes.map((node) => ({ ...node, isCurrent: node.id === "t5" }));
+	assert.equal(anchoredScrollOffset(withCurrent, 3), 3); // rows t4..t6
+	// near the end the window clamps to the tail
+	const late = nodesWithCompletions([1, 2, 3, 4, 5].map((n) => [`t${n}`, `2026-01-01T1${n}:00:00.000Z`] as [string, string]));
+	assert.equal(anchoredScrollOffset(late, 3), 4); // rows t5..t7, t6 in progress
+	// first task open → top
 	assert.equal(anchoredScrollOffset(nodesWithCompletions([]), 3), 0);
 	// list fits entirely → top
 	assert.equal(anchoredScrollOffset(nodesWithCompletions([["t3", "2026-01-01T10:00:00.000Z"]]), 7), 0);
-	// long list: the most recent completion (t12) pulls the window to the tail,
-	// hiding the earliest tasks — the core ask
-	const longList: DashboardTaskNode[] = Array.from({ length: 12 }, (_, i) => ({
-		id: `t${i + 1}`,
-		title: `Task ${i + 1}`,
-		status: "pending" as const,
-		depth: 0,
-		isCurrent: false,
-		totalSubtasks: 0,
-		completedSubtasks: 0,
-	}));
-	longList[1] = { ...longList[1]!, status: "complete", completedAt: "2026-01-01T10:00:00.000Z" };
-	longList[11] = { ...longList[11]!, status: "complete", completedAt: "2026-01-01T11:00:00.000Z" };
-	assert.equal(anchoredScrollOffset(longList, 5), 7); // rows t8..t12
+});
+
+test("anchoredScrollOffset bottom-anchors the latest completion when nothing is open", () => {
+	const all = nodesWithCompletions(["t1", "t2", "t3", "t4", "t5", "t6", "t7"].map((id, i) => [id, `2026-01-01T1${i}:00:00.000Z`] as [string, string]));
+	assert.equal(activeNodeIndex(all), -1);
+	assert.equal(anchoredScrollOffset(all, 3), 4); // rows t5..t7, t7 at the bottom
+	// out-of-order completion: t3 finished last → it is the bottom row
+	const reordered = all.map((node) => (node.id === "t3" ? { ...node, completedAt: "2026-01-02T00:00:00.000Z" } : node));
+	assert.equal(anchoredScrollOffset(reordered, 3), 0); // rows t1..t3
+	// legacy completions without timestamps → top
+	const legacy = all.map(({ completedAt: _drop, ...node }) => node);
+	assert.equal(anchoredScrollOffset(legacy, 3), 0);
 });
 
 test("clampScrollOffset and maxScrollOffset bound the window", () => {

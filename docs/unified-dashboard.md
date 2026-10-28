@@ -129,11 +129,14 @@ persisted.
 ## Scrolling the task list
 
 Both views show the task list as a **window** over the plan-ordered list, and
-by default the window is **anchored to the most recently completed task** —
-the viewport is "scrolled down" so recent completions (by `completedAt`) are
-visible instead of always showing the earliest tasks. With nothing completed
-the window starts at the top; when a new task completes the window re-anchors
-to it. `↑ N more tasks` / `… +N more tasks` indicator rows mark rows hidden
+by default the window **follows the work in progress**: it starts at the
+current task (or, with none current, the next open task after the latest
+`completedAt`), with one row of context above it — normally the latest
+completion — when the window has three or more rows. A window never shows
+only finished tasks while one is in progress below it. With nothing open the
+window ends at the latest completion; with nothing completed or open it
+starts at the top. A new completion or a change of current task re-anchors
+the window; between those events a manual scroll position is kept. `↑ N more tasks` / `… +N more tasks` indicator rows mark rows hidden
 above and below the window.
 
 pi has no separate focus — the prompt editor owns the plain arrow keys — so

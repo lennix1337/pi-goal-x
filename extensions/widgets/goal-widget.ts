@@ -20,6 +20,7 @@ import {
 	deriveGoalDashboardModel,
 	expandedTaskViewportRows,
 	latestCompletedNodeIndex,
+	activeNodeIndex,
 	maxScrollOffset,
 	taskViewportPageSize,
 	type GoalDashboardModel,
@@ -355,12 +356,13 @@ export class GoalWidgetComponent implements Component {
 
 	// §9.6 scroll state: viewport offsets for the compact top-level list and
 	// the expanded tree, compact scroll-focus engagement, and the re-anchor
-	// bookkeeping (a new completion re-anchors to the latest completed task).
+	// bookkeeping (a new completion or a new task in progress re-anchors).
 	private compactScrollOffset = 0;
 	private expandedScrollOffset = 0;
 	private lastRenderWidth = 100;
 	private lastSeenGoalId: string | undefined;
 	private lastSeenLatestCompletedAt: string | undefined;
+	private lastSeenActiveId: string | undefined;
 
 	// Stable-height latch (spec 2026-08-11-stable-widget-height): the first
 	// render of each regime commits the rendered height (natural when it fits,
@@ -600,18 +602,21 @@ export class GoalWidgetComponent implements Component {
 	}
 
 	/**
-	 * §9.6 re-anchor rule: when the goal changes or a new task completes (the
-	 * latest completedAt moves), reset both viewports to the anchored defaults
-	 * so the most recently completed work stays visible. Between such events
-	 * the user's manual scroll position is preserved.
+	 * §9.6 re-anchor rule: when the goal changes, a new task completes (the
+	 * latest completedAt moves) or another task becomes the one in progress,
+	 * reset both viewports to the anchored defaults so the work in progress
+	 * stays visible. Between such events the user's manual scroll position is
+	 * preserved.
 	 */
 	private maybeReanchor(model: GoalDashboardModel | null): void {
-		const latestAt = latestCompletedNodeIndex(model?.taskTree ?? []) >= 0
-			? model!.taskTree[latestCompletedNodeIndex(model!.taskTree)]!.completedAt
-			: undefined;
-		if (model?.goalId === this.lastSeenGoalId && latestAt === this.lastSeenLatestCompletedAt) return;
+		const tree = model?.taskTree ?? [];
+		const latest = latestCompletedNodeIndex(tree);
+		const latestAt = latest >= 0 ? tree[latest]!.completedAt : undefined;
+		const activeId = tree[activeNodeIndex(tree)]?.id;
+		if (model?.goalId === this.lastSeenGoalId && latestAt === this.lastSeenLatestCompletedAt && activeId === this.lastSeenActiveId) return;
 		this.lastSeenGoalId = model?.goalId;
 		this.lastSeenLatestCompletedAt = latestAt;
+		this.lastSeenActiveId = activeId;
 		if (!model || model.taskTree.length === 0) {
 			this.compactScrollOffset = 0;
 			this.expandedScrollOffset = 0;

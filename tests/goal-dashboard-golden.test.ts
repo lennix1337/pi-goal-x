@@ -257,19 +257,22 @@ test("audit-running widget is width-safe at every width", () => {
 test("compact: top-level task list is shown by default with '+N more' overflow", () => {
 	const model = modelFor(withTasks(fiveTaskTree(), { currentTaskId: "t3" }));
 	assert.ok(model);
-	// Medium (80): four rows + overflow for the fifth.
+	// Medium (80): four rows; t3 is in progress, so t1 gives way to t5.
 	const medium = renderCompactDashboard(model, theme, 80).join("\n");
 	assert.match(medium, /├─ Tasks /);
-	assert.match(medium, /✓ t1  Review reports page and data source/);
-	assert.match(medium, /… \+1 more task/);
+	assert.match(medium, /↑ 1 more task\b/);
+	assert.match(medium, /✓ t2  Implement filtered CSV export/);
+	assert.match(medium, /~ t5  Add and run tests/);
+	assert.doesNotMatch(medium, /\+[0-9]+ more task/);
 	// Wide (100): all five top-level rows fit, no overflow.
 	const wide = renderCompactDashboard(model, theme, 100).join("\n");
 	assert.match(wide, /~ t5  Add and run tests/);
 	assert.doesNotMatch(wide, /\+[0-9]+ more task/);
-	// Minimal (40): only the first two rows fit, the rest overflow.
+	// Minimal (40): two rows, led by the task in progress.
 	const minimal = renderCompactDashboard(model, theme, 40).join("\n");
-	assert.match(minimal, /\+3 more tasks/);
-	assert.match(minimal, /✓ t1  /);
+	assert.match(minimal, /↑ 2 more tasks/);
+	assert.match(minimal, /▸ t3  /);
+	assert.match(minimal, /\+1 more task\b/);
 	// No tasks → no task section at all.
 	const emptyModel = modelFor(record());
 	assert.ok(emptyModel);
@@ -333,19 +336,50 @@ test("compact: the auditor indicator is a bottom-right border dot, green on / gr
 	}
 });
 
-test("compact: the default viewport anchors to the most recently completed tasks (§9.6)", () => {
+test("compact: the default viewport follows the task in progress (§9.6)", () => {
 	const model = modelFor(withTasks(manyTaskTree(), { currentTaskId: "t21" }));
 	assert.ok(model);
-	// Wide (100): 5 rows; anchor t20 → window t16..t20, indicator on both sides.
+	// Wide (100): 5 rows; current t21 with the latest completion t20 above → t20..t24.
 	const wide = renderCompactDashboard(model, theme, 100).join("\n");
-	assert.match(wide, /↑ 15 more tasks/);
-	assert.match(wide, /Task number 20/);
+	assert.match(wide, /↑ 19 more tasks/);
+	assert.match(wide, /✓ t20  Task number 20[\s\S]*▸ t21  Task number 21/);
 	assert.doesNotMatch(wide, /[✓▸·~] t1\s/, "the earliest task row is hidden");
-	assert.match(wide, /… \+10 more tasks/);
-	// Minimal (40): 2 rows; the anchor stays the last visible row.
+	assert.match(wide, /… \+6 more tasks/);
+	// Minimal (40): 2 rows; the current task leads.
 	const minimal = renderCompactDashboard(model, theme, 40).join("\n");
-	assert.match(minimal, /↑ 18 more tasks/);
-	assert.match(minimal, /Task number 20/);
+	assert.match(minimal, /↑ 20 more tasks/);
+	assert.match(minimal, /▸ t21  Task number 21/);
+	// Nothing open: the latest completion is the last visible row.
+	const done = manyTaskTree().map((t, i) => ({ ...t, status: "complete" as const, completedAt: `2026-01-01T10:${String(i).padStart(2, "0")}:00.000Z` }));
+	const doneModel = modelFor(withTasks(done));
+	assert.ok(doneModel);
+	const finished = renderCompactDashboard(doneModel, theme, 100).join("\n");
+	assert.match(finished, /✓ t30  Task number 30/);
+	assert.doesNotMatch(finished, /… \+\d+ more task/);
+});
+
+test("compact: once the shown tasks are all done, the window moves to the task in progress", () => {
+	const tasks: GoalTask[] = Array.from({ length: 14 }, (_, i) => ({
+		id: `T${String(i + 1).padStart(2, "0")}`,
+		title: `Package ${i + 1}`,
+		status: i < 5 ? ("complete" as const) : ("pending" as const),
+		...(i < 5 ? { completedAt: `2026-01-01T1${i}:00:00.000Z` } : {}),
+	}));
+	const model = modelFor(withTasks(tasks, { currentTaskId: "T06" }));
+	assert.ok(model);
+	for (const width of [100, 70, 50, 40]) {
+		const text = renderCompactDashboard(model, theme, width).join("\n");
+		assert.match(text, /T06 +Package 6/, `width ${width}: the current task is visible`);
+		assert.doesNotMatch(text, /T01 +Package 1\b/, `width ${width}: old completed tasks give way`);
+	}
+	// Wide (5 rows): the latest completion stays as context above the current task.
+	const wide = renderCompactDashboard(model, theme, 100).join("\n");
+	assert.match(wide, /↑ 4 more tasks/);
+	assert.match(wide, /T05 +Package 5[\s\S]*T06 +Package 6[\s\S]*T09 +Package 9/);
+	assert.match(wide, /… \+5 more tasks/);
+	// Minimal (2 rows): no room for context, the current task leads.
+	const minimal = renderCompactDashboard(model, theme, 40).join("\n");
+	assert.match(minimal, /T06 +Package 6[\s\S]*T07 +Package 7/);
 });
 
 test("compact: an explicit scrollOffset windows the list and clamps at both ends", () => {
@@ -524,7 +558,7 @@ test("compact: custom dashboard keybindings render in the footer hints", () => {
 	assert.ok(six);
 	const wideOverflow = renderCompactDashboard(six, theme, 100, { keybindings: custom }).join("\n");
 	assert.match(wideOverflow, /Ctrl\+Alt\+T: expand · Ctrl\+Alt\+U\/Ctrl\+Alt\+D: scroll/);
-	assert.match(wideOverflow, /\+1 more task/);
+	assert.match(wideOverflow, /↑ 1 more task\b/, "six tasks overflow five rows");
 	// Defaults render identically when keybindings are omitted (width 100 so
 	// the hint fits; at 80 the auditor note truncates the hint the same way
 	// on current main — pre-existing, not a regression).

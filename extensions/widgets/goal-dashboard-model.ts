@@ -316,15 +316,34 @@ export function clampScrollOffset(offset: number, totalRows: number, rows: numbe
 }
 
 /**
- * Default viewport offset, bottom-anchored to the most recently completed
- * task: the anchor is the LAST visible row, so the view shows the recent
- * completions (and whatever follows them in plan order) instead of the
- * earliest tasks. With no completed (or timestamped) tasks the viewport
+ * Index of the task in progress: the current pending node; else the first
+ * pending node after the latest completion (work moves forward in plan
+ * order); else the first pending node. A current subtask is absent from the
+ * top-level list, so its pending parent is found by the fallbacks. -1 when
+ * nothing is open.
+ */
+export function activeNodeIndex(nodes: readonly DashboardTaskNode[]): number {
+	const current = nodes.findIndex((node) => node.isCurrent && node.status === "pending");
+	if (current >= 0) return current;
+	const latest = latestCompletedNodeIndex(nodes);
+	const next = nodes.findIndex((node, i) => i > latest && node.status === "pending");
+	return next >= 0 ? next : nodes.findIndex((node) => node.status === "pending");
+}
+
+/**
+ * Default viewport offset. While work is open, the task in progress leads the
+ * window, with one row of context above it (normally the latest completion)
+ * when there are at least three rows, so a window never shows only finished
+ * tasks while one is in progress below it. When nothing is open, the window
+ * is bottom-anchored to the most recently completed task. With neither, it
  * starts at the top.
  */
 export function anchoredScrollOffset(nodes: readonly DashboardTaskNode[], rows: number): number {
+	if (rows <= 0) return 0;
+	const active = activeNodeIndex(nodes);
+	if (active >= 0) return clampScrollOffset(active - (rows >= 3 ? 1 : 0), nodes.length, rows);
 	const anchor = latestCompletedNodeIndex(nodes);
-	if (anchor < 0 || rows <= 0) return 0;
+	if (anchor < 0) return 0;
 	return clampScrollOffset(anchor - (rows - 1), nodes.length, rows);
 }
 
