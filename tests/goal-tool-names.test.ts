@@ -108,3 +108,12 @@ test("POST_STOP_ALLOWED_TOOLS only includes get_goal", () => {
 	assert.equal(POST_STOP_ALLOWED_TOOLS.length, 1, "post-stop allowlist should be minimal");
 	assert.equal(POST_STOP_ALLOWED_TOOLS[0], "get_goal");
 });
+
+test("a blocked goal keeps update_goal: its blocker prompt tells the agent to resume or complete with it", async () => {
+	const { applicableGoalTools } = await import("../extensions/goal-tool-names.ts");
+	const goal = (status: string) => ({ status }) as unknown as Parameters<typeof applicableGoalTools>[0];
+	assert.equal(applicableGoalTools(goal("blocked"), false).includes(UPDATE_GOAL_TOOL_NAME), true,
+		"a session started while the goal was blocked must still be able to resume it");
+	for (const status of ["active", "paused", "budget_limited"]) assert.equal(applicableGoalTools(goal(status), false).includes(UPDATE_GOAL_TOOL_NAME), true, status);
+	assert.equal(applicableGoalTools(null, false).includes(UPDATE_GOAL_TOOL_NAME), false);
+});

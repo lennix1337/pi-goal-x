@@ -185,7 +185,8 @@ describe("Applicable tool profiles", () => {
 				activeToolNames = [...HOST_SEED_A];
 				apiCalls = [];
 				await runSession(f.cwd, entries);
-				expectGoalProfile(status === "paused" ? ACTIVE_NO_TASKS : status === "budget_limited" ? CORE_GOAL_TOOLS : BASE);
+				// A blocked goal keeps update_goal: the agent resumes it once the blocker is resolved (CHANGELOG, blocked prompt).
+				expectGoalProfile(status === "paused" ? ACTIVE_NO_TASKS : status === "budget_limited" || status === "blocked" ? CORE_GOAL_TOOLS : BASE);
 				expectHostUntouched(HOST_SEED_A);
 			} finally {
 				f.cleanup();
@@ -248,7 +249,7 @@ describe("Applicable tool profiles", () => {
 		}
 	});
 
-	it("blocking removes mutation tools", async () => {
+	it("blocking removes task tools but keeps update_goal to resume", async () => {
 		const f = testFixture();
 		try {
 			activeToolNames = [...HOST_SEED_A];
@@ -257,12 +258,12 @@ describe("Applicable tool profiles", () => {
 			const bas = lifecycleHandlers.get("before_agent_start")!;
 			await bas({ systemPrompt: "", prompt: "start", systemPromptOptions: {} }, f.mockCtx);
 
-			// update_goal(blocked) transitions active -> blocked; only creation/inspection remain.
+			// update_goal(blocked) transitions active -> blocked; task tools go, update_goal stays so the agent can resume.
 			const update = registeredTools.find((t) => t.name === "update_goal");
 			assert.ok(update);
 			const result = await (update.execute as Function)("update-b", { status: "blocked", reason: "test blocker" }, new AbortController().signal, undefined, f.mockCtx);
 			assert.ok(result.terminate === true, "blocked terminates the turn");
-			expectGoalProfile(BASE);
+			expectGoalProfile(CORE_GOAL_TOOLS);
 			expectHostUntouched(HOST_SEED_A);
 		} finally {
 			f.cleanup();
