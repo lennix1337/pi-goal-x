@@ -12,6 +12,7 @@ import {
   type LedgerStateReadResult,
 } from "./goal-ledger.ts";
 import { type GoalRecord } from "./goal-record.ts";
+import { localClock } from "./goal-time.ts";
 import { taskIndex } from "./goal-task-index.ts";
 
 export function buildGoalCompactSummary(
@@ -181,7 +182,7 @@ export function buildPostCompactionGoalDelta(args: {
   if (recent.length > 0) {
     lines.push("Recent events:");
     for (const event of recent) {
-      lines.push(`  ${event.at.slice(11, 19)} ${event.type}`);
+      lines.push(`  ${localClock(event.at)} ${event.type}`);
     }
   }
   // Latest unresolved auditor finding.

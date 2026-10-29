@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { taskIndex } from "./goal-task-index.ts";
+import { localStamp } from "./goal-time.ts";
 import type { GoalRecord } from "./goal-record.ts";
 import type { GoalLedgerEvent } from "./goal-ledger.ts";
 
@@ -24,7 +25,7 @@ function compiledSource(goal: GoalRecord, query: GoalDetailQuery, events: readon
  }
  let source: string;
  if (query.section === "objective") source = `${goal.objective}${goal.verificationContract ? `\n\nVerification contract:\n${goal.verificationContract}` : ""}`;
- else if (query.section === "history") source = events.filter(e => "goalId" in e && e.goalId === goal.id).map(e => JSON.stringify(e)).join("\n");
+ else if (query.section === "history") source = events.filter(e => "goalId" in e && e.goalId === goal.id).map(e => `${localStamp(e.at)} ${JSON.stringify(e)}`).join("\n");
  else {
   const rows = index!.ordered;
   const selected = query.task_id ? rows.find(row => row.task.id === query.task_id) : undefined;

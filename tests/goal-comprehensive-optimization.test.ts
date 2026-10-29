@@ -8,6 +8,7 @@ import { createGoal, type GoalTask } from "../extensions/goal-record.ts";
 import { taskIndex } from "../extensions/goal-task-index.ts";
 import { goalPrompt } from "../extensions/prompts/goal-prompts.ts";
 import { goalDetailPage } from "../extensions/goal-detail.ts";
+import { localStamp } from "../extensions/goal-time.ts";
 import { readGoalLedger, appendGoalEvents, invalidateGoalLedgerCache, loadLedgerState, LEDGER_CHECKPOINT_FILE, type GoalLedgerEvent } from "../extensions/goal-ledger.ts";
 import { buildPostCompactionGoalDelta } from "../extensions/goal-compaction.ts";
 import { recentNonEmptyLines } from "../extensions/goal-auditor.ts";
@@ -73,7 +74,7 @@ test("cached history pages remain lossless and reject stale cursors after append
   const read = readGoalLedger(f); const first = goalDetailPage(f.goal,{section:"history"},read.events,read.revision); assert.ok(first.ok && first.nextCursor);
   let cursor: string | undefined; let content = "";
   do { const page = goalDetailPage(f.goal,{section:"history",cursor},read.events,read.revision); assert.ok(page.ok); content += page.content; cursor = page.nextCursor; } while (cursor);
-  assert.equal(content, events.map(e=>JSON.stringify(e)).join("\n"));
+  assert.equal(content, events.map(e=>`${localStamp(e.at)} ${JSON.stringify(e)}`).join("\n"));
   appendGoalEvents(f,[{...events[0]!,taskId:"new"} as GoalLedgerEvent]);
   const appended = readGoalLedger(f); assert.notEqual(appended.revision,read.revision);
   assert.equal(goalDetailPage(f.goal,{section:"history",cursor:first.nextCursor},appended.events,appended.revision).ok,false);

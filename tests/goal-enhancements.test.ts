@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { buildGoalHistoryBlock, goalDetails, renderGoalResult } from "../extensions/goal-format.ts";
+import { goalDetailPage } from "../extensions/goal-detail.ts";
 import { countOrderedSteps, sisyphusStepProgress } from "../extensions/goal-policy.ts";
 import { renderGoalWidgetLines } from "../extensions/widgets/goal-widget.ts";
 import { createMockTheme } from "./tui-test-utils.ts";
@@ -35,6 +36,22 @@ describe("E1 goal history block", () => {
 		assert.match(block, /missing evidence for criterion 3/);
 		assert.match(block, /Recent events:/);
 		assert.match(block, /task_complete/);
+	});
+
+	it("shows event times in the operator's local time zone, not UTC", () => {
+		const previous = process.env.TZ;
+		process.env.TZ = "America/Sao_Paulo";
+		try {
+			const goal = makeGoalRecord({ objective: "History test" });
+			const block = buildGoalHistoryBlock(goal, ledgerEvents(goal.id) as never);
+			assert.match(block, /07:01:00 task_complete/);
+			assert.doesNotMatch(block, /10:01:00/);
+			const page = goalDetailPage(goal, { section: "history" }, ledgerEvents(goal.id) as never);
+			assert.ok(page.ok);
+			assert.match(page.content, /^2026-08-05 07:01:00 -03:00 \{"type":"task_complete"/m);
+		} finally {
+			if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous;
+		}
 	});
 });
 
