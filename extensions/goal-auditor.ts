@@ -180,6 +180,7 @@ export function buildGoalAuditorPrompt(args: {
 		"2. Inspect real artifacts with read/grep/find/ls/bash as needed. Never mutate files or clean runtime metadata (.pi goals/subagents). Report environment failures separately. Paperwork, counts and build success alone are not proof.",
 		...(!args.settings?.disableContracts && args.goal.verificationContract?.trim()
 			? ["3. Verify that the executor has satisfied every item in the <verification_contract>. If any item is missing or weakly addressed, disapprove."] : []),
+		"Judge the outcome, not who produced it: the model, provider or account that executed the goal (including a failover to another one) is never a reason to disapprove, even when the objective names a preferred executor.",
 		"4. Explain missing or weak evidence concisely. Disapprove alpha scaffold, generated template, shallow draft or proxy milestones lacking the user-facing value requested.",
 		"5. End with exactly <approved/> only if the objective is truly complete; otherwise end with exactly <disapproved/>.",
 		"",

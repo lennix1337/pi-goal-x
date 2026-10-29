@@ -180,6 +180,14 @@ test("buildGoalAuditorPrompt demands semantic approval markers", () => {
 	assert.ok(prompt.includes("5. End with exactly <approved/>"));
 });
 
+test("buildGoalAuditorPrompt judges the outcome, not which model or account executed it", () => {
+	const prompt = buildGoalAuditorPrompt({
+		goal: goal({ objective: "Ship X. Executor: openai-codex/gpt-6.1-terra." }),
+		detailedSummary: "Goal: ship X",
+	});
+	assert.match(prompt, /model, provider or account that executed the goal[^\n]*never a reason to disapprove/);
+});
+
 test("buildGoalAuditorPrompt renders a completion summary as an untrusted claim", () => {
 	const prompt = buildGoalAuditorPrompt({
 		goal: goal(),
