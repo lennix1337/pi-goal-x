@@ -10,6 +10,7 @@ import { buildTaskSummary } from "./goal-policy.ts";
 import { countTaskSubtree } from "./goal-task-count.ts";
 import { latestAuditorResultForGoal, latestEventsForGoal, type GoalLedgerEvent } from "./goal-ledger.ts";
 import { GOAL_PROGRESS_TOOL_NAMES } from "./goal-tool-names.ts";
+import { localClock } from "./goal-time.ts";
 import {
 	asRecord,
 	cloneGoal,
@@ -340,7 +341,7 @@ export function buildGoalHistoryBlock(goal: GoalRecord | null, ledgerEvents: Goa
 	if (recent.length > 0) {
 		lines.push("Recent events:");
 		for (const event of recent) {
-			lines.push(`  ${event.at.slice(11, 19)} ${event.type}`);
+			lines.push(`  ${localClock(event.at)} ${event.type}`);
 		}
 	}
 	return lines.join("\n");
