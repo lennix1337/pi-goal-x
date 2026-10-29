@@ -16,8 +16,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A change to Markdown no test or script reads runs nothing else; any other change runs everything.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      code: ${{ steps.scope.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: scope
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          READERS: tests scripts experiments src package.json
+        run: |
+          files=""
+          if [ "$EVENT" = pull_request ]; then
+            files=$(git diff --name-only HEAD^1 HEAD) || files=""
+          elif [ "$EVENT" = push ] && [ -n "$BEFORE" ] && ! [[ "$BEFORE" =~ ^0+$ ]] && git fetch --no-tags --depth=1 origin "$BEFORE"; then
+            files=$(git diff --name-only "$BEFORE" HEAD) || files=""
+          fi
+          printf 'Changed files:\n%s\n' "${files:-(unknown)}"
+          code=false
+          [ -z "$files" ] && code=true
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in *.md|LICENSE) ;; *) code=true; break ;; esac
+            if git grep -q -F "$(basename "$f")" -- $READERS; then code=true; break; fi
+          done <<<"$files"
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+
   validate:
     name: validate
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +98,8 @@ jobs:
           PI_GOAL_BENCH_REFERENCE="$GITHUB_WORKSPACE/.benchmark-base/experiments/bench/baseline-naf-after.json" npm run bench:gate:naf
 
   compatibility:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -90,3 +127,17 @@ jobs:
         run: |
           node --experimental-strip-types --import ./scripts/test-adapter-hooks.mjs --test tests/e2e/goal-prompt-cache-sdk.test.ts tests/e2e/goal-scheduler-sdk.test.ts tests/goal-rpc-dialogs.test.ts tests/goal-widget-lifetime.test.ts
           npm run context:provider-check
+
+  # The one check branch protection requires: green when every job this change needed passed.
+  ci-ok:
+    if: always()
+    needs: [changes, validate, compatibility]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Every needed job passed
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          node -e 'const bad = JSON.parse(process.env.RESULTS).filter((r) => r !== "success" && r !== "skipped"); if (bad.length) { console.error(`failed or cancelled: ${bad.join(", ")}`); process.exit(1); }'
