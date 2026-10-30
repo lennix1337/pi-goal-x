@@ -36,6 +36,7 @@ function makePi() {
 		on: (event, handler) => handlers.set(event, handler),
 		appendEntry: () => {},
 		registerMessageRenderer: () => {},
+		events: { emit: () => {}, on: () => () => {} },
 		sendMessage: () => {},
 		getActiveTools: () => ["read", "bash", "edit", "write"],
 		setActiveTools: () => {},

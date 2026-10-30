@@ -45,6 +45,7 @@ function createCapture() {
 		},
 		appendEntry: () => {},
 		registerMessageRenderer: () => {},
+		events: { emit: () => {}, on: () => () => {} },
 		sendMessage: () => {},
 		sendUserMessage: () => {},
 		getActiveTools: () => [...activeTools],
