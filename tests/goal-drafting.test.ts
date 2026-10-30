@@ -62,6 +62,7 @@ function createHarness(cwd: string, opts: { hasUI?: boolean } = {}): Harness {
 		appendEntry: (customType: string, data: unknown) => { entries.push({ type: "custom", customType, data }); },
 		registerMessageRenderer: () => {},
 		sendUserMessage: (message: string) => { messages.push(message); },
+		events: { on: () => () => {}, emit: () => {} },
 		sendMessage: () => {},
 		getActiveTools: () => [...activeTools],
 		setActiveTools: (names: string[]) => { activeTools = [...names]; toolHistory.push([...names]); },

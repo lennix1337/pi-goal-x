@@ -38,6 +38,7 @@ function coreHarness(cwd: string) {
 		on: (event: string, handler: unknown) => handlers.set(event, handler),
 		appendEntry: () => {},
 		registerMessageRenderer: () => {},
+		events: { on: () => () => {}, emit: () => {} },
 		sendMessage: () => {},
 		getActiveTools: () => ["read", "bash", "edit", "write"],
 		setActiveTools: () => {},

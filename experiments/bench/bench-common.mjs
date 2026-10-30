@@ -154,6 +154,7 @@ export function createHarness(options = {}) {
 		on: (event, handler) => { handlers.set(event, handler); },
 		appendEntry: () => {},
 		registerMessageRenderer: () => {},
+		events: { emit: () => {}, on: () => () => {} },
 		sendMessage: () => {},
 		getActiveTools: () => [...activeTools],
 		setActiveTools: (next) => { activeTools = [...next]; activeToolsHistory.push([...next]); },

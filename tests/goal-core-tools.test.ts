@@ -51,6 +51,7 @@ function createHarness(options: HarnessOptions) {
 		on: (event: string, handler: Function) => { handlers.set(event, handler); },
 		appendEntry: () => {},
 		registerMessageRenderer: () => {},
+		events: { on: () => () => {}, emit: () => {} },
 		sendMessage: (message: any, opts?: any) => { options.onSendMessage?.(message, opts); },
 		getActiveTools: () => [...activeTools],
 		setActiveTools: (names: string[]) => { activeTools = [...names]; },

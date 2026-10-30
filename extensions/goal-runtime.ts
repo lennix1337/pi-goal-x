@@ -15,6 +15,9 @@ import { POST_STOP_ALLOWED_TOOLS } from "./goal-tool-names.ts";
 import { networkErrorBackoffPlan, type NetworkErrorBackoffPlan, type NetworkErrorRecoveryPolicy } from "./network-error-backoff.ts";
 
 export const CONTINUATION_IDLE_RETRY_MS = 50;
+export const CONTINUATION_HOLD_RETRY_MS = 1000;
+/** Event a goal emits before each continuation; a listener calls `hold(reason)` to take the next turn first. */
+export const CONTINUATION_HOLD_EVENT = "pi-goal:continuation-hold";
 
 const POST_STOP_ALLOWED = new Set<string>(POST_STOP_ALLOWED_TOOLS);
 
@@ -24,6 +27,11 @@ export interface GoalRuntimeHooks {
 	dispatchFailed?(ctx: ExtensionContext): void;
 	/** Dispatch a hidden follow-up checkpoint message (pi.sendMessage + triggerTurn). */
 	sendFollowUp(content: string, details: Record<string, unknown>): void;
+	/**
+	 * Why another extension needs the next turn first (a pending self-reload); undefined when none.
+	 * A held continuation waits and retries; it is never dropped.
+	 */
+	held?(): string | undefined;
 	/** Current focused goal (state.goal). */
 	getGoal(): GoalRecord | null;
 	/** Whether a checkpointed goal id is still actionable (active + autoContinue). */
@@ -148,6 +156,16 @@ export class GoalRuntime {
 	 * details are a bounded structured record; before_agent_start injects the
 	 * authoritative full prompt once per turn.
 	 */
+	/** 0 when the checkpoint may go now, the wait before the next try otherwise, null once the context is gone. */
+	private retryDelay(ctx: ExtensionContext): number | null {
+		try {
+			if (ctx.hasPendingMessages() || !ctx.isIdle()) return CONTINUATION_IDLE_RETRY_MS;
+		} catch {
+			return null;
+		}
+		return this.hooks.held?.() ? CONTINUATION_HOLD_RETRY_MS : 0;
+	}
+
 	private sendQueuedContinuation(ctx: ExtensionContext, scheduledGoalId: string): void {
 		this.continuationTimer = null;
 		this.continuationScheduledFor = null;
@@ -156,17 +174,14 @@ export class GoalRuntime {
 			return;
 		}
 
-		let ready: boolean;
-		try {
-			ready = !ctx.hasPendingMessages() && ctx.isIdle();
-		} catch {
+		const delay = this.retryDelay(ctx);
+		if (delay === null) {
 			if (this.continuationQueuedFor === scheduledGoalId) this.continuationQueuedFor = null;
 			return;
 		}
-
-		if (!ready) {
+		if (delay > 0) {
 			this.continuationScheduledFor = scheduledGoalId;
-			this.continuationTimer = setTimeout(() => this.sendQueuedContinuation(ctx, scheduledGoalId), CONTINUATION_IDLE_RETRY_MS);
+			this.continuationTimer = setTimeout(() => this.sendQueuedContinuation(ctx, scheduledGoalId), delay);
 			this.continuationTimer.unref?.();
 			return;
 		}

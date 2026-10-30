@@ -42,6 +42,7 @@ function createRecordingPi() {
 		on: () => {},
 		appendEntry: () => {},
 		registerMessageRenderer: () => {},
+		events: { on: () => () => {}, emit: () => {} },
 		sendMessage: (msg: unknown) => {
 			messages.push(msg);
 		},

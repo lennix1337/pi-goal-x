@@ -97,6 +97,7 @@ describe("Applicable tool profiles", () => {
 			apiCalls.push({ type: "appendEntry", data: { customType, data } });
 		},
 		registerMessageRenderer: () => {},
+		events: { on: () => () => {}, emit: () => {} },
 		sendMessage: () => {},
 		getActiveTools: () => [...activeToolNames],
 		setActiveTools: (names: string[]) => { activeToolNames = [...names]; },

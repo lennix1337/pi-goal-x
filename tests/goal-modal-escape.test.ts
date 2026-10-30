@@ -64,6 +64,7 @@ function createHarness(cwd: string): Harness {
 		},
 		appendEntry: () => {},
 		registerMessageRenderer: () => {},
+		events: { on: () => () => {}, emit: () => {} },
 		sendMessage: (msg: { customType?: string; details?: unknown }) => { sentMessages.push(msg); },
 		sendUserMessage: () => {},
 		getActiveTools: () => ["read", "bash", "edit", "write"],

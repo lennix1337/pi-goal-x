@@ -46,6 +46,7 @@ function createHarness(cwd: string): Harness {
 		appendEntry: () => {},
 		registerMessageRenderer: () => {},
 		sendUserMessage: () => {},
+		events: { on: () => () => {}, emit: () => {} },
 		sendMessage: () => {},
 		getActiveTools: () => [...activeTools],
 		setActiveTools: (names: string[]) => { activeTools = [...names]; },

@@ -66,6 +66,7 @@ function createHarness(cwd: string) {
 		},
 		appendEntry: () => {},
 		registerMessageRenderer: () => {},
+		events: { on: () => () => {}, emit: () => {} },
 		sendMessage: (msg: { customType?: string; details?: unknown }) => {
 			sentMessages.push(msg);
 		},
