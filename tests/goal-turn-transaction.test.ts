@@ -33,6 +33,7 @@ function makeHarness(cwd: string, runCompletionAuditor?: (...args: any[]) => Pro
 		on: (event: string, handler: unknown) => handlers.set(event, handler),
 		appendEntry: () => {},
 		registerMessageRenderer: () => {},
+		events: { on: () => () => {}, emit: () => {} },
 		sendMessage: () => {},
 		getActiveTools: () => [...activeTools],
 		setActiveTools: (next: string[]) => { activeTools = [...next]; },

@@ -36,7 +36,7 @@ import { goalActivityEvents } from "./goal-ledger.ts";
 import { GoalAccounting } from "./goal-accounting.ts";
 import { newGoalScheduler } from "./goal-scheduler-state.ts";
 import { GoalScheduler } from "./goal-scheduler.ts";
-import { GoalRuntime } from "./goal-runtime.ts";
+import { CONTINUATION_HOLD_EVENT, GoalRuntime } from "./goal-runtime.ts";
 import { GoalAuditMessages } from "./goal-session-safety.ts";
 import {
 	focusedGoalFromPool,
@@ -290,6 +290,12 @@ export function createGoalCore(
 				},
 				{ triggerTurn: true, deliverAs: "followUp" },
 			);
+		},
+		// A pending self-reload must run before the next checkpoint, or the checkpoint's turn cancels it.
+		held: () => {
+			let reason: string | undefined;
+			pi.events.emit(CONTINUATION_HOLD_EVENT, { hold: (why: string) => { reason ??= why; } });
+			return reason;
 		},
 		getGoal: () => state.goal,
 		isActionable: (goalId) => isActionableContinuationGoal(goalId),

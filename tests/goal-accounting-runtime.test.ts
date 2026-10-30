@@ -132,6 +132,31 @@ describe("GoalRuntime continuation scheduling", () => {
 	});
 });
 
+describe("GoalRuntime continuation hold", () => {
+	it("waits while another extension holds the next turn, then sends without claiming twice", async (t) => {
+		t.mock.timers.enable({ apis: ["setTimeout"] });
+		const goal = activeGoal();
+		const sent: string[] = [];
+		let hold: string | undefined = "self-reload pending";
+		let claims = 0;
+		const runtime = new GoalRuntime({
+			authorize: () => { claims++; return { generation: "g", dispatchId: `d${claims}` }; },
+			held: () => hold,
+			sendFollowUp: content => { sent.push(content); },
+			getGoal: () => goal,
+			isActionable: () => true,
+		});
+		runtime.queueContinuation(mockCtx(), goal, true);
+		t.mock.timers.tick(0);
+		t.mock.timers.tick(5_000);
+		assert.deepEqual([sent.length, claims], [0, 0], "a held continuation neither sends nor spends its allowance");
+		assert.equal(runtime.continuationPendingFor(goal.id), true, "and it is still scheduled, not dropped");
+		hold = undefined;
+		t.mock.timers.tick(1_000);
+		assert.deepEqual([sent.length, claims], [1, 1]);
+	});
+});
+
 describe("GoalRuntime turn-stop guard", () => {
 	it("markTurnStopped scopes to the current turn; advanceTurn drops stale markers", () => {
 		const { runtime } = makeRuntime();

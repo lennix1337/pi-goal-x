@@ -26,6 +26,7 @@ function createHarness(cwd: string, sessionEntries: unknown[]) {
 		on: (event: string, handler: Function) => { handlers.set(event, handler); },
 		appendEntry: () => {},
 		registerMessageRenderer: () => {},
+		events: { on: () => () => {}, emit: () => {} },
 		sendMessage: () => {},
 		getActiveTools: () => [...activeTools],
 		setActiveTools: (names: string[]) => { activeTools = [...names]; },
