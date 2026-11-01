@@ -98,7 +98,10 @@ function commitGoalCompletion(core: GoalCore, ctx: ExtensionContext, opts: {
 		completeResult = core.goalService.apply(ctx, {
 			reconcile: false,
 			focusToken: opts.completionFocus,
-			mutate: () => ({ ...opts.goal, status: "complete" as const, stopReason: "agent" as const, updatedAt: nowIso() }),
+			// Apply onto the goal as it is now: usage charged by accountProgress above
+			// and any change made during the audit must survive. Only the objective
+			// comes from the audited snapshot (merged from the goal file).
+			mutate: (current) => ({ ...current, objective: opts.goal.objective, status: "complete" as const, stopReason: "agent" as const, updatedAt: nowIso() }),
 		});
 	} catch (err) {
 		// The authoritative file write throws on failure; surface it as a typed
@@ -253,22 +256,33 @@ if (settings.disabled === true) {
 
 	if (previousAudit?.verdict === "disapproved") warmContext = `${warmContext ?? ""}\nPrevious rejection (verify whether resolved): ${previousAudit.report.slice(0, 600)}`;
 
-	const auditor = await (core.dependencies.runCompletionAuditor ?? runGoalCompletionAuditor)({
-		ctx,
-		goal: auditTarget,
-		detailedSummary: detailedSummary(auditTarget),
-		completionSummary: completionSummary?.trim() || undefined,
-		settings: loadGoalSettings(ctx.cwd),
-		warmContext,
-		signal: completionAuditController.signal,
-		onProgress: (progress) => {
-			core.auditProgress = {
-				...progress,
-				elapsedMs: Date.now() - auditStartedAt,
-			};
-			core.goalWidgetComponentRef.current?.invalidate();
-		},
-	});
+	let auditor: Awaited<ReturnType<typeof runGoalCompletionAuditor>>;
+	try {
+		auditor = await (core.dependencies.runCompletionAuditor ?? runGoalCompletionAuditor)({
+			ctx,
+			goal: auditTarget,
+			detailedSummary: detailedSummary(auditTarget),
+			completionSummary: completionSummary?.trim() || undefined,
+			settings: loadGoalSettings(ctx.cwd),
+			warmContext,
+			signal: completionAuditController.signal,
+			onProgress: (progress) => {
+				core.auditProgress = {
+					...progress,
+					elapsedMs: Date.now() - auditStartedAt,
+				};
+				core.goalWidgetComponentRef.current?.invalidate();
+			},
+		});
+	} catch (error) {
+		// An auditor that rejects must not leave the audit machine running:
+		// a stale progress record makes Escape abort a phantom audit forever.
+		if (core.auditAbortController === completionAuditController) core.auditAbortController = null;
+		core.stopAuditAnimation();
+		core.auditProgress = null;
+		core.goalWidgetComponentRef.current?.invalidate();
+		throw error;
+	}
 	// Clear abort controller — audit finished on its own
 	if (core.auditAbortController === completionAuditController) core.auditAbortController = null;
 	// Clear auditor progress display
@@ -296,8 +310,6 @@ if (settings.disabled === true) {
 		} finally {
 			core.exitGoalModal();
 		}
-		// Consume the transient abort state recorded by the low-level callback.
-		core.auditAborted = false;
 		if (!core.isFocusedOperationCurrent(completionFocus)) {
 			return core.focusedOperationCancelledResult("Goal completion", completionFocus);
 		}

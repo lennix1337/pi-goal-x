@@ -191,3 +191,16 @@ test("goal focus entries persist only session focus metadata", () => {
 	});
 	assert.equal(normalizeGoalFocusEntry({ version: 3, focusedGoalId: "abc" }), null);
 });
+
+// Machine: goal lifecycle status read back from persisted JSON (docs/state-machines.md, "Goal lifecycle status").
+test("normalizeGoalRecord does not turn an unrecognized persisted status into a running goal", () => {
+	for (const status of ["failed", "cancelled", "running", "", 7, null]) {
+		const record = normalizeGoalRecord({ id: "g1", objective: "x", status, autoContinue: true });
+		assert.equal(record?.status, "paused", `status ${JSON.stringify(status)} must not normalize to active`);
+	}
+});
+
+test("normalizeGoalRecord keeps a missing status active and tolerates case and whitespace", () => {
+	assert.equal(normalizeGoalRecord({ id: "g1", objective: "x" })?.status, "active");
+	assert.equal(normalizeGoalRecord({ id: "g1", objective: "x", status: " Blocked " })?.status, "blocked");
+});

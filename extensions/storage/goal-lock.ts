@@ -11,6 +11,7 @@ import { goalStoragePath, ensureGoalStorageDirectory } from "./goal-root.ts";
  * writers even when the lock hand-off is fast.
  */
 
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { GoalFileContext } from "./goal-files.ts";
@@ -51,16 +52,25 @@ function pidAlive(pid: number): boolean {
 	}
 }
 
-function readLockPayload(lockPath: string): { pid?: number; startedAt?: string } {
+function readLockPayload(lockPath: string): { pid?: number; startedAt?: string; token?: string } {
 	try {
 		const raw = JSON.parse(fs.readFileSync(lockPath, "utf8")) as Record<string, unknown>;
 		return {
 			pid: typeof raw.pid === "number" ? raw.pid : undefined,
 			startedAt: typeof raw.startedAt === "string" ? raw.startedAt : undefined,
+			token: typeof raw.token === "string" ? raw.token : undefined,
 		};
 	} catch {
 		// Unparseable payload means a writer crashed mid-create: treat as stale.
 		return {};
+	}
+}
+
+function readLockText(lockPath: string): string | undefined {
+	try {
+		return fs.readFileSync(lockPath, "utf8");
+	} catch {
+		return undefined;
 	}
 }
 
@@ -87,7 +97,10 @@ export function acquireGoalLock(
 	const lockDir = goalStoragePath(ctx, GOAL_LOCK_DIR);
 	const lockPath = path.join(lockDir, `${safeLockName(goalId)}.lock`);
 	ensureGoalStorageDirectory(ctx, GOAL_LOCK_DIR, false);
-	const payload = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() });
+	// The token identifies this holder: after a stale recovery the file at
+	// lockPath may belong to someone else, and release() must not delete it.
+	const token = randomUUID();
+	const payload = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString(), token });
 
 	for (let attempt = 0; attempt < attempts; attempt++) {
 		try {
@@ -97,6 +110,9 @@ export function acquireGoalLock(
 				release(): void {
 					if (released) return;
 					released = true;
+					// Only the holder named in the file may remove it. A lock recovered
+					// as stale and re-acquired by another writer is not ours any more.
+					if (readLockPayload(lockPath).token !== token) return;
 					try {
 						fs.unlinkSync(lockPath);
 					} catch {
@@ -109,10 +125,14 @@ export function acquireGoalLock(
 			// Bounded stale-lock recovery.
 			try {
 				const stat = fs.statSync(lockPath);
+				const observedText = readLockText(lockPath);
 				const payloadInfo = readLockPayload(lockPath);
 				const pid = payloadInfo.pid;
 				const stale = Date.now() - stat.mtimeMs > ttlMs || (pid !== undefined && !pidAlive(pid));
 				if (stale) {
+					// Another writer may have recovered it and taken the lock since we
+					// looked: only remove the exact stale file we observed.
+					if (readLockText(lockPath) !== observedText) continue;
 					try {
 						fs.unlinkSync(lockPath);
 					} catch {
