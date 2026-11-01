@@ -83,8 +83,6 @@ export interface GoalCore {
 	goalModalDepth: number;
 	enterGoalModal(): void;
 	exitGoalModal(): void;
-	auditAborted: boolean;
-	goalWorkToolCalledThisTurn: boolean;
 	tasksEnabled: boolean;
 	debugMode: boolean;
 	terminalInputUnsubscribe: (() => void) | null;
@@ -158,7 +156,7 @@ export function createGoalCore(
 	function assignFocusedGoalId(next: string | null): void {
 		if (focusedGoalId !== next) focusRevision += 1;
 		focusedGoalId = next;
-  if (profileInitialized && !draftingProfile) installGoalToolProfile(tasksEnabled);
+		if (toolProfile === "execution") installGoalToolProfile(tasksEnabled);
 	}
 
 	function focusedOperationToken(goalId: string): { goalId: string; revision: number } {
@@ -259,7 +257,6 @@ export function createGoalCore(
 		auditResult = null;
 	}
 	let auditAbortController: AbortController | null = null;
-	let auditAborted = false;
 
 	let goalModalDepth = 0;
 	let debugMode = false;
@@ -267,13 +264,9 @@ export function createGoalCore(
 	// owned by the core so it survives host-side widget re-instantiation.
 	let dashboardExpanded = false;
 
-	// Per-turn flags reset in turn_start (#4, C9 fix).
-	// goalWorkToolCalledThisTurn: tracks whether a real goal-work tool was called.
-	//   If false at turn_end, we don't queue another autoContinue (empty chat turn).
 	// turn-stop guard, stale checkpoint, continuation scheduling, and one-time
 	// steering reminders live in `runtime` (extensions/goal-runtime.ts);
 	// token/time accounting lives in `accounting` (extensions/goal-accounting.ts).
-	let goalWorkToolCalledThisTurn = false;
 
 	let scheduler: GoalScheduler;
 	const runtime = new GoalRuntime({
@@ -305,13 +298,14 @@ export function createGoalCore(
 	// Whether the task tools are advertised, decided once at session start from
 	// settings (disableTasks). Stage 4 replaces them with the two task tools.
 	let tasksEnabled = true;
- let profileInitialized = false;
- let draftingProfile = false;
+	// Which goal-tool profile is installed: none yet (before session start), the
+	// fixed execution profile, or the transient drafting profile. Focus changes
+	// re-install only the execution profile.
+	let toolProfile: "uninitialized" | "execution" | "drafting" = "uninitialized";
 
-	// Transient runtime state: set when the user aborts a running audit via
-	// Escape. No ledger event is appended from the low-level abort callback;
-	// the completion flow appends exactly one canonical event after the
-	// user's dialog choice (follow-up Stage 2).
+	// Escape during an audit only aborts its controller (abortAudit); no ledger
+	// event is appended there. The completion flow appends exactly one canonical
+	// event after the user's dialog choice (follow-up Stage 2).
 
 	/**
 	 * Install the fixed three/five goal-tool profile. Called only after session
@@ -324,8 +318,7 @@ export function createGoalCore(
 	 * menu to detect repeated disableTasks toggles across one menu session).
 	 */
 	function installGoalToolProfile(tasksEnabledArg: boolean): void {
-  profileInitialized = true;
-  draftingProfile = false;
+		toolProfile = "execution";
 		try {
 			const current = new Set(pi.getActiveTools());
 			for (const knownGoalTool of ALL_REGISTERED_GOAL_TOOLS) current.delete(knownGoalTool);
@@ -349,7 +342,7 @@ export function createGoalCore(
 	 * by an explicit user drafting command and is removed on confirm/cancel.
 	 */
 	function installDraftingToolProfile(): void {
-  draftingProfile = true;
+		toolProfile = "drafting";
 		try {
 			const current = new Set(pi.getActiveTools());
 			for (const knownGoalTool of ALL_REGISTERED_GOAL_TOOLS) current.delete(knownGoalTool);
@@ -378,9 +371,9 @@ export function createGoalCore(
 		stopAuditAnimation();
 		auditProgress = null;
 		goalWidgetComponentRef.current?.invalidate();
-		// Record the abort as transient runtime state only; the completion flow
-		// decides the single canonical ledger outcome after the dialog choice.
-		auditAborted = true;
+		// Nothing else is recorded here; the completion flow sees the aborted
+		// result and decides the single canonical ledger outcome after the
+		// dialog choice.
 	}
 
 	function clearContinuationTimer(): void {
@@ -994,18 +987,6 @@ export function createGoalCore(
 		},
 		set goalModalDepth(value: number) {
 			goalModalDepth = value;
-		},
-		get auditAborted() {
-			return auditAborted;
-		},
-		set auditAborted(value: boolean) {
-			auditAborted = value;
-		},
-		get goalWorkToolCalledThisTurn() {
-			return goalWorkToolCalledThisTurn;
-		},
-		set goalWorkToolCalledThisTurn(value: boolean) {
-			goalWorkToolCalledThisTurn = value;
 		},
 		get tasksEnabled() {
 			return tasksEnabled;

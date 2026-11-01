@@ -336,6 +336,19 @@ export function currentTaskIdIsPending(tasks: readonly GoalTask[] | undefined, i
 	return false;
 }
 
+const GOAL_STATUSES: readonly GoalStatus[] = ["active", "paused", "blocked", "budget_limited", "complete"];
+
+/**
+ * A missing status is a historical file and stays active. A present but
+ * unrecognized status (typo, hand edit, a value from a newer version) must not
+ * start autonomous runs: it normalizes to paused so the user decides.
+ */
+export function normalizeGoalStatus(value: unknown): GoalStatus {
+	if (value === undefined) return "active";
+	const text = typeof value === "string" ? value.trim().toLowerCase() : "";
+	return GOAL_STATUSES.find((status) => status === text) ?? "paused";
+}
+
 export function normalizeGoalRecord(value: unknown): GoalRecord | null {
 	const raw = asRecord(value);
 	if (!raw) return null;
@@ -345,16 +358,7 @@ export function normalizeGoalRecord(value: unknown): GoalRecord | null {
 	const timestamp = nowIso();
 	// Persisted lifecycle status is authoritative. autoContinue is an execution
 	// preference only: it must never rewrite status during reads or migration.
-	const rawStatus = raw.status;
-	const status: GoalStatus = rawStatus === "complete"
-		? "complete"
-		: rawStatus === "paused"
-			? "paused"
-			: rawStatus === "budget_limited"
-				? "budget_limited"
-				: rawStatus === "blocked"
-					? "blocked"
-					: "active";
+	const status = normalizeGoalStatus(raw.status);
 	// autoContinue normalizes independently of status.
 	const autoContinue = typeof raw.autoContinue === "boolean" ? raw.autoContinue : true;
 	const usage = normalizeUsage(raw.usage);

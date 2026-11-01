@@ -24,6 +24,7 @@
  * mode preservation — concurrent processes never lose each other's keys.
  */
 
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -1002,7 +1003,17 @@ export function acquirePathLock(
 	const retryMs = opts.retryMs ?? 5;
 	const ttlMs = opts.staleTtlMs ?? 30_000;
 	fs.mkdirSync(path.dirname(lockPath), { recursive: true });
-	const payload = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() });
+	// The token identifies this holder: after a stale recovery the file at
+	// lockPath may belong to someone else, and release() must not delete it.
+	const token = randomUUID();
+	const payload = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString(), token });
+	const readLockText = (): string | undefined => {
+		try {
+			return fs.readFileSync(lockPath, "utf8");
+		} catch {
+			return undefined;
+		}
+	};
 
 	for (let attempt = 0; attempt < attempts; attempt += 1) {
 		try {
@@ -1012,6 +1023,7 @@ export function acquirePathLock(
 				release(): void {
 					if (released) return;
 					released = true;
+					if (readLockText() !== payload) return;
 					try {
 						fs.unlinkSync(lockPath);
 					} catch {
@@ -1023,14 +1035,18 @@ export function acquirePathLock(
 			if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
 			try {
 				const stat = fs.statSync(lockPath);
+				const observedText = readLockText();
 				let pid: number | undefined;
 				try {
-					pid = (JSON.parse(fs.readFileSync(lockPath, "utf8")) as Record<string, unknown>).pid as number | undefined;
+					pid = (JSON.parse(observedText ?? "") as Record<string, unknown>).pid as number | undefined;
 				} catch {
 					pid = undefined;
 				}
 				const stale = Date.now() - stat.mtimeMs > ttlMs || (typeof pid === "number" && !pidAlive(pid));
 				if (stale) {
+					// Only remove the exact stale file we observed: another writer may
+					// have recovered it and taken the lock since.
+					if (readLockText() !== observedText) continue;
 					try {
 						fs.unlinkSync(lockPath);
 					} catch {

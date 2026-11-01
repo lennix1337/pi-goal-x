@@ -40,9 +40,10 @@ export interface GoalRuntimeHooks {
 
 export class GoalRuntime {
 	// ── continuation scheduling ──────────────────────────────────────────
+	/** Goal whose checkpoint was dispatched and not yet picked up by a turn. */
 	private continuationQueuedFor: string | null = null;
-	private continuationScheduledFor: string | null = null;
-	private continuationTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Pending send attempt: the goal and its timer exist together or not at all. */
+	private continuationScheduled: { goalId: string; timer: ReturnType<typeof setTimeout> } | null = null;
 	private networkErrorRetryGoalId: string | null = null;
 	private networkErrorRetryAttempt = 0;
 	private networkErrorRetryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -77,16 +78,13 @@ export class GoalRuntime {
 
 	/** Clear the pending timer but keep the queued marker (used at session shutdown). */
 	clearContinuationTimer(): void {
-		if (this.continuationTimer) {
-			clearTimeout(this.continuationTimer);
-			this.continuationTimer = null;
-		}
-		this.continuationScheduledFor = null;
+		if (this.continuationScheduled) clearTimeout(this.continuationScheduled.timer);
+		this.continuationScheduled = null;
 	}
 
 	/** Whether a continuation is queued or scheduled for this goal id. */
 	continuationPendingFor(goalId: string): boolean {
-		return this.continuationQueuedFor === goalId || this.continuationScheduledFor === goalId;
+		return this.continuationQueuedFor === goalId || this.continuationScheduled?.goalId === goalId;
 	}
 
 	/**
@@ -105,15 +103,19 @@ export class GoalRuntime {
 		} catch {
 			return;
 		}
-		this.continuationScheduledFor = goalId;
-		this.continuationTimer = setTimeout(() => this.sendQueuedContinuation(ctx, goalId), delay);
-		this.continuationTimer.unref?.();
+		this.scheduleSend(ctx, goalId, delay);
+	}
+
+	private scheduleSend(ctx: ExtensionContext, goalId: string, delay: number): void {
+		const timer = setTimeout(() => this.sendQueuedContinuation(ctx, goalId), delay);
+		timer.unref?.();
+		this.continuationScheduled = { goalId, timer };
 	}
 
 	/** Cancel a pending continuation for a goal id (e.g. after update/clear/focus change). */
 	cancelContinuationFor(goalId: string): void {
 		if (this.continuationQueuedFor === goalId) this.continuationQueuedFor = null;
-		if (this.continuationScheduledFor === goalId) this.clearContinuationState();
+		if (this.continuationScheduled?.goalId === goalId) this.clearContinuationState();
 		if (this.networkErrorRetryGoalId === goalId) this.clearNetworkErrorBackoff();
 	}
 
@@ -167,8 +169,7 @@ export class GoalRuntime {
 	}
 
 	private sendQueuedContinuation(ctx: ExtensionContext, scheduledGoalId: string): void {
-		this.continuationTimer = null;
-		this.continuationScheduledFor = null;
+		this.continuationScheduled = null;
 		if (!this.hooks.isActionable(scheduledGoalId)) {
 			if (this.continuationQueuedFor === scheduledGoalId) this.continuationQueuedFor = null;
 			return;
@@ -180,9 +181,7 @@ export class GoalRuntime {
 			return;
 		}
 		if (delay > 0) {
-			this.continuationScheduledFor = scheduledGoalId;
-			this.continuationTimer = setTimeout(() => this.sendQueuedContinuation(ctx, scheduledGoalId), delay);
-			this.continuationTimer.unref?.();
+			this.scheduleSend(ctx, scheduledGoalId, delay);
 			return;
 		}
 		const goal = this.hooks.getGoal();

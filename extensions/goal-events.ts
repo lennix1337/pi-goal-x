@@ -93,9 +93,7 @@ export function registerGoalEvents(core: GoalCore): void {
 	pi.on("message_start", async (event, ctx) => { core.scheduler.message(ctx, event.message); });
 	pi.on("turn_start", async (_event, ctx) => {
 		core.scheduler.turn(ctx);
-		// Per-turn flag resets (#4 + C9 fix).
 		core.advanceTurnSeq();
-		core.goalWorkToolCalledThisTurn = false;
 		core.beginAccounting();
 		core.goalService.beginTurn(ctx, core.focusedGoalId); // P1-3 transaction buffer
 		core.touchGoalActivity(); // F5
@@ -130,7 +128,6 @@ export function registerGoalEvents(core: GoalCore): void {
 		}
 		// Track Oracle work attempts; this does not authorize scheduling.
 		if (isMeaningfulProgressToolCall(event.toolName, asRecord(event)?.args)) {
-			core.goalWorkToolCalledThisTurn = true;
 			// Issue #26: record a meaningful work attempt against armed Oracle
 			// advice. get_goal / echo-only reads are excluded upstream by
 			// isMeaningfulProgressToolCall.
