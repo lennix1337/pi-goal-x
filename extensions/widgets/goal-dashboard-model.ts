@@ -464,22 +464,17 @@ export function formatBudget(used: number, total: number): string {
 // Whole-model derivation
 // ---------------------------------------------------------------------------
 
-const presentationCache = new WeakMap<object, Map<string, {taskProgress: TaskProgress | undefined; taskTree: DashboardTaskNode[]; currentTask: DashboardCurrentTask | undefined; taskTitles: Map<string, string>}>>();
+/**
+ * Task rows, progress and current task for one render. Derived per read: the
+ * task index is not cached, so no stable key exists, and one walk of the tasks
+ * costs less than the key comparison a memo would need.
+ */
 function taskPresentation(goal: GoalRecord, disabled: boolean) {
- const index = taskIndex(disabled ? [] : goal.taskList?.tasks);
- let entries = presentationCache.get(index);
- if (!entries) { entries = new Map(); presentationCache.set(index, entries); }
- const key = `${disabled}:${goal.currentTaskId ?? ""}`;
- const hit = entries.get(key);
- if (hit) return hit;
  const taskProgress = disabled ? undefined : deriveTopLevelTaskProgress(goal);
- const tree = disabled ? [] : flattenTaskTree(index.tasks);
+ const tree = disabled ? [] : flattenTaskTree(goal.taskList?.tasks);
  const currentTask = disabled ? undefined : deriveCurrentTask(goal, tree);
  const taskTree = tree.map(n => n.id === currentTask?.id ? {...n, isCurrent: true} : n);
- const value = {taskProgress, taskTree, currentTask, taskTitles: new Map(taskTree.map(n => [n.id, n.title]))};
- if (entries.size >= 64) entries.delete(entries.keys().next().value!);
- entries.set(key, value);
- return value;
+ return {taskProgress, taskTree, currentTask, taskTitles: new Map(taskTree.map(n => [n.id, n.title]))};
 }
 
 /**

@@ -5,7 +5,6 @@ import path from "node:path";
 import { createGoal, type GoalTask } from "../extensions/goal-record.ts";
 import { goalDetailPage } from "../extensions/goal-detail.ts";
 import { goalPrompt, taskListBlock, MAX_PROMPT_FRAGMENT_CHARS } from "../extensions/prompts/goal-prompts.ts";
-import { taskIndex } from "../extensions/goal-task-index.ts";
 import { deriveGoalDashboardModel } from "../extensions/widgets/goal-dashboard-model.ts";
 import { deriveGoalActivity } from "../extensions/goal-activity.ts";
 import { appendGoalEvents, appendGoalEvent, readGoalLedger, goalActivityEvents, goalOracleState, invalidateGoalLedgerCache, loadLedgerState, LEDGER_CHECKPOINT_FILE, type GoalLedgerEvent } from "../extensions/goal-ledger.ts";
@@ -154,16 +153,15 @@ test("compact context preserves critical rules and exposes omitted task descenda
  assert.match(goalPrompt(goal),/Updated objective/);
 });
 
-test("task presentation reuses usage-only work but invalidates in-place content edits", () => {
+test("task presentation is derived per read: usage-only changes keep the rows, in-place edits show on the next read", () => {
  const goal=createGoal({objective:"Test",autoContinue:true,sisyphus:false});
  goal.taskList={tasks:structuredClone(tasks),blockCompletion:true,proposedAt:"2026-09-01"};
  const options={focused:true,otherOpenGoals:0};
  const first=deriveGoalDashboardModel(goal,options)!;
  goal.usage.tokensUsed=100;
  const second=deriveGoalDashboardModel(goal,options)!;
- assert.equal(first.taskTree,second.taskTree); assert.equal(second.usage.tokens,100);
- const old=taskIndex(goal.taskList.tasks);
+ assert.deepEqual(second.taskTree,first.taskTree); assert.equal(second.usage.tokens,100);
  goal.taskList.tasks[0]!.title="Changed";
- assert.notEqual(taskIndex(goal.taskList.tasks),old); assert.equal(old.byId.get("parent")!.title,"Parent");
+ assert.equal(first.taskTree.find(n=>n.id==="parent")!.title,"Parent");
  assert.equal(deriveGoalDashboardModel(goal,options)!.taskTree[0]!.title,"Changed");
 });
