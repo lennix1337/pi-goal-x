@@ -199,43 +199,13 @@ function lifecyclePolicyBlock(autonomous: boolean, strict: boolean): string {
  ].join("\n");
 }
 
-/**
- * Fragment memo (P1-4): the goal prompt block is rebuilt per context call;
- * keyed on every field that changes output, so steady-state turns reuse it.
- */
-const promptFragmentCache: Array<{key: readonly unknown[]; value: string; chars: number}> = [];
-let promptCacheChars = 0;
-
-function cachedPrompt(goal: GoalRecord, settings: GoalSettings | undefined, kind: "goal" | "continuation", build: () => string): string {
- const key = [kind, goal.id, goal.status, goal.autoContinue, goal.sisyphus, goal.objective,
-  goal.verificationContract, settings?.disableTasks ? undefined : taskIndex(goal.taskList?.tasks),
-  goal.taskList?.blockCompletion, promptProfile(), goal.currentTaskId, settings?.disableTasks, settings?.disableContracts, effectiveRunLimit(goal, settings?.maxAutonomousRuns) !== 0, settings?.strictExecutionContract === true, !!goal.scheduler?.wait];
- for (let i = promptFragmentCache.length - 1; i >= 0; i--) {
-  const entry = promptFragmentCache[i]!;
-  if (key.every((part, j) => part === entry.key[j])) return entry.value;
- }
- const value = build();
- // Include source text retained by this entry in the cache's memory allowance.
- const chars = goal.objective.length + (goal.verificationContract?.length ?? 0) + value.length
-  + (goal.taskList ? goal.taskList.tasks.reduce((n, task) => n + retainedTaskChars(task), 0) : 0);
- if (chars <= 2_000_000) {
-  while (promptFragmentCache.length >= 32 || promptCacheChars + chars > 2_000_000) promptCacheChars -= promptFragmentCache.shift()!.chars;
-  promptFragmentCache.push({key, value, chars}); promptCacheChars += chars;
- }
- return value;
-}
-function retainedTaskChars(task: GoalTask): number {
- return task.id.length + task.title.length + (task.verificationContract?.length ?? 0) + (task.evidence?.length ?? 0)
-  + (task.skipReason?.length ?? 0) + (task.subtasks?.reduce((n, child) => n + retainedTaskChars(child), 0) ?? 0);
-}
-
 export function goalPromptParts(goal: GoalRecord, settings?: GoalSettings, contextUsage?: GoalContextUsage): { state: string; counters: string } {
 	// The policy block changes only when the goal itself changes; the counters
 	// change nearly every turn. Splitting them lets request-only injection retain
 	// each at its own rate so consecutive provider requests stay prefix-stable.
 	// Scheduling instructions ride with the policy block: they are cleared by
 	// omission, so a retained copy would keep issuing a cancelled order.
-	const fixed = cachedPrompt(goal, settings, "goal", () => buildGoalPrompt(goal, settings));
+	const fixed = buildGoalPrompt(goal, settings);
 	const { runs, instructions } = schedulerSummaryParts(goal.scheduler, effectiveRunLimit(goal, settings?.maxAutonomousRuns), settings?.showAutonomousRuns);
 	const limits = `Limits: lifetime tokens=${goal.tokenBudget ?? "none"}; runs=${effectiveRunLimit(goal, settings?.maxAutonomousRuns) ?? "unlimited"}.`;
 	const state = [fixed, instructions, limits, "Usage spans goal turns, not context. Latest snapshot supersedes earlier snapshots."].filter(Boolean).join("\n");

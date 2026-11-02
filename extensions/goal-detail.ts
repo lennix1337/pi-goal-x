@@ -14,11 +14,10 @@ const detailCache: Array<{inputs: readonly unknown[]; result: DetailSource}> = [
 let detailCacheChars = 0;
 
 function compiledSource(goal: GoalRecord, query: GoalDetailQuery, events: readonly GoalLedgerEvent[], revision?: object): DetailSource | undefined {
- const index = query.section === "tasks" ? taskIndex(goal.taskList?.tasks) : undefined;
- const inputs = [goal.id, query.section, query.task_id, ...(query.section === "objective" ? [goal.objective, goal.verificationContract]
-  : query.section === "tasks" ? [index, goal.currentTaskId] : [revision])];
- // Arbitrary caller-owned histories remain content checked; only the ledger can supply a generation.
- const cacheable = query.section !== "history" || revision !== undefined;
+ // Objective text and ledger history are memoized (content, or the ledger's generation).
+ // Tasks are rendered per read: the task index is no longer cached, so there is no identity to key on.
+ const inputs = [goal.id, query.section, query.task_id, ...(query.section === "objective" ? [goal.objective, goal.verificationContract] : [revision])];
+ const cacheable = query.section === "objective" || (query.section === "history" && revision !== undefined);
  if (cacheable) for (let i = detailCache.length - 1; i >= 0; i--) {
   const entry = detailCache[i]!;
   if (inputs.length === entry.inputs.length && inputs.every((value, j) => value === entry.inputs[j])) return entry.result;
@@ -27,7 +26,7 @@ function compiledSource(goal: GoalRecord, query: GoalDetailQuery, events: readon
  if (query.section === "objective") source = `${goal.objective}${goal.verificationContract ? `\n\nVerification contract:\n${goal.verificationContract}` : ""}`;
  else if (query.section === "history") source = events.filter(e => "goalId" in e && e.goalId === goal.id).map(e => `${localStamp(e.at)} ${JSON.stringify(e)}`).join("\n");
  else {
-  const rows = index!.ordered;
+  const rows = taskIndex(goal.taskList?.tasks).ordered;
   const selected = query.task_id ? rows.find(row => row.task.id === query.task_id) : undefined;
   if (query.task_id && !selected) return undefined;
   source = (selected ? [selected] : rows).map(({task: {subtasks, ...task}, parentId}) => JSON.stringify({...task, parent_id: parentId, ...(task.id === goal.currentTaskId ? {current: true} : {})})).join("\n");

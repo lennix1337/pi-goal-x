@@ -50,21 +50,37 @@ test("resolved settings invalidate on environment, layer mutations and explicit 
  } finally {f.cleanup(); invalidateGoalSettingsCache();}
 });
 
-test("task and prompt caches observe nested edits, reparenting, focus and settings without retaining mutable inputs", () => {
+test("task index and prompt reads observe nested edits, reparenting, focus and settings", () => {
  const f = fixture(); try {
   const tasks: GoalTask[] = [{id:"p", title:"Parent", status:"pending", subtasks:[{id:"c", title:"Child", status:"pending", verificationContract:"Original contract"}]}, {id:"n",title:"Next",status:"pending"}];
   const goal = {...f.goal, taskList:{tasks,blockCompletion:true,proposedAt:"today"}, currentTaskId:"c"};
-  const old = taskIndex(tasks); const original = goalPrompt(goal);
+  const original = goalPrompt(goal);
   const child = tasks[0]!.subtasks![0]!;
   child.verificationContract = "Revised contract"; child.evidence = "Full evidence 🧭";
-  assert.notEqual(taskIndex(tasks), old); assert.equal(old.byId.get("c")!.verificationContract, "Original contract");
+  assert.equal(taskIndex(tasks).byId.get("c")!.verificationContract, "Revised contract");
   assert.match(goalPrompt(goal), /Revised contract/); assert.notEqual(goalPrompt(goal),original);
   child.status = "complete"; tasks[0]!.subtasks = []; tasks[1]!.subtasks = [child];
   assert.equal(taskIndex(tasks).ordered.find(row => row.task.id === "c")!.parentId, "n");
   goal.currentTaskId = "n"; assert.match(goalPrompt(goal), /Current: n/);
   assert.doesNotMatch(goalPrompt(goal,{disableTasks:true}), /TASK LIST/);
-  const copy = structuredClone(tasks); assert.equal(taskIndex(copy), taskIndex(tasks));
+  const copy = structuredClone(tasks);
+  const rows = (list: GoalTask[]) => taskIndex(list).ordered.map(row => [row.task.id, row.depth, row.parentId, row.task.status]);
+  assert.deepEqual(rows(copy), rows(tasks));
  } finally {f.cleanup();}
+});
+
+test("task pages are rendered per read: in-place edits show on the next page, stale cursors are rejected, and rebuilt prompts repeat exactly", () => {
+ const goal = createGoal({objective:"Long plan", autoContinue:true, sisyphus:false});
+ goal.taskList = {blockCompletion:true, proposedAt:"2026-10-01", tasks: Array.from({length: 40}, (_, i): GoalTask => ({id:`t${i}`, title:`Task ${i} ${"x".repeat(200)}`, status:"pending"}))};
+ const first = goalDetailPage(goal, {section:"tasks"});
+ const cursor = first.ok ? first.nextCursor : undefined;
+ assert.ok(cursor, "a long task list is paged");
+ goal.taskList.tasks[0]!.title = "Renamed task";
+ assert.equal(goalDetailPage(goal, {section:"tasks", cursor}).ok, false, "a cursor minted before the edit is stale");
+ const fresh = goalDetailPage(goal, {section:"tasks"});
+ assert.ok(fresh.ok && fresh.content.includes("Renamed task"), "the next read shows the in-place edit");
+ assert.deepEqual(goalDetailPage(goal, {section:"tasks"}), fresh, "repeated reads of unchanged tasks are identical");
+ assert.equal(goalPrompt(goal), goalPrompt(goal), "a rebuilt goal prompt repeats exactly");
 });
 
 test("cached history pages remain lossless and reject stale cursors after append or external refresh", () => {
