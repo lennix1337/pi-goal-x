@@ -165,3 +165,26 @@ test("task presentation is derived per read: usage-only changes keep the rows, i
  assert.equal(first.taskTree.find(n=>n.id==="parent")!.title,"Parent");
  assert.equal(deriveGoalDashboardModel(goal,options)!.taskTree[0]!.title,"Changed");
 });
+
+test("a numeric cursor is the character offset shown in the page header, and a missing task names the real ids", () => {
+ const goal = createGoal({objective: "a".repeat(3999)+"🧪"+"b".repeat(6200), autoContinue: true, sisyphus: false});
+ const first = goalDetailPage(goal, {section: "objective"}); assert.ok(first.ok && first.nextCursor);
+ const viaToken = goalDetailPage(goal, {section: "objective", cursor: first.nextCursor}); assert.ok(viaToken.ok);
+ // The header said "(0–3999/…)": continuing from that number reads the same next page as the token.
+ const end = Number(/\(0–(\d+)\//.exec(first.text)![1]);
+ const viaOffset = goalDetailPage(goal, {section: "objective", cursor: String(end)}); assert.ok(viaOffset.ok);
+ assert.equal(viaOffset.content, viaToken.content);
+ // An offset inside a surrogate pair starts at the whole character.
+ const mid = goalDetailPage(goal, {section: "objective", cursor: "4000"}); assert.ok(mid.ok);
+ assert.ok(mid.content.startsWith("🧪"));
+ // Past the end, negative, or not a plain integer: refused, naming the length.
+ for (const cursor of [String(goal.objective.length + 1), "-1", "40.5", "1e3"]) {
+  const page = goalDetailPage(goal, {section: "objective", cursor});
+  assert.equal(page.ok, false, cursor);
+  if (cursor === String(goal.objective.length + 1)) assert.match(page.text, new RegExp(`${goal.objective.length} chars`));
+ }
+ const withTasks = {...goal, taskList: {tasks: structuredClone(tasks), blockCompletion: true, proposedAt: "2026-09-07T00:00:00Z"}};
+ const missing = goalDetailPage(withTasks, {section: "tasks", task_id: "quota-recovery"});
+ assert.equal(missing.ok, false);
+ assert.match(missing.text, /Task "quota-recovery" not found\. Task ids: parent, child, next\./);
+});
