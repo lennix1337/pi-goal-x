@@ -64,7 +64,7 @@ pi.registerTool(defineTool({
 	parameters: Type.Object({
   section: Type.Optional(StringEnum(["summary", "objective", "tasks", "history"] as const)),
   task_id: Type.Optional(Type.String({description: "With section=tasks, retrieve one task."})),
-  cursor: Type.Optional(Type.String({maxLength: 256, description: "Next page; repeat section/task."})),
+  cursor: Type.Optional(Type.String({maxLength: 256, description: "Next page: the token from the last read, or a character offset from its header; repeat section/task."})),
 		verbose: Type.Optional(Type.Boolean({ description: "Full detail mode." })),
 		include_history: Type.Optional(Type.Boolean()),
 	}, { additionalProperties: false }),

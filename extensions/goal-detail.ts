@@ -45,10 +45,19 @@ function compiledSource(goal: GoalRecord, query: GoalDetailQuery, events: readon
 export function goalDetailPage(goal: GoalRecord, query: GoalDetailQuery, events: readonly GoalLedgerEvent[] = [], historyRevision?: object): GoalDetailPage {
  if (query.task_id !== undefined && query.section !== "tasks") return {ok: false, text: "task_id requires section=tasks."};
  const compiled = compiledSource(goal, query, events, historyRevision);
- if (!compiled) return {ok: false, text: `Task "${query.task_id}" not found.`};
+ if (!compiled) {
+  const ids = taskIndex(goal.taskList?.tasks).ordered.map(row => row.task.id);
+  return {ok: false, text: `Task "${query.task_id}" not found. ${ids.length ? `Task ids: ${ids.slice(0, 20).join(", ")}${ids.length > 20 ? `, … (${ids.length} in all)` : ""}.` : "This goal has no tasks."}`};
+ }
  const {source, key} = compiled;
  let offset = 0;
- if (query.cursor) {
+ // A plain integer is the character offset the page header shows, read against the current text;
+ // it trades the token's staleness check for a position the caller chose.
+ if (query.cursor && /^\d{1,9}$/.test(query.cursor)) {
+  offset = Number(query.cursor);
+  if (offset > source.length) return {ok: false, text: `Cursor ${offset} is past the end: this ${query.section} section has ${source.length} chars.`};
+  if (/[\uDC00-\uDFFF]/.test(source[offset] ?? "") && /[\uD800-\uDBFF]/.test(source[offset - 1] ?? "")) offset--;
+ } else if (query.cursor) {
   try {
    if (query.cursor.length > 256) throw new Error();
    const parsed = JSON.parse(Buffer.from(query.cursor, "base64url").toString("utf8"));
