@@ -213,3 +213,15 @@ optimise them.
   read-floor exempt (one mandatory read op). Gates: naf PASS (26 headroom
   met, 69 exempt no-regression), extension-review-plan PASS. 655 tests green,
   tsc clean.
+
+- **B2 mutation sampling correction:** CI run 41911309494 compared a single
+  mutation reported as p50 (1.8ms base, 67.1ms head). The timed section starts
+  after harness startup and task creation; the cause of that particular slow
+  observation is unknown. The PR changes no production runtime files. On one
+  Windows runner, five original one-sample paired processes gave base median
+  2.8ms (2.6–3.2) and head median 2.8ms (2.7–3.4). B2 now measures 20 fresh,
+  independently prepared fixtures, retaining the first sample, full range and
+  maximum alongside p50/p95. The CI base uses the identical revised fixture;
+  regression thresholds are unchanged. One paired revised run gave base p50
+  1.8ms (1.7–2.6, first 2.6) and head p50 1.8ms (1.7–2.7, first 2.7).
+  This does not establish the cause of the CI outlier or guarantee CI passes.

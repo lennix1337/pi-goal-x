@@ -8,9 +8,13 @@ const testsRoot = join(projectRoot, "tests");
 const integrationRoot = join(testsRoot, "integration");
 const e2eRoot = join(testsRoot, "e2e");
 const manifestPath = join(testsRoot, ".test-manifest.json");
-const suite = process.argv[2] ?? "unit";
+const suite = process.argv.slice(2).find((arg) => !arg.startsWith("--")) ?? "unit";
 const wantSelfCheck = process.argv.includes("--selfcheck");
 const wantWriteManifest = process.argv.includes("--write-manifest");
+if (process.argv.slice(2).some((arg) => !["unit", "integration", "e2e", "all", "--selfcheck", "--write-manifest"].includes(arg)) || process.argv.slice(2).filter((arg) => !arg.startsWith("--")).length > 1) {
+	throw new Error("Invalid runner arguments: " + process.argv.slice(2).join(" "));
+}
+const rel = (file) => file.replace(projectRoot, ".").replaceAll("\\", "/");
 
 function discover(directory) {
 	return readdirSync(directory, { withFileTypes: true })
@@ -42,9 +46,9 @@ if (wantWriteManifest) {
 	writeFileSync(manifestPath, JSON.stringify({
 		version: 1,
 		note: "Expected test-entry manifest for the runner self-check (npm run test:selfcheck). Regenerate with: node scripts/run-unit-tests.mjs --write-manifest",
-		unitFiles: unitFiles.map((file) => file.replace(projectRoot, ".")),
-		integrationFiles: integrationFiles.map((file) => file.replace(projectRoot, ".")),
-		e2eFiles: e2eFiles.map((file) => file.replace(projectRoot, ".")),
+		unitFiles: unitFiles.map(rel),
+		integrationFiles: integrationFiles.map(rel),
+		e2eFiles: e2eFiles.map(rel),
 	}, null, 2) + "\n");
 	console.log("Wrote " + manifestPath + " (" + unitFiles.length + " unit, " + integrationFiles.length + " integration, " + e2eFiles.length + " e2e entries).");
 	process.exit(0);
@@ -55,7 +59,6 @@ if (wantSelfCheck) {
 		throw new Error("Missing " + manifestPath + ". Run: node scripts/run-unit-tests.mjs --write-manifest");
 	}
 	const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-	const rel = (file) => file.replace(projectRoot, ".");
 	const expectedUnit = new Set(manifest.unitFiles ?? []);
 	const expectedIntegration = new Set(manifest.integrationFiles ?? []);
 	const expectedE2e = new Set(manifest.e2eFiles ?? []);
@@ -82,6 +85,9 @@ const startedAt = Date.now();
 // releases so the same script works across the supported Node range (22.15+).
 const isolationProbe = spawnSync(process.execPath, ["--test-isolation=none", "--test", "--help"], { stdio: "ignore" });
 const isolationArgs = isolationProbe.status === 0 ? ["--test-isolation=none"] : [];
+const testEnv = { ...process.env };
+delete testEnv.PI_SUBAGENT_CHILD;
+delete testEnv.PI_SUBAGENT_DEPTH;
 const result = spawnSync(
 	process.execPath,
 	[
@@ -91,7 +97,7 @@ const result = spawnSync(
 		...isolationArgs,
 		...testFiles,
 	],
-	{ cwd: projectRoot, stdio: "inherit" },
+	{ cwd: projectRoot, stdio: "inherit", env: testEnv },
 );
 
 const elapsedMs = Date.now() - startedAt;

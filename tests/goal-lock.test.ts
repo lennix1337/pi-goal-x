@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -54,7 +54,9 @@ test("a settings-lock holder whose lock was recovered as stale cannot release th
 	withCwd((cwd) => {
 		const lockPath = path.join(cwd, "settings.json.lock");
 		const first = acquirePathLock(lockPath);
-		const second = acquirePathLock(lockPath, { staleTtlMs: -1, attempts: 2, retryMs: 1 });
+		// Make the stale condition independent of filesystem timestamp precision.
+		utimesSync(lockPath, new Date(0), new Date(0));
+		const second = acquirePathLock(lockPath, { staleTtlMs: 1, attempts: 2, retryMs: 1 });
 		first.release();
 		assert.throws(() => acquirePathLock(lockPath, { attempts: 2, retryMs: 1 }), /Timed out acquiring the settings lock/);
 		second.release();

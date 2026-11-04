@@ -66,30 +66,39 @@ export async function run(baseline) {
 		}
 	}
 
-	// ── mutation turn: one update_goal_task through the real tool ───────
+	// Each sample starts from a fresh fixture; setup stays outside the timed mutation.
 	{
-		const f = focusedFixture();
-		try {
-			const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries });
-			await startHarness(h);
-			// give the goal a task list first
-			const setTasks = h.tools.get("set_goal_tasks");
-			await setTasks.execute("st-1", { tasks: [{ id: "t1", title: "Do the thing" }], block_completion: false }, new AbortController().signal, undefined, h.ctx);
-			beginFsCount();
-			const t0 = performance.now();
-			const update = h.tools.get("update_goal_task");
-			await update.execute("ut-1", { task_id: "t1", status: "complete", evidence: "benchmark evidence" }, new AbortController().signal, undefined, h.ctx);
-			const ms = performance.now() - t0;
-			const ops = endFsCount();
-			baseline.add({
-				id: "B2.mutationturn.task", label: "per-turn mutation (one update_goal_task)",
-				modules: "goal-task-tools + goal-service + storage/goal-files + goal-ledger + storage/goal-lock",
-				fixture: "1 goal, 1 task", n: 1, p50: Math.round(ms * 10) / 10, p95: Math.round(ms * 10) / 10, max: Math.round(ms * 10) / 10,
-				ops, notes: `fs ops for one task mutation: ${ops} (P1-3 batches to one lock+write+append)`,
-			});
-		} finally {
-			f.cleanup();
+		const samples = [];
+		const opSamples = [];
+		for (let i = 0; i < 20; i++) {
+			const f = focusedFixture();
+			try {
+				const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries });
+				await startHarness(h);
+				const setTasks = h.tools.get("set_goal_tasks");
+				await setTasks.execute("st-1", { tasks: [{ id: "t1", title: "Do the thing" }], block_completion: false }, new AbortController().signal, undefined, h.ctx);
+				beginFsCount();
+				const t0 = performance.now();
+				const update = h.tools.get("update_goal_task");
+				await update.execute("ut-1", { task_id: "t1", status: "complete", evidence: "benchmark evidence" }, new AbortController().signal, undefined, h.ctx);
+				samples.push(performance.now() - t0);
+				opSamples.push(endFsCount());
+			} finally {
+				f.cleanup();
+			}
 		}
+		const round = (value) => Math.round(value * 10) / 10;
+		const first = round(samples[0]);
+		samples.sort((a, b) => a - b);
+		opSamples.sort((a, b) => a - b);
+		const min = round(samples[0]);
+		const max = round(samples[samples.length - 1]);
+		baseline.add({
+			id: "B2.mutationturn.task", label: "per-turn mutation (one update_goal_task)",
+			modules: "goal-task-tools + goal-service + storage/goal-files + goal-ledger + storage/goal-lock",
+			fixture: "1 goal, 1 task", n: samples.length, min, p50: round(samples[10]), p95: round(samples[19]), max,
+			ops: opSamples[10], notes: `fs ops p50: ${opSamples[10]}; first ${first}ms; range ${min}–${max}ms`,
+		});
 	}
 	return baseline;
 }

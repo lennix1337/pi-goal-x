@@ -95,6 +95,8 @@ jobs:
           ln -s "$GITHUB_WORKSPACE/node_modules" .benchmark-base/node_modules
           # Main preserves compact historical checkpoints; use the corrected fixture for both runs.
           cp experiments/bench/b10-checkpoint-growth.mjs .benchmark-base/experiments/bench/b10-checkpoint-growth.mjs
+          # Measure B2 with the same independent-sample fixture on both revisions.
+          cp experiments/bench/b2-turn-accounting.mjs .benchmark-base/experiments/bench/b2-turn-accounting.mjs
           npm --prefix .benchmark-base run bench:naf -- after naf
           npm run bench:naf -- after naf
           PI_GOAL_BENCH_REFERENCE="$GITHUB_WORKSPACE/.benchmark-base/experiments/bench/baseline-naf-after.json" npm run bench:gate:naf
