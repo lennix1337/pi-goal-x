@@ -72,6 +72,8 @@ jobs:
         run: npm run lint
       - name: Full test suite
         run: npm run test:all
+      - name: Guard mutation checks
+        run: npm run mutations
       - name: Test-manifest self-check
         run: npm run test:selfcheck
       - name: Package dry run
