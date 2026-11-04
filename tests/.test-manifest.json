@@ -64,6 +64,7 @@
     ".tests/goal-task-lifecycle.test.ts",
     ".tests/goal-task-tools.test.ts",
     ".tests/goal-tasks.test.ts",
+    ".tests/goal-test-runner.test.ts",
     ".tests/goal-tool-names.test.ts",
     ".tests/goal-tool-visibility.test.ts",
     ".tests/goal-turn-transaction.test.ts",
