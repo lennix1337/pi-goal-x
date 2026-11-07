@@ -47,6 +47,7 @@
     ".tests/goal-pool.test.ts",
     ".tests/goal-prompt-cache.test.ts",
     ".tests/goal-prompts.test.ts",
+    ".tests/goal-properties.test.ts",
     ".tests/goal-questionnaire.test.ts",
     ".tests/goal-record.test.ts",
     ".tests/goal-recovery.test.ts",

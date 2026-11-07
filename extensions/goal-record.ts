@@ -281,7 +281,7 @@ export function normalizeTaskList(value: unknown): GoalTaskList | undefined {
 	const tasksRaw = raw.tasks;
 	if (!Array.isArray(tasksRaw)) return undefined;
 	const tasks: GoalTask[] = tasksRaw
-		.map((item) => (item && typeof item !== "object" || Array.isArray(item) ? undefined : normalizeTaskItem(item as Record<string, unknown>)))
+		.map((item) => (item && typeof item === "object" && !Array.isArray(item) ? normalizeTaskItem(item as Record<string, unknown>) : undefined))
 		.filter((t): t is GoalTask => !!t);
 	if (tasks.length === 0) return undefined;
 	return {
