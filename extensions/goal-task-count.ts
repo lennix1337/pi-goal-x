@@ -47,7 +47,8 @@ export function countTaskSubtree(
 		total,
 		complete: done,
 		skipped: rawSkipped,
-		pending: total - done,
+		// Pending is never skipped work: skipping a task resolves it for the completion gate.
+		pending: total - rawComplete - rawSkipped,
 		...(opts.collectPending ? { pendingTasks } : {}),
 	};
 }
