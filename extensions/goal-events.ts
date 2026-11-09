@@ -302,10 +302,14 @@ export function registerGoalEvents(core: GoalCore): void {
 		core.accountProgress(ctx);
 	});
 
-	pi.on("session_compact", async (_event, ctx) => {
+	pi.on("session_compact", async (event, ctx) => {
 		core.goalService.flushTurn(ctx); // P1-3: persist any buffered transaction before reload
 		if (core.state.goal) core.persist(ctx);
 		core.beginAccounting();
+		// A housekeeping compaction (a harness trimming memory, marked
+		// `details.housekeeping === true`) loses nothing the goal needs: no
+		// reminder and no continuation.
+		if ((event.compactionEntry?.details as { housekeeping?: unknown } | undefined)?.housekeeping === true) return;
 		// Arm a deterministic compaction summary for the next agent turn.
 		// This replaces the generic reminder with artifact-backed state.
 		if (shouldArmPostCompactReminder(core.state.goal)) {
