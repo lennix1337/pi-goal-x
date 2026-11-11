@@ -11,6 +11,7 @@
     ".tests/goal-auditor.test.ts",
     ".tests/goal-budget.test.ts",
     ".tests/goal-command-palette.test.ts",
+    ".tests/goal-compact-status.test.ts",
     ".tests/goal-compaction.test.ts",
     ".tests/goal-completion.test.ts",
     ".tests/goal-comprehensive-optimization.test.ts",

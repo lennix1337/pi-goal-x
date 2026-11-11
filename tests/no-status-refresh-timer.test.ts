@@ -22,12 +22,15 @@ test("the widget and footer status still update on state changes", () => {
 	assert.match(source, /ctx\.ui\.setStatus\("goal"/);
 });
 
-test("the focused-goal footer line is removed; the widget is the single home", () => {
-	// The status line moved into the widget (compact/expanded dashboard:
-	// `goal: <label> [<usage>] (+N open)`). The focused-goal footer segment
-	// must be cleared — not composed from footerStatus — so the bottom of the
-	// screen stops duplicating goal status; the unfocused hint stays.
+test("the goal box is a footer piece: short `meta:` status, no above-editor box by default", () => {
+	// The status moved to a one-line `meta: ...` footer segment (also emitted
+	// on pi.events); the focused-goal footer segment is not composed from
+	// footerStatus, and the unfocused banner is a plain line, not a box.
+	const line = readFileSync(new URL("../extensions/goal-status-line.ts", import.meta.url), "utf8");
 	assert.doesNotMatch(source, /footerStatus\(displayGoal\)/);
-	assert.match(source, /ctx\.ui\.setStatus\("goal", undefined\)/);
-	assert.match(source, /goal: unfocused/);
+	assert.doesNotMatch(source, /goal: unfocused/);
+	assert.match(source, /goalStatusPayload\(/);
+	assert.match(line, /goal-x:status:v1/);
+	assert.match(line, /meta: /);
+	assert.match(line, /\/goal-focus/);
 });
