@@ -27,6 +27,9 @@ const cases = [
 	["property-invalid-run-limit-lifts-cap", "extensions/goal-run-budget.ts", `return validateRunLimit(value) ? 0 : value as number | null | undefined;`, `return value as number | null | undefined;`, "property persisted run limit", "goal-properties"],
 	["property-backoff-ladder-shift", "extensions/network-error-backoff.ts", `NETWORK_ERROR_BACKOFF_DELAYS_MS[Math.min(attempt - 1, last)]!`, `NETWORK_ERROR_BACKOFF_DELAYS_MS[Math.min(attempt, last)]!`, "property network recovery ladder", "goal-properties"],
 	["property-skip-leaves-pending-below", "extensions/goal-policy.ts", `return skipAllSubtasks(skipped, now, reason);`, `return skipped;`, "property skipping subtasks", "goal-properties"],
+	["status-line-widget-only-when-running", "extensions/goal-status-line.ts", `if (!goal || goal.status !== "active" || !goal.autoContinue) return null;`, `if (!goal) return null;`, "focused paused goal", "goal-compact-status"],
+	["status-line-event-repeat", "extensions/goal-state.ts", `if (key === lastPublishedStatus) return;`, `if (false) return;`, "fires on every change and not on repeats", "goal-compact-status"],
+	["status-line-title-cut", "extensions/goal-status-line.ts", "const TITLE_MAX = 40;", "const TITLE_MAX = 400;", "title cut at 40", "goal-compact-status"],
 ];
 
 for (const [name, file, before, after, pattern, testFile] of cases) {
