@@ -658,7 +658,7 @@ describe("five-tool handler integration", () => {
 				await start(h);
 				await Promise.resolve(); // flush the coalesced UI microtask
 				assert.ok(
-					h.statusCalls.some((c) => c.key === "goal" && typeof c.value === "string" && c.value.includes("goal: unfocused")),
+					h.statusCalls.some((c) => c.key === "goal" && typeof c.value === "string" && c.value.startsWith("meta: ") && c.value.includes("/goal-focus")),
 					`unfocused hint visible before the setting: ${JSON.stringify(h.statusCalls)}`,
 				);
 
@@ -698,7 +698,7 @@ describe("five-tool handler integration", () => {
 				await h3.commands.get("goal-settings").handler("", h3.ctx);
 				await Promise.resolve();
 				assert.ok(
-					h3.statusCalls.some((c) => c.key === "goal" && typeof c.value === "string" && c.value.includes("goal: unfocused")),
+					h3.statusCalls.some((c) => c.key === "goal" && typeof c.value === "string" && c.value.startsWith("meta: ") && c.value.includes("/goal-focus")),
 					"live restore re-renders the unfocused hint",
 					);
 			} finally {

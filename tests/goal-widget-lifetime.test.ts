@@ -10,7 +10,26 @@ import { mutateSettingsLayer } from "../extensions/goal-settings.ts";
 import { createGoal, goalFocusDetails } from "../extensions/goal-record.ts";
 import { writeActiveGoalFile } from "../extensions/storage/goal-files.ts";
 
-for (const focused of [false, true]) test(`deferred widget render survives stale context (focused=${focused})`, async t => {
+test("an unfocused goal registers no widget, only the footer status", async t => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "goal-widget-unfocused-"));
+	t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+	writeActiveGoalFile({ cwd }, createGoal({ objective: "Keep working", autoContinue: true, sisyphus: false }));
+	const factories: unknown[] = [];
+	const core = createGoalCore({ getActiveTools: () => [], setActiveTools: () => {}, appendEntry: () => {} } as any);
+	const ctx = {
+		cwd, hasUI: true,
+		ui: { setStatus: () => {}, setWidget: (_key: string, factory: unknown) => { if (typeof factory === "function") factories.push(factory); } },
+		sessionManager: { getSessionId: () => "test", getBranch: () => [] },
+	} as unknown as ExtensionContext;
+	await core.loadState(ctx);
+	core.updateUI(ctx);
+	await Promise.resolve();
+	assert.equal(factories.length, 0);
+});
+
+// The full dashboard only exists while the user expanded it, so the stale-context
+// scenario runs with it expanded.
+for (const focused of [true]) test(`deferred widget render survives stale context (focused=${focused})`, async t => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "goal-widget-lifetime-"));
 	t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
 	const goal = writeActiveGoalFile({ cwd }, createGoal({ objective: "Keep working", autoContinue: true, sisyphus: false }));
@@ -23,6 +42,7 @@ for (const focused of [false, true]) test(`deferred widget render survives stale
 		sessionManager: { getSessionId: () => "test", getBranch: () => focused ? [{ type: "custom", customType: "pi-goal-focus", data: goalFocusDetails(goal.id, "created") }] : [] },
 	}, { get(target, property) { if (stale) throw new Error(`stale context access: ${String(property)}`); return Reflect.get(target, property); } }) as unknown as ExtensionContext;
 	await core.loadState(ctx);
+	core.toggleDashboardExpanded();
 	core.updateUI(ctx);
 	await Promise.resolve();
 	assert.ok(factories.length > 0);
@@ -39,6 +59,7 @@ for (const focused of [false, true]) test(`deferred widget render survives stale
 	const nextCtx = {cwd: nextCwd, hasUI: true, ui: {setStatus() {}, setWidget: (_key: string, factory: unknown) => { if (typeof factory === "function") factories.push(factory); }}, sessionManager: {getSessionId: () => "replacement", getBranch: () => [{type: "custom", customType: "pi-goal-focus", data: goalFocusDetails(nextGoal.id, "created")}]}} as unknown as ExtensionContext;
 	const count = factories.length;
 	await core.loadState(nextCtx);
+	core.toggleDashboardExpanded();
 	core.updateUI(nextCtx);
 	await Promise.resolve();
 	assert.ok(factories.length > count, "replacement re-registers the widget");
@@ -47,7 +68,7 @@ for (const focused of [false, true]) test(`deferred widget render survives stale
 	assert.match(nextComponent.render(100).join("\n"), /Replacement objective/);
 });
 
-test("registered dashboard widget receives scroll keys and releases its reference", async t => {
+test("registered expanded dashboard receives scroll keys and releases its reference", async t => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "goal-widget-scroll-"));
 	t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
 	const goal = createGoal({ objective: "Scroll tasks", autoContinue: false, sisyphus: false });
@@ -72,20 +93,19 @@ test("registered dashboard widget receives scroll keys and releases its referenc
 		sessionManager: { getSessionId: () => "scroll-test", getBranch: () => [{ type: "custom", customType: "pi-goal-focus", data: goalFocusDetails(goal.id, "created") }] },
 	} as unknown as ExtensionContext;
 	await core.loadState(ctx);
+	core.toggleDashboardExpanded();
 	core.updateUI(ctx);
 	await Promise.resolve();
 	const component = core.goalWidgetComponentRef.current;
 	assert.ok(component, "setWidget factory must expose the live component to the input handler");
 	component.render(100);
 	syncTerminalInputPause(core, ctx);
-	assert.equal(onInput?.("\x1b[1;6B")?.consume, true);
-	assert.match(component.render(100).join("\n"), /↑ 1 more task/);
-	assert.equal(onInput?.("\x1b[116;6u")?.consume, true);
 	assert.equal(core.isDashboardExpanded(), true);
 	assert.equal(onInput?.("\x1b[B")?.consume, true);
 	assert.match(component.render(100).join("\n"), /↑ 1 more task/);
 	mutateSettingsLayer({ scope: "project", cwd, mutation: { op: "set", path: ["keybindings", "dashboard", "toggleExpand"], value: "ctrl+alt+t" } });
 	assert.equal(onInput?.("\x1b[116;6u")?.consume, undefined, "the previous binding must stop toggling after a settings edit");
+	assert.equal(core.isDashboardExpanded(), true);
 	assert.equal(onInput?.("\x1b[116;7u")?.consume, true, "the new binding must work without restarting the session");
 	assert.equal(core.isDashboardExpanded(), false);
 

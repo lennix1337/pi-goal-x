@@ -46,6 +46,7 @@ import {
 } from "./goal-pool.ts";
 import { buildGoalRunningNotification } from "./widgets/goal-notifications.ts";
 import { GOAL_WIDGET_KEY, GoalWidgetComponent, liveDisplayGoal, makeGoalWidgetFactory, type AuditorWidgetProgress } from "./widgets/goal-widget.ts";
+import { GOAL_STATUS_EVENT, GoalLineWidget, goalStatusPayload, goalWidgetLine, type GoalStatusPayload } from "./goal-status-line.ts";
 import type { AuditVerdict } from "./widgets/auditor-dashboard-model.ts";
 import { runGoalCompletionAuditor } from "./goal-auditor.ts";
 import type { runBlockerOracle } from "./goal-oracle.ts";
@@ -572,16 +573,32 @@ export function createGoalCore(
 	}
 
 	const goalWidgetComponentRef: { current: GoalWidgetComponent | null } = { current: null };
-	let widgetRegistered = false;
+	const goalLineWidgetRef: { current: GoalLineWidget | null } = { current: null };
+	// "none": footer status only. "line": one extra line while a focused goal
+	// runs. "full": the whole dashboard, only while the user expanded it or an
+	// audit is on screen.
+	type WidgetMode = "none" | "line" | "full";
+	let widgetMode: WidgetMode = "none";
+	const EMPTY_STATUS: GoalStatusPayload = { text: "", focused: false, open: 0 };
+	let lastPublishedStatus = "";
+
+	function emitGoalStatus(payload: GoalStatusPayload): void {
+		const key = JSON.stringify(payload);
+		if (key === lastPublishedStatus) return;
+		lastPublishedStatus = key;
+		pi.events?.emit(GOAL_STATUS_EVENT, payload);
+	}
 
 	function clearGoalWidget(ctx: ExtensionContext): void {
 		lastUiCtx = null;
 		if (ctx.hasUI) {
 			ctx.ui.setStatus("goal", undefined);
 			ctx.ui.setWidget(GOAL_WIDGET_KEY, undefined);
+			emitGoalStatus(EMPTY_STATUS);
 		}
-		widgetRegistered = false;
+		widgetMode = "none";
 		goalWidgetComponentRef.current = null;
+		goalLineWidgetRef.current = null;
 	}
 
 	/**
@@ -659,74 +676,79 @@ export function createGoalCore(
 	}
 
 	function renderUI(ctx: ExtensionContext): void {
-		const goalCwd = ctx.cwd;
-		const storage = goalStorageContext(ctx);
 		const totalOpen = otherOpenGoalCount(goalsById, null);
 		if (!state.goal && totalOpen === 0) {
 			clearGoalWidget(ctx);
 			return;
 		}
-		if (!state.goal) {
-			// PR #29: layered hideUnfocusedBanner suppresses BOTH the unfocused
-			// widget and the status hint. Focused dashboards and audit UI are
-			// unaffected; the model-facing [PI GOAL UNFOCUSED] prompt is unchanged.
-			if (loadGoalSettings(ctx.cwd).hideUnfocusedBanner === true) {
-				clearGoalWidget(ctx);
-				return;
-			}
-			ctx.ui.setStatus("goal", `goal: unfocused [${totalOpen} open] - /goal-focus`);
-			if (!widgetRegistered) {
-				ctx.ui.setWidget(
-					GOAL_WIDGET_KEY,
-					makeGoalWidgetFactory({
-						getGoal: () => goalForDisplay() ?? state.goal,
-						getOpenGoalCount: () => otherOpenGoalCount(goalsById, null),
-						getAuditorProgress: () => auditProgress,
-						getSettings: () => loadGoalSettings(goalCwd),
-						getDebugMode: () => debugMode,
-						getStalled: () => stallNotified,
-						getExpanded: () => dashboardExpanded,
-						getLedgerEvents: () => state.goal ? goalActivityEvents(storage, state.goal.id) : [],
-						getAuditResult: () => auditResult,
-						componentRef: goalWidgetComponentRef,
-					}),
-					{ placement: "aboveEditor" },
-				);
-				widgetRegistered = true;
-			} else {
-				goalWidgetComponentRef.current?.update();
-			}
+		if (!state.goal && loadGoalSettings(ctx.cwd).hideUnfocusedBanner === true) {
+			// PR #29: layered hideUnfocusedBanner suppresses the unfocused status
+			// hint. Focused status and audit UI are unaffected; the model-facing
+			// [PI GOAL UNFOCUSED] prompt is unchanged.
+			clearGoalWidget(ctx);
 			return;
 		}
 
-		// The goal widget is the single home for goal status: the status line
-		// lives in the compact/expanded dashboard (goal: <label> [<usage>]
-		// (+N open)), so the focused-goal footer segment is cleared — a stale
-		// unfocused hint or earlier status must not linger once a goal is
-		// focused. The unfocused branch above still sets its own hint.
-		ctx.ui.setStatus("goal", undefined);
+		// The footer status is the single home for goal state: one short line
+		// ("meta: ..."), also announced on pi.events for other footers. Nothing
+		// is drawn above the editor unless the goal is running with something
+		// the line cannot hold, or the user asked for the expanded dashboard.
+		const display = goalForDisplay() ?? state.goal;
+		const payload = goalStatusPayload({ goal: display, openCount: totalOpen, auditing: auditProgress !== null, stalled: stallNotified });
+		const published = JSON.stringify(payload);
+		if (published !== lastPublishedStatus) ctx.ui.setStatus("goal", payload.text || undefined);
+		emitGoalStatus(payload);
 
-		if (!widgetRegistered) {
+		const fullDashboard = state.goal !== null && (dashboardExpanded || auditProgress !== null || auditResult !== null);
+		const mode: WidgetMode = fullDashboard
+			? "full"
+			: goalWidgetLine(display, { auditor: auditProgress, stalled: stallNotified }) !== null ? "line" : "none";
+		syncWidgetMode(ctx, mode);
+	}
+
+	function syncWidgetMode(ctx: ExtensionContext, mode: WidgetMode): void {
+		if (mode === widgetMode) {
+			goalWidgetComponentRef.current?.update();
+			goalLineWidgetRef.current?.update();
+			return;
+		}
+		widgetMode = mode;
+		goalWidgetComponentRef.current = null;
+		goalLineWidgetRef.current = null;
+		if (mode === "none") {
+			ctx.ui.setWidget(GOAL_WIDGET_KEY, undefined);
+			return;
+		}
+		if (mode === "line") {
 			ctx.ui.setWidget(
 				GOAL_WIDGET_KEY,
-				makeGoalWidgetFactory({
-					getGoal: () => goalForDisplay() ?? state.goal,
-					getOpenGoalCount: () => otherOpenGoalCount(goalsById, null),
-					getAuditorProgress: () => auditProgress,
-					getSettings: () => loadGoalSettings(goalCwd),
-					getDebugMode: () => debugMode,
-					getStalled: () => stallNotified,
-					getExpanded: () => dashboardExpanded,
-					getLedgerEvents: () => state.goal ? goalActivityEvents(storage, state.goal.id) : [],
-					getAuditResult: () => auditResult,
-					componentRef: goalWidgetComponentRef,
-				}),
+				(tui, theme) => {
+					const component = new GoalLineWidget(tui, theme, () => goalWidgetLine(goalForDisplay() ?? state.goal, { auditor: auditProgress, stalled: stallNotified }));
+					goalLineWidgetRef.current = component;
+					return component;
+				},
 				{ placement: "aboveEditor" },
 			);
-			widgetRegistered = true;
-		} else {
-			goalWidgetComponentRef.current?.update();
+			return;
 		}
+		const goalCwd = ctx.cwd;
+		const storage = goalStorageContext(ctx);
+		ctx.ui.setWidget(
+			GOAL_WIDGET_KEY,
+			makeGoalWidgetFactory({
+				getGoal: () => goalForDisplay() ?? state.goal,
+				getOpenGoalCount: () => otherOpenGoalCount(goalsById, null),
+				getAuditorProgress: () => auditProgress,
+				getSettings: () => loadGoalSettings(goalCwd),
+				getDebugMode: () => debugMode,
+				getStalled: () => stallNotified,
+				getExpanded: () => dashboardExpanded,
+				getLedgerEvents: () => state.goal ? goalActivityEvents(storage, state.goal.id) : [],
+				getAuditResult: () => auditResult,
+				componentRef: goalWidgetComponentRef,
+			}),
+			{ placement: "aboveEditor" },
+		);
 	}
 
 	async function loadState(ctx: ExtensionContext): Promise<void> {
@@ -1009,6 +1031,7 @@ export function createGoalCore(
 		toggleDashboardExpanded() {
 			dashboardExpanded = !dashboardExpanded;
 			goalWidgetComponentRef.current?.invalidate();
+			if (lastUiCtx) updateUI(lastUiCtx);
 		},
 		isDashboardExpanded() {
 			return dashboardExpanded;
