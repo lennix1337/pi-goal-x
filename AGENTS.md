@@ -12,6 +12,10 @@ Keep `README.md` as the existing user overview through Settings, followed by Lic
 
 Make only necessary factual corrections within existing sections; keep them brief and preserve the layout and examples. Put detailed usage and troubleshooting in `docs/`, release changes in `CHANGELOG.md`, and implementation/validation notes in the relevant spec. Preserve automated ranking badge updates.
 
+## Checks
+
+`npm run verify` (TypeScript 7 `check` + `test:unit`) is the single validation command; `npm run mutations` (CI runs it too) removes each guard in a disposable copy and requires a test to fail. Tests stay independent of the agent session and the wall clock.
+
 ## Fork budget flow
 
 For conversational goal-budget changes and their tests, see `skills/goal-budgets/SKILL.md`.
