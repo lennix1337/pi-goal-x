@@ -24,6 +24,10 @@ post-hook message list, and ACTIVE tool schemas — not isolated prompt strings.
 - Schema size follows the active lifecycle profile. Extension-attributable size includes SDK guidance, injected state, goal-tool/custom results, and child requests. Conversation serialization preserves tool arguments and result metadata.
 - Post-issue-#30 invariant enforced by the gate: historical checkpoint payload
   visible to the provider must be 0 chars on every fixture.
+- A capture depends only on the checked-out code: each process works in its
+  own temporary directory (removed on exit) and ignores delegated-session
+  markers and saved global goal settings. The gate is part of `npm run verify`
+  and may run in several worktrees at once.
 
 ## Runtime/token optimization campaign
 

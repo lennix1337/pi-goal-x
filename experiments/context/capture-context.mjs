@@ -12,6 +12,7 @@
  */
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { createCodingToolDefinitions as createCodingTools, createReadOnlyToolDefinitions as createReadOnlyTools } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/tools/index.js";
 import { buildSystemPrompt } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/system-prompt.js";
@@ -22,15 +23,25 @@ import { FIXTURES, userMessage, v2CheckpointMessage, assistantMessage } from "./
 import { serializeGoalFile } from "../../extensions/storage/goal-files.ts";
 import { GOAL_LEDGER_FILE } from "../../extensions/goal-ledger.ts";
 
-const HOST_TOOLS = createCodingTools("/tmp/goal-context-capture");
-const ALL_HOST_TOOLS = [...HOST_TOOLS, ...createReadOnlyTools("/tmp/goal-context-capture")];
+// One directory per process, removed on exit: with a fixed path, two runs at
+// the same time deleted each other's fixtures.
+export const CAPTURE_CWD = fs.mkdtempSync(path.join(os.tmpdir(), "goal-context-capture-"));
+process.on("exit", () => fs.rmSync(CAPTURE_CWD, { recursive: true, force: true }));
+// The capture depends only on the checked-out code, not on who runs it: a
+// delegated Pi session marks its children and the extension then registers no
+// goal handlers, and goal defaults saved for all projects change the request.
+delete process.env.PI_SUBAGENT_CHILD;
+delete process.env.PI_SUBAGENT_DEPTH;
+process.env.PI_GOAL_GLOBAL_SETTINGS_FILE = path.join(CAPTURE_CWD, "no-global-settings.json");
+
+const HOST_TOOLS = createCodingTools(CAPTURE_CWD);
+const ALL_HOST_TOOLS = [...HOST_TOOLS, ...createReadOnlyTools(CAPTURE_CWD)];
 export function sdkSystem(definitions, customPrompt) {
  const raw = buildSystemPrompt({ customPrompt, cwd: "/fixture", skills: [], contextFiles: [], selectedTools: definitions.map(t => t.name), toolSnippets: Object.fromEntries(definitions.map(t => [t.name, t.promptSnippet ?? ""])), promptGuidelines: definitions.flatMap(t => t.promptGuidelines ?? []) });
  // SDK installation location is not extension overhead and differs in CI.
  return raw.replaceAll(fs.realpathSync(new URL("../../node_modules/@earendil-works/pi-coding-agent", import.meta.url)), "/sdk");
 }
 const BASE_SYSTEM = sdkSystem(HOST_TOOLS);
-const CAPTURE_CWD = "/tmp/goal-context-capture";
 
 function createCapture() {
 	const handlers = new Map();

@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager} from '@earendil-works/pi-coding-agent';
 import goalExtension from '../../extensions/goal.ts';
-import {captureOne} from './capture-context.mjs';
+import {captureOne,CAPTURE_CWD} from './capture-context.mjs';
 import {FIXTURES} from './fixtures.mjs';
 
 // The SDK renders cwd resolved; on Windows '/tmp/x' becomes 'C:\tmp\x' or 'C:/tmp/x'.
@@ -50,7 +50,7 @@ try {
  for (const id of ['active-regular-no-tasks','current-contracted-task','tasks-disabled','guided-drafting-question']) {
   const expected=await captureOne(id);
   const scenario=FIXTURES[id]();
-  const cwd='/tmp/goal-context-capture';
+  const cwd=CAPTURE_CWD;
   const manager=SessionManager.inMemory(cwd);
   if(scenario.goal) manager.appendCustomEntry('pi-goal-focus',{version:1,focusedGoalId:scenario.goal.id,reason:'created'});
   if(scenario.draftPrompt) manager.appendCustomEntry('pi-goal-draft',{version:1,mode:'goal',seed:'build the thing',startedAt:'2026-08-23T12:00:00.000Z',auditorEnabled:true});
@@ -83,7 +83,7 @@ try {
  for(const id of ['completion-audit','oracle-consultation']) {
   const expected=(await captureOne(id)).childRequests[0];
   const scenario=FIXTURES[id]();
-  const cwd='/tmp/goal-context-capture';
+  const cwd=CAPTURE_CWD;
   const runtime=await ModelRuntime.create({authPath:path.join(work,'auth.json'),modelsPath:null,allowModelNetwork:false,refreshOnCreate:false});
   runtime.registerProvider('capture',{baseUrl:'http://127.0.0.1:1/v1',api:'openai-completions',apiKey:'fixture-only',models:[{id:'fixture',name:'fixture',reasoning:false,input:['text'],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:200000,maxTokens:128}]});
   const model=runtime.getModel('capture','fixture');

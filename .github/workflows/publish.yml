@@ -68,7 +68,6 @@ jobs:
       - run: npm run check
       - run: npm run lint
       - run: npm run test:all
-      - run: npm run test:selfcheck
       - run: npm run context:gate
       - run: npm run context:provider-check
       - run: npm audit --omit=dev

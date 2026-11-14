@@ -9,9 +9,8 @@ const integrationRoot = join(testsRoot, "integration");
 const e2eRoot = join(testsRoot, "e2e");
 const manifestPath = join(testsRoot, ".test-manifest.json");
 const suite = process.argv.slice(2).find((arg) => !arg.startsWith("--")) ?? "unit";
-const wantSelfCheck = process.argv.includes("--selfcheck");
 const wantWriteManifest = process.argv.includes("--write-manifest");
-if (process.argv.slice(2).some((arg) => !["unit", "integration", "e2e", "all", "--selfcheck", "--write-manifest"].includes(arg)) || process.argv.slice(2).filter((arg) => !arg.startsWith("--")).length > 1) {
+if (process.argv.slice(2).some((arg) => !["unit", "integration", "e2e", "all", "--write-manifest"].includes(arg)) || process.argv.slice(2).filter((arg) => !arg.startsWith("--")).length > 1) {
 	throw new Error("Invalid runner arguments: " + process.argv.slice(2).join(" "));
 }
 const rel = (file) => file.replace(projectRoot, ".").replaceAll("\\", "/");
@@ -41,11 +40,13 @@ if (testFiles.length === 0) {
 // ---- Self-check / manifest maintenance -------------------------------
 // The manifest pins the EXPECTED discovered entries so drift (a new test
 // file, a deleted one, or a directory change) is caught explicitly instead
-// of silently changing what `npm test` covers.
+// of silently changing what `npm test` covers. Every run compares it before
+// executing anything: a check that only a separate CI step ran let a local
+// run pass and the CI run fail on the same commit.
 if (wantWriteManifest) {
 	writeFileSync(manifestPath, JSON.stringify({
 		version: 1,
-		note: "Expected test-entry manifest for the runner self-check (npm run test:selfcheck). Regenerate with: node scripts/run-unit-tests.mjs --write-manifest",
+		note: "Expected test entries; every run of scripts/run-unit-tests.mjs compares them with the discovered files before executing. Regenerate with: node scripts/run-unit-tests.mjs --write-manifest",
 		unitFiles: unitFiles.map(rel),
 		integrationFiles: integrationFiles.map(rel),
 		e2eFiles: e2eFiles.map(rel),
@@ -54,29 +55,27 @@ if (wantWriteManifest) {
 	process.exit(0);
 }
 
-if (wantSelfCheck) {
-	if (!existsSync(manifestPath)) {
-		throw new Error("Missing " + manifestPath + ". Run: node scripts/run-unit-tests.mjs --write-manifest");
-	}
-	const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-	const expectedUnit = new Set(manifest.unitFiles ?? []);
-	const expectedIntegration = new Set(manifest.integrationFiles ?? []);
-	const expectedE2e = new Set(manifest.e2eFiles ?? []);
-	const problems = [];
-	for (const file of unitFiles) if (!expectedUnit.has(rel(file))) problems.push("unexpected unit entry: " + rel(file));
-	for (const file of integrationFiles) if (!expectedIntegration.has(rel(file))) problems.push("unexpected integration entry: " + rel(file));
-	for (const file of e2eFiles) if (!expectedE2e.has(rel(file))) problems.push("unexpected e2e entry: " + rel(file));
-	for (const file of manifest.unitFiles ?? []) if (!unitFiles.map(rel).includes(file)) problems.push("missing unit entry: " + file);
-	for (const file of manifest.integrationFiles ?? []) if (!integrationFiles.map(rel).includes(file)) problems.push("missing integration entry: " + file);
-	for (const file of manifest.e2eFiles ?? []) if (!e2eFiles.map(rel).includes(file)) problems.push("missing e2e entry: " + file);
-	if (problems.length > 0) {
-		console.error("Runner self-check FAILED:");
-		for (const problem of problems) console.error("  - " + problem);
-		console.error("Refresh the manifest with: node scripts/run-unit-tests.mjs --write-manifest");
-		process.exit(1);
-	}
-	console.log("Runner self-check OK: " + unitFiles.length + " unit + " + integrationFiles.length + " integration + " + e2eFiles.length + " e2e entries match " + manifestPath + ".");
+if (!existsSync(manifestPath)) {
+	throw new Error("Missing " + manifestPath + ". Run: node scripts/run-unit-tests.mjs --write-manifest");
 }
+const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+const expectedUnit = new Set(manifest.unitFiles ?? []);
+const expectedIntegration = new Set(manifest.integrationFiles ?? []);
+const expectedE2e = new Set(manifest.e2eFiles ?? []);
+const problems = [];
+for (const file of unitFiles) if (!expectedUnit.has(rel(file))) problems.push("unexpected unit entry: " + rel(file));
+for (const file of integrationFiles) if (!expectedIntegration.has(rel(file))) problems.push("unexpected integration entry: " + rel(file));
+for (const file of e2eFiles) if (!expectedE2e.has(rel(file))) problems.push("unexpected e2e entry: " + rel(file));
+for (const file of manifest.unitFiles ?? []) if (!unitFiles.map(rel).includes(file)) problems.push("missing unit entry: " + file);
+for (const file of manifest.integrationFiles ?? []) if (!integrationFiles.map(rel).includes(file)) problems.push("missing integration entry: " + file);
+for (const file of manifest.e2eFiles ?? []) if (!e2eFiles.map(rel).includes(file)) problems.push("missing e2e entry: " + file);
+if (problems.length > 0) {
+	console.error("Runner self-check FAILED; no test was executed:");
+	for (const problem of problems) console.error("  - " + problem);
+	console.error("Next step: if a test file was added, moved or deleted on purpose, record it with `node scripts/run-unit-tests.mjs --write-manifest` and commit tests/.test-manifest.json; otherwise remove the unexpected file or restore the missing one.");
+	process.exit(1);
+}
+console.log("Runner self-check OK: " + unitFiles.length + " unit + " + integrationFiles.length + " integration + " + e2eFiles.length + " e2e entries match " + manifestPath + ".");
 
 // ---- Execution ---------------------------------------------------------
 const startedAt = Date.now();
