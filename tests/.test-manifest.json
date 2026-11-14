@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Expected test-entry manifest for the runner self-check (npm run test:selfcheck). Regenerate with: node scripts/run-unit-tests.mjs --write-manifest",
+  "note": "Expected test entries; every run of scripts/run-unit-tests.mjs compares them with the discovered files before executing. Regenerate with: node scripts/run-unit-tests.mjs --write-manifest",
   "unitFiles": [
     ".tests/benchmark-b2.test.ts",
     ".tests/fault-injection.test.ts",
@@ -88,7 +88,8 @@
     ".tests/verification-contract.test.ts"
   ],
   "integrationFiles": [
-    ".tests/integration/extension.test.ts"
+    ".tests/integration/extension.test.ts",
+    ".tests/integration/goal-context-gate.test.ts"
   ],
   "e2eFiles": [
     ".tests/e2e/goal-lifecycle-dashboard.test.ts",

@@ -14,7 +14,9 @@ Make only necessary factual corrections within existing sections; keep them brie
 
 ## Checks
 
-`npm run verify` (TypeScript 7 `check` + `test:unit`) is the single validation command; `npm run mutations` (CI runs it too) removes each guard in a disposable copy and requires a test to fail. Tests stay independent of the agent session and the wall clock.
+`npm run verify` (TypeScript 7 `check` + `test:unit` + `context:gate`) is the single validation command; `npm run mutations` (CI runs it too) removes each guard in a disposable copy and requires a test to fail. Tests stay independent of the agent session and the wall clock.
+
+Every test run first compares the discovered test files with `tests/.test-manifest.json` and executes nothing when they differ: after adding, moving or deleting a test file, run `node scripts/run-unit-tests.mjs --write-manifest` and commit the manifest. `context:gate` compares the request the model receives with `experiments/context/baseline-main.json`; it works in its own temporary directory and ignores delegated-session markers and saved global goal settings, so parallel worktrees and any session get the same verdict.
 
 ## Fork budget flow
 

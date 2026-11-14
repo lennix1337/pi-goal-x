@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 
-import { captureOne } from "./capture-context.mjs";
+import { captureOne, CAPTURE_CWD } from "./capture-context.mjs";
 import { FIXTURES } from "./fixtures.mjs";
 import { measureContext, semanticCounts, serializeRequest } from "./measure-context.mjs";
 
@@ -28,6 +28,7 @@ function escapeRegExp(text) {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const failures = [];
+console.log(`[context:gate] capture directory (removed on exit): ${CAPTURE_CWD}`);
 
 const baseline = JSON.parse(readFileSync(path.join(here, "baseline-main.json"), "utf8"));
 const baselineById = new Map(baseline.fixtures.map((r) => [r.fixture, r]));

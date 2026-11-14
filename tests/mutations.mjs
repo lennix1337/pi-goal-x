@@ -30,6 +30,10 @@ const cases = [
 	["status-line-widget-only-when-running", "extensions/goal-status-line.ts", `if (!goal || goal.status !== "active" || !goal.autoContinue) return null;`, `if (!goal) return null;`, "focused paused goal", "goal-compact-status"],
 	["status-line-event-repeat", "extensions/goal-state.ts", `if (key === lastPublishedStatus) return;`, `if (false) return;`, "fires on every change and not on repeats", "goal-compact-status"],
 	["status-line-title-cut", "extensions/goal-status-line.ts", "const TITLE_MAX = 40;", "const TITLE_MAX = 400;", "title cut at 40", "goal-compact-status"],
+	["manifest-unlisted-test-runs", "scripts/run-unit-tests.mjs", `if (problems.length > 0) {`, `if (false) {`, "runner stops before executing", "goal-test-runner"],
+	["capture-shared-directory", "experiments/context/capture-context.mjs", `fs.mkdtempSync(path.join(os.tmpdir(), "goal-context-capture-"))`, `path.join(os.tmpdir(), "goal-context-capture")`, "a capture does not depend", "integration/goal-context-gate"],
+	["capture-delegated-session", "experiments/context/capture-context.mjs", `delete process.env.PI_SUBAGENT_CHILD;\ndelete process.env.PI_SUBAGENT_DEPTH;\n`, ``, "a capture does not depend", "integration/goal-context-gate"],
+	["capture-global-goal-settings", "experiments/context/capture-context.mjs", `process.env.PI_GOAL_GLOBAL_SETTINGS_FILE = path.join(CAPTURE_CWD, "no-global-settings.json");`, ``, "a capture does not depend", "integration/goal-context-gate"],
 ];
 
 for (const [name, file, before, after, pattern, testFile] of cases) {
@@ -37,6 +41,8 @@ for (const [name, file, before, after, pattern, testFile] of cases) {
 	try {
 		cpSync(join(root, "extensions"), join(dir, "extensions"), { recursive: true });
 		cpSync(join(root, "tests"), join(dir, "tests"), { recursive: true });
+		cpSync(join(root, "scripts"), join(dir, "scripts"), { recursive: true });
+		cpSync(join(root, "experiments", "context"), join(dir, "experiments", "context"), { recursive: true });
 		cpSync(join(root, "package.json"), join(dir, "package.json"));
 		symlinkSync(resolve(root, "node_modules"), join(dir, "node_modules"), process.platform === "win32" ? "junction" : "dir");
 		const path = join(dir, file);
