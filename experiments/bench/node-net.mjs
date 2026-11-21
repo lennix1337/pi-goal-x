@@ -1,7 +1,3 @@
-/**
- * Shadow of node:net (B8 enforcement). Any socket/server construction or
- * connection attempt in a benchmark throws; everything else passes through.
- */
 
 import { createRequire } from "node:module";
 import { recordViolation } from "./guard-state.mjs";

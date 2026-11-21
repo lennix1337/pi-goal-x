@@ -1,13 +1,3 @@
-/**
- * Shared benchmark helpers: fixtures, measurement, baseline rows, and the
- * agent-free integration harness (mirrors tests/integration/extension.test.ts
- * but with an fs-op counter + latency injection from the B8 guard layer).
- *
- * All benches import extension modules directly (node --experimental-strip-types)
- * with the bench adapter hooks installed, so the pi packages are the test
- * stubs (no live agents, createAgentSession throws) and node:fs is the
- * counting/latency wrapper.
- */
 
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -1,8 +1,3 @@
-/**
- * Shadow of node:child_process (B8 enforcement).
- * Any spawn/exec/fork throws unless the harness explicitly allows it
- * (b5 contention child via allowChildProcess + spawnContention).
- */
 
 import { createRequire } from "node:module";
 import { state, recordViolation } from "./guard-state.mjs";

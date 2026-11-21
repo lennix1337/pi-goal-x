@@ -1,7 +1,3 @@
-/**
- * Shadow of node:https (B8 enforcement). Any request/get/server/agent in a
- * benchmark throws; constants pass through.
- */
 
 import { createRequire } from "node:module";
 import { recordViolation } from "./guard-state.mjs";

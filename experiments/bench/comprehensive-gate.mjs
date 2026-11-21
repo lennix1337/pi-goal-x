@@ -1,4 +1,3 @@
-/** Campaign-local evidence gate; run the fresh campaign first, never reuse older campaigns' timings. */
 import fs from 'node:fs';
 import path from 'node:path';
 const dir = path.resolve('specs/2026-09-07-comprehensive-optimization');

@@ -1,9 +1,3 @@
-/**
- * B3 — Long-session ledger simulation.
- * readGoalLedger / reconstructGoalLedger at 1k / 5k / 10k events. BEFORE the
- * P1-2 change this must grow with session size (O(n)); the after-run must be
- * flat. The growth ratio 10k/1k is the headline number.
- */
 
 import { makeFixtureCwd, makeLedger, measure, Baseline, cleanupFixture } from "./bench-common.mjs";
 import { readGoalLedger, reconstructGoalLedger } from "../../extensions/goal-ledger.ts";

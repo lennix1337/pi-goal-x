@@ -1,24 +1,3 @@
-/**
- * B6 — Regression gate.
- *
- * Diffs baseline-before.json vs baseline-after.json for a campaign and
- * enforces the campaign's contract:
- *
- *   - Every numeric row must not regress beyond
- *     max(before.p50 * 1.5, before.p50 + 10)ms (no-regression rule for all
- *     rows, including the noise-floor and durable-write-floor exempt rows).
- *   - Campaign "naf" additionally enforces the ≥10x headroom invariant from
- *     classify.mjs: every HEADROOM row in the before baseline must meet its
- *     10x target in the after run on its primary metric (p50 ms, fs ops, or
- *     estimated tokens). Exempt rows are no-regression-only by design.
- *   - Campaign "extension-review-plan" keeps the original claim-specific
- *     invariants (B3 flatness, B2 ops drop, B4 tokens drop, B5 lock
- *     collapse) unchanged.
- *
- * Exit code 1 on failure; prints a summary.
- *
- * Usage: node --experimental-strip-types experiments/bench/b6-gate.mjs [campaign]
- */
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -84,8 +63,6 @@ if (campaign === "extension-review-plan") {
 	}
 }
 
-// 3.5 B10 checkpoint-growth invariants (issue #30, enforced whenever the
-// after run contains B10 rows — i.e. once PR A's benchmark is in place).
 if (afterMap.has("B10.checkpoint.persisted.1000")) {
 	const b10 = (id) => afterMap.get(id)?.ops;
 	if (typeof b10("B10.checkpoint.persisted.1000") === "number" && b10("B10.checkpoint.persisted.1000") > 160_000) {
@@ -101,9 +78,6 @@ if (afterMap.has("B10.checkpoint.persisted.1000")) {
 	}
 }
 
-// 4. naf campaign: the ≥10x headroom invariant (per classify.mjs) and an
-// ops/token no-regression watch for exempt rows (their metric is still
-// monitored even though they carry no 10x target).
 const headroomMisses = [];
 const opsRegressions = [];
 if (campaign === "naf") {

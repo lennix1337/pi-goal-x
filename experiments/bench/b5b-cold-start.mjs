@@ -1,29 +1,3 @@
-/**
- * B5b — Cold-session-start rows (NAF 2026-08-06).
- *
- * The B1/B5 warm rows measure steady-state per-call cost (min ops / p50 over
- * repeated in-process calls). A fresh process has no caches, so the honest
- * cold cost is measured here: each sample runs the flow ONCE in a fresh child
- * process (bench-cold-child.mjs) and reports the fs ops + wall time of that
- * single cold call. Children are node processes with the bench hooks only —
- * no network, no live agents (B8); child spawn is explicitly allowed like the
- * B5 contention harness.
- *
- * Rows (all with a 50-goal fixture + 1 settings file + 1k-event ledger):
- *   B1.pool.cold           cold sync pool read (readActiveGoalPool)
- *   B1.settings.cold       cold settings load (loadGoalSettings)
- *   B1.ledger.cold         cold ledger read (readGoalLedger)
- *   B5.startup.cold        cold session startup (createGoalCore + loadState)
- * plus .lat25 variants (25ms injected per fs op — slow-storage emulation).
- *
- * The same module runs against pre- and post-optimization code (it only
- * imports APIs that existed before the naf campaign), so the pre-optimization
- * cold numbers are captured from a worktree of the pre-change commit.
- *
- * Direct run prints the markdown table:
- *   node --import experiments/bench/bench-adapter-hooks.mjs \
- *        --experimental-strip-types experiments/bench/b5b-cold-start.mjs
- */
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -86,9 +60,6 @@ async function measureCold(cwd, flow, lat25, n = 5) {
 
 export async function run(baseline) {
 	const cwd = makeFixtureCwd("b5b-cold-");
-	// Separate fixture for checkpoint rows: a checkpoint must EXIST before the
-	// cold child runs (written by this parent process), so the base rows keep a
-	// checkpoint-free fixture.
 	const cwdCp = makeFixtureCwd("b5b-cold-cp-");
 	try {
 		makeGoalFiles(cwd, GOAL_COUNT);

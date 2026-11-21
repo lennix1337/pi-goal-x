@@ -1,14 +1,3 @@
-/**
- * Campaign diff emitter: before → after table (ratio) + per-feature budgets.
- *
- * Writes specs/<campaign-spec-dir>/BENCH-DIFF.md for a campaign. Rows ordered
- * by improvement ratio (lower is faster); rows missing from either run are
- * listed separately. Also emits the per-feature "budget" line for each row
- * (the after value is the budget for the next campaign).
- *
- * Usage:
- *   node --experimental-strip-types experiments/bench/diff-bench.mjs [campaign]
- */
 
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";

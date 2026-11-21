@@ -4,7 +4,7 @@ import { Baseline, estimateTokens } from "./bench-common.mjs";
 import { taskListBlock, continuationPrompt, goalPrompt } from "../../extensions/prompts/goal-prompts.ts";
 
 
-const PREFILL_TOK_PER_SEC = 1000; // documented heuristic for the estimate only
+const PREFILL_TOK_PER_SEC = 1000;
 
 function taskTree(count) {
 	const tasks = [];

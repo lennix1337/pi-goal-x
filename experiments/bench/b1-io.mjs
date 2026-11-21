@@ -1,9 +1,3 @@
-/**
- * B1 — I/O hot-path micro-bench harness with slow-storage emulation.
- * Paths: settings load, pool scan, ledger parse, lock acquire, ledger append.
- * Every case runs at latency 0 (local SSD) and under 25ms/op injected latency
- * (NFS/iCloud-style round trips) via the node:fs wrapper.
- */
 
 import {
 	makeFixtureCwd,

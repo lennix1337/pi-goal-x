@@ -1,18 +1,3 @@
-/**
- * Cold-flow measurement child (B5b): runs ONE flow once in a fresh process
- * (all caches empty — a true cold read) and reports { ops, wall }.
- *
- * Usage:
- *   node --import experiments/bench/bench-adapter-hooks.mjs \
- *        --experimental-strip-types bench-cold-child.mjs <cwd> <flow> [lat25]
- *
- * flow: pool | settings | ledger | startup
- * lat25: inject 25ms per fs op for the WHOLE run (sync and async ops — unlike
- * the withLatency helper, latency stays active across async continuations).
- *
- * Only imports APIs that existed before the naf optimization work, so the
- * same child runs unchanged against pre- and post-optimization code.
- */
 
 import { performance } from "node:perf_hooks";
 
