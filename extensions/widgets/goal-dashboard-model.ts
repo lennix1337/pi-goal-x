@@ -1,16 +1,6 @@
 import { effectiveRunLimit } from "../goal-run-budget.ts";
 import { schedulerDisplaySummary } from "../goal-scheduler-state.ts";
 import { taskIndex } from "../goal-task-index.ts";
-/**
- * Shared dashboard view model (plan §6) — the single source of truth for the
- * persistent compact dashboard, the expanded dashboard, `/goal-status`, audit
- * transitions, golden tests, and documentation examples.
- *
- * Pure data derivation only: this module must never import TUI rendering
- * components. Width-safe truncation, borders, and color belong to the
- * renderer; everything factual here is derived from persisted goal state and
- * the durable ledger.
- */
 
 import { displayObjectiveTitle, formatDuration, statusLabel } from "../goal-core.ts";
 import type { GoalLedgerEvent } from "../goal-ledger.ts";
@@ -251,15 +241,6 @@ export function deriveCurrentTask(goal: GoalRecord, nodes: DashboardTaskNode[]):
 	};
 }
 
-// ---------------------------------------------------------------------------
-// Task-list viewport / scroll (plan §9.6)
-//
-// The task list is a window over the rendered rows. Pure functions only: the
-// widget owns the mutable offset and the re-anchor rule; the renderer owns
-// the box drawing. Anchoring means the default viewport is positioned so the
-// most recently completed task is visible — "scrolled down" to recent work
-// instead of always showing the earliest tasks.
-// ---------------------------------------------------------------------------
 
 /**
  * Index of the most recently completed node: the node with status
@@ -274,8 +255,6 @@ export function latestCompletedNodeIndex(nodes: readonly DashboardTaskNode[]): n
 	for (let i = 0; i < nodes.length; i++) {
 		const node = nodes[i]!;
 		if (node.status !== "complete" || !node.completedAt) continue;
-		// `>=` keeps the LAST node among equal timestamps (most recent plan
-		// position), matching how a viewer reads "most recently done".
 		if (bestIndex === -1 || node.completedAt >= bestAt) {
 			bestIndex = i;
 			bestAt = node.completedAt;

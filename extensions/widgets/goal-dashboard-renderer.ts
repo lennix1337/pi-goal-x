@@ -1,15 +1,3 @@
-/**
- * Unified dashboard renderer (plan §5, §4).
- *
- * Renders the shared dashboard view model (goal-dashboard-model.ts) as the
- * compact above-editor widget, the expanded full dashboard (which replaces the
- * task overlay), and the unfocused panel. Pure presentation: all data comes
- * from the model; this file owns the §5 visual spec (borders, status symbols,
- * progress bars, responsive layouts, width-safe ANSI/Unicode handling) and
- * must never emit a line wider than the requested terminal width.
- *
- * Layout modes (§5.5): wide ≥100, medium 70–99, narrow 50–69, minimal <50.
- */
 
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
@@ -29,8 +17,6 @@ import type { GoalActivityItem } from "../goal-activity.ts";
 import { truncateText } from "../goal-core.ts";
 import { DEFAULT_GOAL_KEYBINDINGS, formatGoalKeybinding, type GoalDashboardKeybindings } from "../goal-settings.ts";
 
-// mdLink is deliberately excluded: the chrome must stay neutral gray, not
-// blue-tinged ("more grey than blue").
 type RenderColor = Extract<ThemeColor, "accent" | "warning" | "success" | "error" | "dim" | "muted" | "text" | "mdHeading">;
 
 
@@ -47,8 +33,6 @@ function fit(value: string, width: number): string {
 
 function boxHeader(theme: Theme, width: number, left: string, right = ""): string {
 	const inner = Math.max(4, width - 2);
-	// One-tone frame line: corners, leading/trailing dashes and fill all carry
-	// the frame color; only the brand inside stays accent.
 	const l = `${frame(theme, H)} ${left}`;
 	const r = right ? ` ${right} ${frame(theme, H)}` : "";
 	const fixed = visibleWidth(l) + visibleWidth(r);
@@ -73,12 +57,6 @@ function boxRule(theme: Theme, width: number): string {
 	return frame(theme, `├${H.repeat(Math.max(1, width - 2))}┤`);
 }
 
-/** Section separator with a label and optional right-side content:
- * `├─ Tasks ──── [████░] · Sub 2/3 [██░░] ┤` (§5.1). The right content
- * (e.g. the header progress bars) always survives; the label truncates when
- * tight. Hardened so label + right never exceed the inner width: the fill is
- * `max(0, …)` and the truncation budget leaves room for the `─ ` prefix and
- * trailing space. */
 function boxSectionRule(theme: Theme, width: number, label: string, right = ""): string {
 	const inner = Math.max(4, width - 2);
 	const left = frame(theme, `${H} ${label} `);
@@ -113,13 +91,6 @@ const STATUS_COLOR: Record<DashboardStatusCode, RenderColor> = {
 	complete: "success",
 };
 
-/**
- * Widget status line — footer-status parity: `goal: <label> [<usage>] (+N open)`.
- * Same terminology/format as the pi footer status line (goal-core statusLabel +
- * usage bracket), without the objective preview (the header title shows it) and
- * without the old `Focused: yes` / `Other goals: N` bits. The open-goals count
- * appears only when other open goals exist.
- */
 function statusLine(theme: Theme, model: GoalDashboardModel): string {
 	const color = STATUS_COLOR[model.status.code];
 	const usage = model.usage.footerBits ? ` [${model.usage.footerBits}]` : "";
@@ -280,14 +251,6 @@ export function renderCompactDashboard(
 	if (topLevel.length > 0) {
 		const offset = opts.scrollOffset ?? anchoredScrollOffset(topLevel, compactRows);
 		const viewport = deriveTaskListViewport(topLevel.length, compactRows, offset);
-		// §9.1/§9.3 header row: counts first (`✓N done · M open`, skipped
-		// counts as done), compact task progress bar, then the current task's
-		// subtask progress bar beside it (` · Sub done/total `, wide/medium;
-		// narrow drops the word `Sub` so the full counts fit at 50 cols;
-		// minimal omits the segment — counts + task bar alone cannot share 38
-		// inner columns with a second bar). All muted: the header stays one
-		// frame-tone block. The standalone compact progress lines were removed
-		// in favor of this row.
 		const headerLabel = model.taskProgress
 			? `Tasks · ✓${model.taskProgress.completed} done · ${model.taskProgress.total - model.taskProgress.completed} open`
 			: "Tasks";
@@ -508,7 +471,6 @@ export function renderUnfocusedDashboard(openGoalCount: number, theme: Theme, wi
 	return lines;
 }
 
-// ── width safety net (defense in depth) ─────────────────────────────────────
 
 /** Clamp every rendered line to the terminal width (used by the component). */
 export function clampLinesToWidth(lines: string[], width: number): string[] {

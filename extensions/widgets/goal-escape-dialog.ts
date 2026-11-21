@@ -23,7 +23,6 @@ export async function showEscapeDialog(
 	goalObjective: string,
 ): Promise<EscapeDialogResult> {
 	if (!ctx.hasUI) {
-		// Fallback for headless/RPC mode — return "continue" as the safe default
 		return "continue_working";
 	}
 

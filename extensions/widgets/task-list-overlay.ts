@@ -16,7 +16,6 @@ type LineEntry =
 	| { type: "task"; goalId: string; taskId: string; status: "pending" | "complete" | "skipped"; prefix: string; title: string }
 	| { type: "empty-message"; text: string };
 
-// ── Public API ───────────────────────────────────────────────────────
 
 /**
  * Show a scrollable modal overlay displaying the current goal's task list.
@@ -228,8 +227,6 @@ export async function showTaskListOverlay(
 					const end = Math.min(scrollOffset + visibleHeight, renderedLineCount);
 					for (let i = scrollOffset; i < end; i++) {
 						const raw = renderedLines[i]!;
-						// Each rendered line from renderEntry already wraps/truncates,
-						// but double-check for safety
 						const safe = visibleWidth(raw) > innerWidth
 							? truncateToWidth(raw, innerWidth, "…")
 							: raw;

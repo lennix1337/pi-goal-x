@@ -212,11 +212,7 @@ export function applyStableHeightBound(
 		state.stickyTerminalRows = terminalRows;
 	}
 	if (state.stickyReserve !== reserve) {
-		// The chrome below the widget changed (editor grew/shrunk, status,
-		// footer, pending): re-evaluate so the widget's block plus the chrome
-		// never exceeds the terminal — otherwise the chat's appended lines
-		// and the status line land above pi-tui's viewport top and every
-		// agent write triggers a 2J+3J scrollback wipe (spec 2026-08-11).
+		// external: pi-tui wipes scrollback when changed lines precede its viewport.
 		state.stickyCap = undefined;
 		state.stickyReserve = reserve;
 	}
@@ -228,15 +224,9 @@ export function applyStableHeightBound(
 		state.stickyCap = Math.min(lines.length, cap);
 	}
 	if (lines.length > state.stickyCap) {
-		// Growth past the committed height: head-slice (the dashboard's
-		// content priority is top-down), so the buffer line count never
-		// changes.
 		return lines.slice(0, state.stickyCap);
 	}
 	if (lines.length < state.stickyCap) {
-		// Natural dipped below the committed height: pad deterministically so
-		// the buffer line count never changes. Blank rows after the box footer
-		// — honest filler (the …/↑ N more markers are only for hidden content).
 		const padded = lines.slice();
 		while (padded.length < state.stickyCap) padded.push("");
 		return padded;
@@ -345,12 +335,6 @@ export class GoalWidgetComponent implements Component {
 	private lastSeenLatestCompletedAt: string | undefined;
 	private lastSeenActiveId: string | undefined;
 
-	// Stable-height latch (spec 2026-08-11-stable-widget-height): the first
-	// render of each regime commits the rendered height (natural when it fits,
-	// else the cap); the height stays constant (head-slice growth, pad shrink)
-	// until the regime, the terminal size, or the measured dock chrome changes,
-	// so the buffer line count never changes and the terminal stops jumping to
-	// the bottom.
 	private stableHeightState: { stickyCap: number | undefined; stickyRegime: string | undefined; stickyTerminalRows: number | undefined; stickyReserve?: number } = {
 		stickyCap: undefined,
 		stickyRegime: undefined,
@@ -432,35 +416,15 @@ export class GoalWidgetComponent implements Component {
 	render(width: number): string[] {
 		const settings = this.getSettings();
 		this.lastRenderWidth = Math.max(1, width);
-		// Terminal-height bound (spec 2026-08-10): read pi's terminal rows at
-		// render time so the widget never fills the terminal — the chat/editor
-		// stay visible and scrollable and the widget can never trigger pi-tui's
-		// shrink full-render (\x1b[2J\x1b[H\x1b[3J) scrollback wipe. Same cast
-		// pattern as the questionnaire churn guard; mock TUIs without a
-		// `terminal` render unbounded.
+		// external: pi-tui can wipe scrollback when the widget overflows the terminal.
 		const terminalRows = (this.tui as unknown as { terminal?: { rows?: number } }).terminal?.rows;
 		const natural = this.renderNatural(width);
 		const regime = this.stableHeightRegime();
-		// Reserve adapted to the actual dock chrome (status + editor + footer +
-		// pending): the widget's block plus the chrome must never exceed the
-		// terminal, or the chat's appended lines and the status line land above
-		// pi-tui's viewport top and every agent write wipes the scrollback.
 		const reserve = this.measureDockReserve(width) ?? WIDGET_HEIGHT_RESERVE;
 		return applyStableHeightBound(natural, terminalRows, this.stableHeightState, regime, reserve);
 	}
 
-	/**
-	 * Measure the rendered height of the dock chrome around the widget
-	 * (pending + status + editor + widgetBelow + footer) at the current width,
-	 * so the widget can size itself so its block plus the chrome never exceeds
-	 * the terminal (spec 2026-08-11): pi-tui full-renders (2J+3J, scrollback
-	 * wipe) whenever the first changed line is above its tracked viewport top
-	 * (`previousBufferLength − terminalRows`); when the widget's block pushes
-	 * the chat's append point and the status line above that, every agent
-	 * write wipes the terminal scrollback and the user is forced to the
-	 * bottom. Returns undefined (→ the static WIDGET_HEIGHT_RESERVE fallback)
-	 * when the TUI exposes no measurable dock (mock TUIs, headless).
-	 */
+	// external: pi-tui full renders erase scrollback when changes precede the viewport.
 	private measureDockReserve(width: number): number | undefined {
 		type DockChild = { children?: DockChild[]; render?: (w: number) => string[] };
 		const tui = this.tui as unknown as { children?: DockChild[] };
@@ -493,13 +457,10 @@ export class GoalWidgetComponent implements Component {
 				const lines = c.render(width);
 				if (Array.isArray(lines)) total += lines.length;
 			} catch {
-				// A sibling render failure must never break the widget; fall
-				// back to the static reserve.
 				return undefined;
 			}
 		}
-		// +1 slack so the strictest safety condition (chat append point below
-		// the viewport top) holds even at the boundary.
+		// external: one line of slack keeps the chat append point below the viewport.
 		return total + 1;
 	}
 
@@ -572,13 +533,8 @@ export class GoalWidgetComponent implements Component {
 		this.expandedScrollOffset = anchoredScrollOffset(model.taskTree, expandedTaskViewportRows(this.lastRenderWidth));
 	}
 
-	/**
-	 * Scroll the compact task list with a Ctrl+Shift chord (§9.6). The chords
-	 * are free in pi (the editor owns the plain arrows), so no focus state is
-	 * needed — but they are consumed only when the compact list actually
-	 * overflows its viewport, so they never swallow keystrokes for a short
-	 * list. Returns true when the key was consumed.
-	 */
+	// external: Pi's editor owns the plain arrow keys.
+	/** Scroll the compact task list; return true only when the key is consumed. */
 	handleCompactScrollKey(key: "up" | "down" | "pageUp" | "pageDown" | "home" | "end"): boolean {
 		if (this.getExpanded()) return false;
 		const settings = this.getSettings();
