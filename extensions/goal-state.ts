@@ -136,6 +136,7 @@ export interface GoalCore {
 	flushGoalTransaction(ctx: ExtensionContext): void;
 	replaceGoal(config: GoalCreationConfig, ctx: ExtensionContext, startNow?: boolean, verificationContract?: string, tokenBudget?: number): void;
 	touchGoalActivity(): void;
+	/** Return a steering note when an active auto-continue goal has stalled. */
 	checkStall(ctx: ExtensionContext): string;
 }
 

@@ -48,8 +48,11 @@ export interface GoalRecord {
 	pauseReason?: string;
 	pauseSuggestedAction?: string;
 	skipAuditor?: boolean;
+	/** Persisted revision; absent values normalize to zero. Concurrent writes with a stale revision conflict. */
 	revision?: number;
+	/** Optional token budget (whole tokens). When accounted usage reaches it, the runtime marks the goal budget_limited. */
 	tokenBudget?: number;
+	/** Per-goal run allowance: null = unlimited, absent = inherit settings. */
 	maxAutonomousRuns?: number | null;
 	scheduler?: GoalSchedulerState;
 	/**
@@ -60,6 +63,7 @@ export interface GoalRecord {
 	 */
 	currentTaskId?: string;
 	taskList?: GoalTaskList;
+	/** Plain-text description of what verification evidence is required before completing this goal. */
 	verificationContract?: string;
 }
 

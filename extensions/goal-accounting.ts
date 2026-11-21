@@ -61,6 +61,7 @@ export class GoalAccounting {
 		return { tokens, seconds: elapsedSeconds };
 	}
 
+	/** Live elapsed whole seconds for display; does not advance the baseline. */
 	liveSeconds(now = Date.now()): number {
 		if (this.lastAccountedAt === null) return 0;
 		return Math.max(0, Math.floor((now - this.lastAccountedAt) / 1000));

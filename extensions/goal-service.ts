@@ -40,14 +40,18 @@ export interface GoalServiceRef {
 	getPool(): Map<string, GoalRecord>;
 	replacePool(pool: Map<string, GoalRecord>): void;
 	getFocusedGoalId(): string | null;
+	/** Assigns the session focus; bumps the focus revision when it changes. */
 	assignFocusedGoalId(goalId: string | null): void;
 	focusToken(goalId: string): { goalId: string; revision: number };
 	isTokenCurrent(token: { goalId: string; revision: number }): boolean;
 	appendFocusEntry(goalId: string | null, reason: GoalFocusReason): void;
+	/** The focused goal vanished during reconciliation (external clear/archive/delete). */
 	onFocusedGoalLost(lostGoalId: string | null, ctx: GoalServiceContext): void;
 	/** A reconciled goal is now focused; clear continuation/accounting as its status requires. */
 	onReconciled(goal: GoalRecord): void;
+	/** The session focus changed; clear continuation/accounting/nudge state. */
 	onFocusChanged(from: string | null, to: string | null): void;
+	/** Observable diagnostic sink for non-fatal failures (ledger appends). */
 	onDiagnostic(diagnostic: GoalDiagnostic): void;
 }
 
@@ -60,10 +64,15 @@ export interface GoalMutationSpec {
 	focusToken?: { goalId: string; revision: number };
 	/** Skip the leading disk reconciliation (used when the caller already reconciled or must not). */
 	reconcile?: boolean;
+	/** Merge the authoritative objective body from disk before mutating. */
 	refreshFromDisk?: boolean;
+	/** Mutate a clone of the focused goal. May ignore its input to produce a fixed record. */
 	mutate: (goal: GoalRecord) => GoalRecord;
+	/** Ledger events appended best-effort AFTER the authoritative file write. */
 	ledger?: GoalLedgerEvent[] | ((written: GoalRecord) => GoalLedgerEvent[]);
+	/** Write the archived goal file instead of the active file (complete/clear/abort). */
 	archive?: boolean;
+	/** Commit the written record as the focused in-memory goal. Default true. */
 	commitFocused?: boolean;
 }
 
@@ -104,7 +113,9 @@ export type GoalMutationOutcome = GoalMutationResult | GoalMutationFailure;
 export interface GoalTaskUpdateSpec {
 	/** If provided, the token must still be current (same goal id + focus revision). */
 	focusToken?: { goalId: string; revision: number };
+	/** The task to update, loaded fresh from the disk record. */
 	taskId: string;
+	/** Optional transition validation against the FRESH task; a failure aborts with a typed message. */
 	validate?(task: GoalTask): { ok: true } | { ok: false; message: string };
 	/** Transform the FRESH task. A failure aborts; only this task's path changes. */
 	update(task: GoalTask): GoalTask | { ok: false; message: string };
@@ -148,6 +159,7 @@ export class GoalService {
 		ledger: [],
 	};
 
+	/** Open (or reopen) the per-turn transaction for the focused goal. */
 	beginTurn(ctx: GoalServiceContext, goalId: string | null): void {
 		if (this.turn.active) {
 			this.flushTurn(ctx);
@@ -161,6 +173,7 @@ export class GoalService {
 		this.flushError = null;
 	}
 
+	/** Flush buffered mutations; return the written record or null if nothing was buffered. */
 	flushTurn(ctx: GoalServiceContext): GoalRecord | null {
 		if (!this.turn.active) return null;
 		this.flushError = null;
@@ -227,6 +240,7 @@ export class GoalService {
 		this.flushTurn(ctx);
 	}
 
+	/** True while the transaction buffer is open. */
 	isTurnBuffered(): boolean {
 		return this.turn.active;
 	}
@@ -512,6 +526,7 @@ export class GoalService {
 		return this.updateTaskAttempt(ctx, spec, 1);
 	}
 
+ /** Ordered all-or-nothing batch. Each validator sees earlier changes in the clone. */
  updateTasks(ctx: GoalServiceContext, specs: GoalTaskUpdateSpec[]): GoalMutationOutcome {
   if (!this.reconcileFocused(ctx)) return {ok: false, message: "No focused goal to mutate."};
  const current = this.ref.getFocused();
@@ -716,6 +731,7 @@ export class GoalService {
 		return { ok: true, goal: written, previousGoalId, goalId: written.id, focusChanged };
 	}
 
+	/** Append ledger events best-effort (audit flow / focus changes happen mid-turn, outside apply). */
 	appendEvents(ctx: GoalServiceContext, events: GoalLedgerEvent[]): void {
 		if (this.turn.active) {
 			this.turn.ledger.push(...events);

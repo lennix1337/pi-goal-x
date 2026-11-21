@@ -38,6 +38,7 @@ export interface GoalRefreshState {
 	poolIds: Iterable<string>;
 	ledgerEvents: number;
 	ledgerMalformed: number;
+	/** Stable fingerprint of the effective settings (JSON of the parsed file). */
 	settings: string;
 }
 

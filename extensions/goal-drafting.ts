@@ -34,6 +34,7 @@ export interface GoalDraftSession {
 	targetGoalId?: string;
 	startedAt: string;
 	auditorEnabled: boolean;
+	/** Tombstone marker: set when the draft is cancelled, confirmed, or replaced. */
 	clearedAt?: string;
 }
 

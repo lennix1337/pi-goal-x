@@ -19,12 +19,15 @@ import { statusLabel } from "./goal-core.ts";
 
 export interface AuditorProgress {
 	currentTool?: string;
+	/** Arguments passed to the current tool (truncated for display) */
 	currentToolArgs?: string;
+	/** When the current tool started (ms since epoch) */
 	currentToolStartedAt?: number;
 	recentOutput: string[];
 	phase: "running" | "tool_executing" | "producing_report" | "thinking" | "done";
 	elapsedMs: number;
 	label?: string;
+	/** Completion percentage from 0 to 100 */
 	percentage?: number;
 }
 

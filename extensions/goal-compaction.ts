@@ -96,6 +96,7 @@ export function buildCompactionSummary(args: {
   goalsById: Map<string, GoalRecord>;
   focusedGoalId: string | null;
   ledgerEvents?: GoalLedgerEvent[];
+  /** Checkpoint-fed view: uses reconstructed state + per-goal recent tails instead of a full event list. */
   ledgerState?: LedgerStateReadResult;
   capOpenGoals?: number;
   capEventsPerGoal?: number;

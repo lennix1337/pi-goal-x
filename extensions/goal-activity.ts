@@ -27,7 +27,9 @@ export interface GoalActivityItem {
 }
 
 export interface DeriveGoalActivityOptions {
+	/** taskId → title lookup; falls back to the raw task id when absent. */
 	taskTitles?: ReadonlyMap<string, string>;
+	/** Maximum items to return (the latest N, in chronological order). Default 5. */
 	limit?: number;
 }
 

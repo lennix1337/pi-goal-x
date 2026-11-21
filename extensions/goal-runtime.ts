@@ -25,13 +25,16 @@ export interface GoalRuntimeHooks {
 	authorize?(ctx: ExtensionContext, goal: GoalRecord): Record<string, unknown> | null;
 	recover?(ctx: ExtensionContext): void;
 	dispatchFailed?(ctx: ExtensionContext): void;
+	/** Dispatch a hidden follow-up checkpoint message (pi.sendMessage + triggerTurn). */
 	sendFollowUp(content: string, details: Record<string, unknown>): void;
 	/**
 	 * Why another extension needs the next turn first (a pending self-reload); undefined when none.
 	 * A held continuation waits and retries; it is never dropped.
 	 */
 	held?(): string | undefined;
+	/** Current focused goal (state.goal). */
 	getGoal(): GoalRecord | null;
+	/** Whether a checkpointed goal id is still actionable (active + autoContinue). */
 	isActionable(goalId: string | null | undefined): boolean;
 }
 
@@ -67,11 +70,13 @@ export class GoalRuntime {
 		if (resetNetworkErrorBackoff) this.clearNetworkErrorBackoff();
 	}
 
+	/** Clear the pending timer but keep the queued marker (used at session shutdown). */
 	clearContinuationTimer(): void {
 		if (this.continuationScheduled) clearTimeout(this.continuationScheduled.timer);
 		this.continuationScheduled = null;
 	}
 
+	/** Whether a continuation is queued or scheduled for this goal id. */
 	continuationPendingFor(goalId: string): boolean {
 		return this.continuationQueuedFor === goalId || this.continuationScheduled?.goalId === goalId;
 	}
@@ -101,6 +106,7 @@ export class GoalRuntime {
 		this.continuationScheduled = { goalId, timer };
 	}
 
+	/** Cancel a pending continuation for a goal id (e.g. after update/clear/focus change). */
 	cancelContinuationFor(goalId: string): void {
 		if (this.continuationQueuedFor === goalId) this.continuationQueuedFor = null;
 		if (this.continuationScheduled?.goalId === goalId) this.clearContinuationState();
@@ -132,6 +138,7 @@ export class GoalRuntime {
 		return plan;
 	}
 
+	/** Cancel and forget all goal-level network-error recovery state. */
 	clearNetworkErrorBackoff(): void {
 		if (this.networkErrorRetryTimer) clearTimeout(this.networkErrorRetryTimer);
 		this.networkErrorRetryTimer = null;
@@ -201,6 +208,7 @@ export class GoalRuntime {
 		if (this.turnStoppedFor?.turnSeq !== this.turnSeq) this.turnStoppedFor = null;
 	}
 
+	/** Mark the current turn stopped after a terminal/mutating goal tool. */
 	markTurnStopped(goalId: string): void {
 		this.turnStoppedFor = { goalId, turnSeq: this.turnSeq };
 	}
@@ -244,6 +252,7 @@ export class GoalRuntime {
 		this.postCompactReminderPending = false;
 	}
 
+	/** True once if a post-compaction reminder is pending; clears it. */
 	consumePostCompactReminder(): boolean {
 		if (!this.postCompactReminderPending) return false;
 		this.postCompactReminderPending = false;

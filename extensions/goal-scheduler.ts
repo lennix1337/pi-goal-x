@@ -190,6 +190,7 @@ export class GoalScheduler {
 		} catch (error) { return { content: [{ type: "text", text: `Scheduling decision NOT saved: ${error instanceof Error ? error.message : String(error)}` }], details: { error: true }, terminate: false, isError: true }; }
 	}
 
+	/** One logical run can contain multiple agent_start events during native retry/compaction. */
 	begin(ctx: ExtensionContext): void {
 		this.ctx = ctx;
 		if (this.inRun) { this.core.runningGoalId = this.core.state.goal?.id ?? null; return; }

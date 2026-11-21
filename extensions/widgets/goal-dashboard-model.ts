@@ -34,6 +34,7 @@ export interface GoalDashboardModel {
 	};
 
 	focused: boolean;
+	/** Whether the goal auditor is enabled; undefined means enabled. */
 	auditorEnabled: boolean;
 	filePath?: string;
 
@@ -88,6 +89,7 @@ export interface DashboardTaskNode {
 	isCurrent: boolean;
 	verificationContract?: string;
 	evidence?: string;
+	/** Completion timestamp used as the scroll anchor. */
 	completedAt?: string;
 	/** Direct-child subtask total — 0 for a leaf task (§9.3 rule: direct children only). */
 	totalSubtasks: number;
@@ -96,11 +98,13 @@ export interface DashboardTaskNode {
 
 export interface GoalDashboardModelOptions {
 	maxAutonomousRuns?: number;
+	/** Report the runs line for a finite allowance (default on). */
 	showAutonomousRuns?: boolean;
 	focused: boolean;
 	otherOpenGoals: number;
 	ledgerEvents?: readonly GoalLedgerEvent[];
 	activityLimit?: number;
+	/** Omit task sections when tasks are disabled. */
 	tasksDisabled?: boolean;
 }
 
@@ -356,7 +360,9 @@ export interface TaskListViewport {
 	rows: number;
 	offset: number;
 	maxOffset: number;
+	/** Rows hidden above the window (offset > 0). */
 	hiddenAbove: number;
+	/** Rows hidden below the window (offset + rows < total). */
 	hiddenBelow: number;
 }
 

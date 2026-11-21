@@ -14,6 +14,7 @@ import type { GoalTask } from "./goal-record.ts";
 
 export interface TaskSubtreeCounts {
 	total: number;
+	/** Done count: complete, or complete+skipped when doneIncludesSkipped. */
 	complete: number;
 	skipped: number;
 	pending: number;

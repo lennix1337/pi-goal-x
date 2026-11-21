@@ -98,7 +98,9 @@ export interface GoalSettingsResolvedShape {
 	thinkingLevel?: ThinkingLevel;
 	disabled?: boolean;
 	autoSelectSingleGoal?: boolean;
+	/** Load project skills and extensions in auditor sessions; defaults to false. */
 	auditorProjectResources?: boolean;
+	/** Stall detector timeout in minutes; zero disables it. */
 	stallTimeoutMinutes?: number;
 	/** Optional extension-run limit per creation/resume; zero disables; absent gives new goals the default (30) while earlier goals without an override inherit the configured allowance (unlimited if none). */
 	maxAutonomousRuns?: number;
@@ -116,6 +118,7 @@ export interface GoalSettingsResolvedShape {
 	 */
 	objectiveMaxChars?: number;
 	keybindings?: GoalKeybindings;
+	/** Suppress the unfocused goal widget and status hint; defaults to false. */
 	hideUnfocusedBanner?: boolean;
 	/** Issue #72: suppress the model-facing [PI GOAL UNFOCUSED] prompt (default false). */
 	hideUnfocusedPrompt?: boolean;

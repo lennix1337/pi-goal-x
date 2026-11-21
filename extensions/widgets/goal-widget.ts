@@ -607,6 +607,7 @@ export class GoalWidgetComponent implements Component {
 		return true;
 	}
 
+	/** Scroll the expanded dashboard; return true if the key was consumed. */
 	handleNavigationKey(key: "up" | "down" | "pageUp" | "pageDown" | "home" | "end"): boolean {
 		if (!this.getExpanded()) return false;
 		const settings = this.getSettings();
