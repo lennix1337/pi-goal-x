@@ -1,10 +1,3 @@
-/**
- * Composed-request size breakdown (PR D).
- *
- * Measures every component of the model-facing request — including the tool
- * schemas and historical checkpoint payload that B4 never saw.
- */
-
 import { countSemanticOccurrences, currentTaskNeedle } from "./semantic-invariants.mjs";
 
 /**
@@ -12,8 +5,6 @@ import { countSemanticOccurrences, currentTaskNeedle } from "./semantic-invarian
  */
 export function serializeRequest(captured) {
 	const system = `${captured.baseSystem}${captured.extensionSystem ?? ""}`;
-	// Retain tool calls, arguments, roles, and results as well as text blocks.
-	// Provider-specific framing/tokenization is cross-checked separately.
 	const messages = JSON.stringify(captured.messages ?? []);
 	const tools = (captured.tools ?? [])
 		.map((t) => `${t.name}\n${t.description}\n${JSON.stringify(t.schema ?? {})}`)
@@ -40,10 +31,8 @@ export function measureContext(captured) {
 				: "";
 		if (message.role === "custom" && message.customType === "pi-goal-event") {
 			checkpointChars += text.length;
-			// Historical = any pi-goal-event beyond the LAST one in the list.
 		}
 	}
-	// Historical checkpoints: every event message except the last one.
 	const eventIndexes = [];
 	(captured.messages ?? []).forEach((m, i) => {
 		if (m.role === "custom" && m.customType === "pi-goal-event") eventIndexes.push(i);
@@ -56,7 +45,6 @@ export function measureContext(captured) {
 
 	const baseSystemChars = captured.baseSystem.length;
 	const extensionSystemChars = (captured.extensionSystem ?? "").length;
-	// Current goal state is a request-only message at the tail.
 	const goalStateChars = (captured.messages ?? []).filter(m => m.customType === "pi-goal-live-context").reduce((sum, m) => sum + m.content.length, 0);
 	const toolSchemaChars = serialized.tools.length;
 

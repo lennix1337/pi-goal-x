@@ -1,10 +1,3 @@
-/**
- * Fault-injection persistence tests (reliability campaign 2026-08-09).
- *
- * Simulates crash/interruption states and multi-process contention without
- * live agents: torn writes, torn ledger tails, stale locks, and cross-process
- * appends exercised through the extension's own persistence layer.
- */
 
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
@@ -49,24 +42,16 @@ test("fault: torn goal-file write is never observed as partial content", () => {
 		const filePath = path.join(cwd, goal.activePath ?? "");
 		const before = fs.readFileSync(filePath, "utf8");
 
-		// Simulate a crash between the temp write and the rename: a partial
-		// temp file is left next to the goal file, and the goal file itself is
-		// truncated (a torn rename target). Readers must ignore the temp file
-		// and never observe a hybrid.
 		const dir = path.dirname(filePath);
 		const tmpName = `${path.basename(filePath)}.tmp-${process.pid}`;
 		fs.writeFileSync(path.join(dir, tmpName), before.slice(0, 40), "utf8");
-		fs.writeFileSync(filePath, before.slice(0, 120), "utf8"); // truncated goal file
-
-		// parseGoalFile on the truncated file returns null (malformed), and the
-		// pool scan ignores the .tmp file entirely.
+		fs.writeFileSync(filePath, before.slice(0, 120), "utf8");
 		const parsed = parseGoalFile(filePath);
 		assert.equal(parsed, null, "truncated goal file is detected as malformed");
 		invalidateAll();
 		const pool = readActiveGoalPool({ cwd });
 		assert.equal(pool.size, 0, "torn goal is excluded from the pool; temp files are never parsed");
 
-		// A subsequent extension write atomically restores a valid file.
 		const restored = writeActiveGoalFile({ cwd }, createGoal({ objective: "restored", autoContinue: true, sisyphus: false }, Date.UTC(2026, 8, 7, 9, 1, 0)));
 		const reparsed = parseGoalFile(path.join(cwd, restored.activePath ?? ""));
 		assert.ok(reparsed, "re-write restores a fully parseable goal file");
@@ -81,10 +66,8 @@ test("fault: torn ledger tail is counted malformed and never breaks reads or tai
 	try {
 		appendGoalEvent({ cwd }, { type: "goal_created", goalId: "g1", objective: "o", sisyphus: false, autoContinue: true, at: new Date().toISOString() });
 		invalidateAll();
-		// Build a checkpoint over the first event.
 		loadLedgerState({ cwd });
 
-		// Crash-simulated torn append: a partial JSON line at the tail.
 		fs.appendFileSync(goalLedgerPath({ cwd }), '{"type": "goal_focused", "goalId": "g1", "reason": "crea', "utf8");
 
 		invalidateAll();
@@ -92,7 +75,6 @@ test("fault: torn ledger tail is counted malformed and never breaks reads or tai
 		assert.equal(read.malformed, 1, "torn line counted as malformed");
 		assert.equal(read.events.length, 1, "valid events before the torn tail are intact");
 
-		// Checkpoint tail replay tolerates the torn tail too.
 		invalidateAll();
 		const state = loadLedgerState({ cwd });
 		assert.equal(state.malformed, 1);
@@ -106,7 +88,6 @@ test("fault: torn ledger tail is counted malformed and never breaks reads or tai
 test("fault: stale lock (dead pid) is reclaimed promptly; live-holder lock fails fast", async () => {
 	const cwd = tempCwd();
 	try {
-		// Stale lock: dead pid + old mtime.
 		fs.mkdirSync(path.join(cwd, ".pi", "goals", ".locks"), { recursive: true });
 		const lockPath = path.join(cwd, ".pi", "goals", ".locks", "g1.lock");
 		fs.writeFileSync(lockPath, JSON.stringify({ pid: 999_999_999, startedAt: new Date(Date.now() - 120_000).toISOString() }), "utf8");
@@ -120,8 +101,6 @@ test("fault: stale lock (dead pid) is reclaimed promptly; live-holder lock fails
 		assert.ok(elapsed < 5_000, `staleness recovery is prompt (${elapsed}ms)`);
 		lock.release();
 
-		// Live holder: a child process acquires the lock and holds it; the
-		// parent's acquisition must fail fast (bounded), not block.
 		const holderScript = `
 			const { acquireGoalLock } = require(${JSON.stringify(path.join(EXT_ROOT, "storage/goal-lock.ts"))});
 			const lock = acquireGoalLock({ cwd: process.env.FAULT_CWD }, "g2");
@@ -162,9 +141,6 @@ test("fault: stale lock (dead pid) is reclaimed promptly; live-holder lock fails
 test("fault: multi-process goal-file writes never tear (one complete writer wins)", () => {
 	const cwd = tempCwd();
 	try {
-		// Two children write the same goal id concurrently via the extension's
-		// own atomic writer; the final file must be one of the two complete
-		// versions — never a hybrid.
 		const writer = (objective: string) => `
 			const { createGoal } = require(${JSON.stringify(path.join(EXT_ROOT, "goal-record.ts"))});
 			const { writeActiveGoalFile } = require(${JSON.stringify(path.join(EXT_ROOT, "storage/goal-files.ts"))});
@@ -195,10 +171,8 @@ test("fault: child-process append is picked up by the refresh diff (cross-proces
 	try {
 		writeActiveGoalFile({ cwd }, createGoal({ objective: "base", autoContinue: true, sisyphus: false }, Date.UTC(2026, 8, 7, 11, 0, 0)));
 		invalidateAll();
-		readActiveGoalPool({ cwd }); // warm the pool cache
-		readGoalLedger({ cwd }); // warm the ledger cache
-
-		// A child (separate process) writes a goal file + ledger line directly.
+		readActiveGoalPool({ cwd });
+		readGoalLedger({ cwd });
 		const res = spawnSync(process.execPath, ["--experimental-strip-types", "-e", `
 			const fs = require("node:fs");
 			const { createGoal } = require(${JSON.stringify(path.join(EXT_ROOT, "goal-record.ts"))});
@@ -211,13 +185,11 @@ test("fault: child-process append is picked up by the refresh diff (cross-proces
 		`], { cwd, env: { ...process.env, FAULT_CWD: cwd }, encoding: "utf8", timeout: 30_000 });
 		assert.equal(res.status, 0, `child exit ${res.status}`);
 
-		// Parent's warm caches still show the old state (mid-session staleness).
 		const ledgerBefore = readGoalLedger({ cwd }).events.length;
 		const poolBefore = readActiveGoalPool({ cwd }).size;
 		assert.equal(poolBefore, 1, "warm cache before the external write");
 		assert.equal(ledgerBefore, 0, "warm ledger before the external write");
 
-		// The refresh diff (before=warm caches, after=cold re-read) reports both.
 		invalidateAll();
 		const afterPool = readActiveGoalPool({ cwd });
 		const afterLedger = readGoalLedger({ cwd });

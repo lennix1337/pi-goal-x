@@ -40,9 +40,6 @@ test("sisyphusObjectiveSufficient accepts inline and block ordered steps", () =>
 });
 
 test("goalDraftingPrompt routes the complete presentation through the tool renderer (PR E §57)", () => {
-	// PR F: the structured propose_goal_draft arguments are supplied ONCE and
-	// the tool call renderer is the scrollable complete human presentation.
-	// Duplicating the full proposal in prose is explicitly forbidden.
 	for (const focus of ["goal" as const, "sisyphus" as const]) {
 		const prompt = goalDraftingPrompt("some topic", focus);
 		assert.ok(prompt.includes("do NOT duplicate the full proposal in a preceding prose message"), `${focus} prompt must forbid the prose duplication`);

@@ -2,17 +2,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import globals from "globals";
 
-/**
- * Small lint gate (intentionally quiet):
- * - JS best-practice rules via eslint:recommended.
- * - tsc owns undefined-name / unused-symbol reporting with the configured
- *   strictness; the core no-unused-vars rule also misfires on TS
- *   interface-conformance parameters and re-exported symbols.
- * - no-regex-spaces is off: several test regexes deliberately match multiple
- *   literal spaces in rendered output.
- * - no-explicit-any applies only to extensions/ (the shipped product); test
- *   scaffolding may use `as any` freely.
- */
+// external: ESLint no-unused-vars misidentifies TypeScript interface parameters and re-exports.
 export default tseslint.config(
 	{ ignores: ["node_modules/**", "experiments/**", "specs/**", "docs/**", ".pi/**", "scratchpad/**"] },
 	js.configs.recommended,

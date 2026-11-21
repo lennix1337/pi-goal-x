@@ -25,7 +25,6 @@ function cleanup(ctx: GoalLedgerContext): void {
   try {
     fs.rmSync(ctx.cwd, { recursive: true, force: true });
   } catch {
-    // ignore
   }
 }
 
@@ -262,7 +261,6 @@ test("reconstructGoalLedger handles repeated pause and resume events", () => {
   assert.ok(g1);
   assert.equal(g1?.latestStatus, "complete");
   assert.equal(g1?.completedAt, "2024-01-01T00:00:06.000Z");
-  // goal_resumed clears pauseReason, so latestPauseReason should be undefined
   assert.equal(g1?.latestPauseReason, undefined);
 });
 
@@ -325,13 +323,10 @@ test("reconstructGoalLedger handles audit_skipped without changing goal status",
   ];
 
   const state = reconstructGoalLedger(events);
-  // Goal should remain active (not terminal)
   assert.equal(state.goals.has("g1"), true);
   assert.equal(state.terminalGoals.has("g1"), false);
   assert.equal(state.goals.get("g1")?.latestStatus, "active");
-  // audit_skipped should NOT set latestAuditorResult
   assert.equal(state.goals.get("g1")?.latestAuditorResult, undefined);
-  // Focus should remain
   assert.equal(state.focusedGoalId, "g1");
 });
 

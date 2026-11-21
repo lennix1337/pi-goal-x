@@ -1,11 +1,3 @@
-/**
- * Issue #26 — opt-in read-only Blocker Oracle.
- *
- * Covers: default-off byte-comparable path, explicit provider/model config,
- * read-only tool profile, one consult per fingerprint, actionable/needs_human
- * dispositions, follow-up gating, failure limits, and both demonstration
- * journeys (actionable-advice and needs-human) via scripted fake sessions.
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -57,7 +49,7 @@ describe("blocker fingerprint", () => {
 		const fp2 = buildBlockerFingerprint(g, "tests  fail  with\nECONNREFUSED ");
 		assert.equal(fp1, fp2, "whitespace/case normalization");
 		const g2 = goal();
-		g2.id = g.id; // same goal identity: only usage/revision differ
+		g2.id = g.id;
 		g2.usage.tokensUsed = 999_999;
 		g2.revision = 42;
 		assert.equal(buildBlockerFingerprint(g2, "Tests fail with ECONNREFUSED"), fp1, "usage/revision do not change the fingerprint");
@@ -169,7 +161,6 @@ describe("consult-state reconstruction", () => {
 	});
 });
 
-// ── Journeys (plan §79): scripted demonstrations ────────────────────────────
 
 describe("journey: actionable-advice keeps the goal active, then allows block after follow-up work", () => {
 	it("demonstrates the full actionable journey", async () => {
@@ -179,7 +170,6 @@ describe("journey: actionable-advice keeps the goal active, then allows block af
 			g.id = "journey-actionable";
 			const fp = buildBlockerFingerprint(g, "Migration fails");
 
-			// Step 1: consultation produces actionable advice (ledger events).
 			const events1 = [
 				{ type: "oracle_started", goalId: g.id, fingerprint: fp, provider: "p", model: "m", reason: "Migration fails", at: "t1" },
 				{ type: "oracle_result", goalId: g.id, fingerprint: fp, adviceId: "adv-A", disposition: "actionable", summary: "drain pool first", at: "t2" },
@@ -192,12 +182,10 @@ describe("journey: actionable-advice keeps the goal active, then allows block af
 			assert.equal(state.result?.disposition, "actionable");
 			assert.equal(state.followupAttempted, false);
 
-			// Step 2: identical blocker again WITHOUT work → reminder, no new consult.
 			const consultsBefore = countConsults(events1 as never, fp);
 			state = oracleStateForFingerprint(events1 as never, g.id, fp);
 			assert.equal(consultsBefore, 1, "no second consult for the same fingerprint");
 
-			// Step 3: meaningful work attempt is recorded…
 			const events2 = [
 				...events1,
 				{ type: "oracle_followup_attempted", goalId: g.id, fingerprint: fp, adviceId: "adv-A", firstToolName: "bash", at: "t3" },
@@ -205,7 +193,6 @@ describe("journey: actionable-advice keeps the goal active, then allows block af
 			state = oracleStateForFingerprint(events2 as never, g.id, fp);
 			assert.equal(state.followupAttempted, true);
 
-			// …and the SAME blocker may now commit the block (goal_blocked appended).
 			const events3 = [
 				...events2,
 				{ type: "goal_blocked", goalId: g.id, reason: "Migration fails even after draining the pool", source: "agent", at: "t4" },
@@ -238,7 +225,6 @@ describe("journey: needs-human blocks immediately", () => {
 			];
 			const state = oracleStateForFingerprint(events as never, g.id, fp);
 			assert.equal(state.result?.disposition, "needs_human");
-			// The state machine commits the block immediately for this disposition.
 			const blockedEvent = { type: "goal_blocked", goalId: g.id, reason: "Need prod credentials I cannot access", source: "agent", at: "t3" };
 			assert.ok(blockedEvent);
 		} finally {

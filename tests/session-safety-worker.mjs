@@ -1,4 +1,3 @@
-/** Real SDK regression worker; launched without the unit-test SDK adapters. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';

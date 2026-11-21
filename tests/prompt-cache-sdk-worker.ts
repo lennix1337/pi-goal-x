@@ -10,8 +10,7 @@ import { filterGoalSessionContext } from "../extensions/goal-session-safety.ts";
 import { LiveTailRetention } from "../extensions/goal-live-retention.ts";
 
 const live = "[PI GOAL ACTIVE goalId=fixture]\nUsage: 123 tokens";
-// Exercise Pi's actual serializers. onPayload throws before HTTP dispatch, so
-// these checks require neither credentials nor a paid request.
+// external: Pi onPayload throws before HTTP dispatch, avoiding paid requests.
 for (const flavor of ["anthropic-messages", "openai-completions", "openai-responses", "anthropic-compatible-completions"] as const) {
  const api = flavor === "anthropic-compatible-completions" ? "openai-completions" : flavor;
  test(`real ${flavor} serialization preserves history and honors cache retention`, async () => {
@@ -50,12 +49,7 @@ for (const flavor of ["anthropic-messages", "openai-completions", "openai-respon
  });
 }
 
-// Advancing-history regression: a completed assistant turn entering history must
-// not displace the previously sent goal-state tail. The production retention
-// helper builds each request (hook wiring is tested separately): request
-// N's serialized conversation must be an exact prefix of request N+1's, letting
-// implicit caches (OpenAI Responses / Chat Completions, which carry no explicit
-// marker) reuse the full prefix instead of freezing at the first injection point.
+// external: OpenAI implicit caches reuse an exact conversation prefix.
 for (const flavor of ["openai-completions", "openai-responses"] as const) {
 	test(`real ${flavor} serialization keeps an advancing prefix across assistant turns`, async () => {
 		const cwd = mkdtempSync(path.join(tmpdir(), "goal-cache-advance-"));
@@ -77,8 +71,7 @@ for (const flavor of ["openai-completions", "openai-responses"] as const) {
 				return payload;
 			};
 			const session: any[] = [{role: "user", content: "unchanging history", timestamp: 1}];
-			// A completed assistant turn carries usage and a terminal stopReason, exactly
-			// as the SDK produces for real turns (the token estimator reads usage).
+			// external: Pi assistant messages carry usage and a terminal stopReason.
 			const turn = (n: number, timestamp: number) => ({role: "assistant", content: [{type: "text", text: `completed result ${n}`}], stopReason: "stop", usage: {input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15}, timestamp});
 			const state = "[PI GOAL ACTIVE goalId=fixture]\nObjective: hold the line";
 			const first = await capture(session, {state, counters: "Usage: 100 tokens"});
@@ -91,11 +84,7 @@ for (const flavor of ["openai-completions", "openai-responses"] as const) {
 			assert.ok(a.length < b.length && b.length < c.length, "each advanced request carries its completed turn");
 			assert.deepEqual(b.slice(0, a.length), a, "request N is an exact prefix of request N+1");
 			assert.deepEqual(c.slice(0, b.length), b, "request N+1 is an exact prefix of request N+2");
-			// Two advances add at most the completed turns plus their small counter tails:
-			// the stable policy block is retained in place, never resent.
 			assert.ok(c.length - a.length <= 4, "retained tails grow by state changes, not by requests");
-			// Real tool-loop history, including parallel calls/results, followed by
-			// a user turn. No retained user tail may split a call/result pair.
 			session.push({...turn(3, 4), content: [
 				{type: "toolCall", id: "call_a", name: "read", arguments: {path: "a"}},
 				{type: "toolCall", id: "call_b", name: "read", arguments: {path: "b"}},
@@ -108,7 +97,6 @@ for (const flavor of ["openai-completions", "openai-responses"] as const) {
 			session.push(turn(4, 6), {role: "user", content: "continue", timestamp: 7});
 			const fifth = conversation(await capture(session, {state, counters: "Usage: 500 tokens"}));
 			assert.deepEqual(fifth.slice(0, fourth.length), fourth);
-			// A result arriving after a captured call must remove the unsafe anchor.
 			session.push({...turn(5, 8), content: [{type: "toolCall", id: "delayed", name: "read", arguments: {path: "missing"}}], stopReason: "toolUse"});
 			await capture(session, {state, counters: "Usage: 600 tokens"});
 			session.push({role: "custom", customType: GOAL_AUDIT_ENTRY, content: "DISPLAY ONLY AUDIT", display: true, timestamp: 9});
@@ -124,7 +112,6 @@ for (const flavor of ["openai-completions", "openai-responses"] as const) {
 			const resultIndex = delayedWire.findIndex((m: any) => m.call_id === "delayed" && m.type === "function_call_output" || m.tool_call_id === "delayed");
 			assert.ok(callIndex >= 0);
 			assert.equal(resultIndex, callIndex + 1, "wire result stays adjacent to the delayed call");
-			// Policy edits and compaction reset retained state, while host/tools stay stable.
 			const nextState = "[PI GOAL ACTIVE goalId=fixture]\nObjective: revised";
 			const edited = await capture(session, {state: nextState, counters: "Usage: 800 tokens"});
 			assert.ok(!JSON.stringify(conversation(edited)).includes("Objective: hold the line"));
@@ -168,7 +155,7 @@ for (const flavor of ["anthropic-messages", "anthropic-compatible-completions"] 
       cacheGoalHistory(payload, transientContents);
       throw new Error("Intentional capture before network dispatch");
      }}).result();
-     // SDK catches onPayload exceptions, so assertions must run outside it.
+     // external: the SDK catches onPayload exceptions.
      assert.ok(payload);
      const marked = blocks().filter((b: any) => b.cache_control);
      assert.deepEqual(marked.map((b: any) => b.cache_control), before, "marker count and TTL are unchanged");

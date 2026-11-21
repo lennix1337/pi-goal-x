@@ -154,13 +154,7 @@ export function buildCompactionSummary(args: {
   return lines.join("\n");
 }
 
-/**
- * PR E §62: post-compaction DELTA for the focused goal. The active system
- * goal block already contains the objective, full policy, task gate, and
- * verification contract — this delta adds only what compaction may have
- * lost: the execution focus, a bounded recent-events tail, the latest
- * unresolved auditor finding, and the other-open-goals count.
- */
+/** Render post-compaction execution focus, recent events and unresolved findings. */
 export function buildPostCompactionGoalDelta(args: {
   goal: GoalRecord;
   ledgerEvents: GoalLedgerEvent[];
@@ -169,7 +163,6 @@ export function buildPostCompactionGoalDelta(args: {
   const { goal, ledgerEvents, otherOpenCount } = args;
   const lines: string[] = [];
   lines.push(`[POST-COMPACTION RESYNC goalId=${goal.id}]`);
-  // Execution focus (with contract) — the one thing memory must not lose.
   if (goal.currentTaskId && goal.taskList) {
     const current = taskIndex(goal.taskList.tasks).byId.get(goal.currentTaskId);
     if (current) {
@@ -177,7 +170,6 @@ export function buildPostCompactionGoalDelta(args: {
       if (current.id.length > 80 || current.title.length > 180 || (current.verificationContract?.length ?? 0) > 600) lines.push('Retrieve omitted task requirements with get_goal(section="tasks") before continuing.');
     }
   }
-  // Bounded recent-event tail.
   const recent = latestEventsForGoal(ledgerEvents, goal.id, 5);
   if (recent.length > 0) {
     lines.push("Recent events:");
@@ -185,7 +177,6 @@ export function buildPostCompactionGoalDelta(args: {
       lines.push(`  ${localClock(event.at)} ${event.type}`);
     }
   }
-  // Latest unresolved auditor finding.
   const audit = latestAuditorResultForGoal(ledgerEvents, goal.id);
   if (audit && audit.verdict === "disapproved") {
     lines.push(`Latest unresolved auditor finding: ${audit.report.slice(0, 300)}`);

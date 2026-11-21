@@ -1,10 +1,3 @@
-/**
- * B7 — Feature-wide wall-clock matrix (all extension features, agent-free).
- * Every row is a deterministic case over fixtures through the real extension
- * functions; the Part 0 module map is the coverage map. Tool-handler rows run
- * through the agent-free integration harness (pi packages stubbed; auditor
- * injected; no live agents, no network, no unauthorized processes).
- */
 
 import {
 	makeFixtureCwd,
@@ -78,7 +71,6 @@ function flatTasks(count) {
 }
 
 export async function run(baseline) {
-	// ── A. tool handlers (agent-free harness) ───────────────────────────
 	async function toolCase(id, label, modules, fixture, makeHandler, params, prepare) {
 		const times = [];
 		let ops = 0;
@@ -118,7 +110,6 @@ export async function run(baseline) {
 		await setTasks.execute("st-1", { tasks: flatTasks(20), block_completion: false }, new AbortController().signal, undefined, h.ctx);
 	});
 
-	// before_agent_start lifecycle event (the per-turn event path)
 	{
 		const times = [];
 		for (let i = 0; i < 5; i++) {
@@ -144,7 +135,6 @@ export async function run(baseline) {
 		});
 	}
 
-	// ── B. dialog / widget renders (mock TUI, no live terminal) ─────────
 	const g20 = taskGoal(20);
 	const t = createMockTUI();
 	const theme = createMockTheme();
@@ -167,26 +157,23 @@ export async function run(baseline) {
 	}, { n: 100 });
 	baseline.add({ id: "B7.render.widgetComponent", label: "GoalWidgetComponent.render (mock TUI)", modules: "widgets/goal-widget", fixture: "1 goal, 20 tasks", n: r.n, p50: r.p50, p95: r.p95, max: r.max, notes: `mean ${r.mean}ms` });
 
-	// task-list overlay component render
 	{
 		const mockCtx = createMockExtensionContext();
 		const goals = new Map([[g20.id, g20]]);
-		showTaskListOverlay(mockCtx, goals, g20.id); // no await: the mock custom() promise stays pending (tests do the same)
+		showTaskListOverlay(mockCtx, goals, g20.id);
 		const { component } = invokeCustomFactory(mockCtx._customCalls, 0);
 		r = measure(() => renderComponent(component, 100), { n: 100 });
 		baseline.add({ id: "B7.render.taskOverlay", label: "task-list overlay render (20 tasks)", modules: "widgets/task-list-overlay", fixture: "1 goal, 20 tasks", n: r.n, p50: r.p50, p95: r.p95, max: r.max, notes: `mean ${r.mean}ms` });
 	}
 
-	// escape dialog component render
 	{
 		const mockCtx = createMockExtensionContext();
-		showEscapeDialog(mockCtx, g20.objective); // no await: see overlay note
+		showEscapeDialog(mockCtx, g20.objective);
 		const { component } = invokeCustomFactory(mockCtx._customCalls, 0);
 		r = measure(() => renderComponent(component, 100), { n: 100 });
 		baseline.add({ id: "B7.render.escapeDialog", label: "escape dialog render", modules: "widgets/goal-escape-dialog", fixture: "objective text", n: r.n, p50: r.p50, p95: r.p95, max: r.max, notes: `mean ${r.mean}ms` });
 	}
 
-	// ── C. policy / format / accounting / pool / ledger helpers ─────────
 	r = measure(() => buildTaskSummary(g20.taskList), { n: 200 });
 	baseline.add({ id: "B7.policy.taskSummary", label: "buildTaskSummary (20 tasks)", modules: "goal-policy", fixture: "20-task tree", n: r.n, p50: r.p50, p95: r.p95, max: r.max, notes: `mean ${r.mean}ms` });
 
@@ -271,10 +258,6 @@ export async function run(baseline) {
 	r = measure(() => unfocusedOpenGoalsPrompt(3), { n: 2000 });
 	baseline.add({ id: "B7.runtime.unfocusedPrompt", label: "unfocusedOpenGoalsPrompt", modules: "prompts/goal-prompts", fixture: "3 open goals", n: r.n, p50: r.p50, p95: r.p95, max: r.max, notes: `mean ${r.mean}ms` });
 
-	// ── D. unified dashboard (0.24.0) + post-bench non-agent flows ────────
-	// The dashboard model + renderer shipped after the original B7 surface was
-	// built (0.24.0), so these rows close the coverage gap: every renderer and
-	// the hot derivations, at 20- and 50-task tree sizes.
 	{
 		const dcwd = makeFixtureCwd("b7-dash-");
 		try {
@@ -289,12 +272,11 @@ export async function run(baseline) {
 				}
 				return tasks;
 			};
-			const tasks20 = nested(5, 3); // 5 parents × 3 children = 20
-			const tasks50 = nested(10, 4); // 10 parents × 4 children = 50
+			const tasks20 = nested(5, 3);
+			const tasks50 = nested(10, 4);
 			dashGoal.taskList = { tasks: tasks20, blockCompletion: true, proposedAt: new Date().toISOString() };
 			dashGoal.currentTaskId = "t1";
 			const dashGoal50 = { ...dashGoal, taskList: { tasks: tasks50, blockCompletion: true, proposedAt: new Date().toISOString() }, currentTaskId: "t1" };
-			// activity feed: events for this specific goal id (makeLedger uses g0..g9)
 			const lctx = { cwd: dcwd };
 			for (let i = 0; i < 12; i++) {
 				appendGoalEvent(lctx, { type: i % 2 ? "task_complete" : "audit_result", goalId: dashGoal.id, taskId: `t${i % 20}`, evidence: "verified", verdict: "approved", report: "all checks passed", at: new Date(Date.UTC(2026, 8, 1) + i * 1000).toISOString() });

@@ -53,11 +53,7 @@ export interface GoalWidgetRecord extends GoalDisplayRecordLike {
 
 export const GOAL_WIDGET_KEY = "goal";
 
-/**
- * Live display record for the widget/status line: the accounted usage view
- * (clone with live elapsed seconds) when accounting is active for the goal,
- * otherwise the goal as-is (P1-12 extraction from goal-state).
- */
+/** Return a live usage view when accounting is active, otherwise the goal. */
 export function liveDisplayGoal(goal: GoalRecord | null, accounting: { isActiveFor(goalId: string): boolean; liveSeconds(): number }): GoalRecord | null {
 	if (!goal || goal.status !== "active" || !accounting.isActiveFor(goal.id)) return goal;
 	const liveSeconds = accounting.liveSeconds();
@@ -68,11 +64,7 @@ export function liveDisplayGoal(goal: GoalRecord | null, accounting: { isActiveF
 	};
 }
 
-/**
- * The above-editor widget registration factory (P1-12 extraction): builds the
- * GoalWidgetComponent factory the host UI calls at render time. Reads live
- * state through getters so renders always see the current goal.
- */
+/** Create the above-editor widget using live state getters. */
 export function makeGoalWidgetFactory(opts: {
 	getGoal: () => GoalWidgetRecord | null;
 	getOpenGoalCount: () => number;
@@ -83,7 +75,6 @@ export function makeGoalWidgetFactory(opts: {
 	getExpanded?: () => boolean;
 	getLedgerEvents?: () => GoalLedgerEvent[];
 	getAuditResult?: () => AuditResultView | null;
-	/** Receives the live widget so terminal shortcuts can scroll its viewports. */
 	componentRef?: { current: GoalWidgetComponent | null };
 }) {
 	return (tui: TUI, theme: Theme) => {
@@ -112,9 +103,7 @@ export interface AuditorWidgetProgress {
 	recentOutput: string[];
 	phase: "running" | "tool_executing" | "producing_report" | "thinking" | "done";
 	elapsedMs: number;
-	/** Current step label shown to the user */
 	label?: string;
-	/** Completion percentage from 0 to 100 */
 	percentage?: number;
 	/** §15: auditor identity (provider/model) for the audit dashboard header. */
 	auditorLabel?: string;
@@ -128,13 +117,9 @@ export interface GoalWidgetOptions {
 	getAuditorProgress?: () => AuditorWidgetProgress | null;
 	getSettings?: () => GoalSettings;
 	getDebugMode?: () => boolean;
-	/** F5: stalled badge (active auto-continue goal with no recent activity). */
 	getStalled?: () => boolean;
-	/** §10: dashboard expansion state (compact vs expanded task view). */
 	getExpanded?: () => boolean;
-	/** §12: durable ledger events for the recent-activity feed. */
 	getLedgerEvents?: () => GoalLedgerEvent[];
-	/** §15.4: finished audit result card (cleared after a short display). */
 	getAuditResult?: () => AuditResultView | null;
 }
 
@@ -142,37 +127,12 @@ function fit(value: string, width: number): string {
 	return visibleWidth(value) > width ? truncateToWidth(value, width, "…") : value;
 }
 
-// ── terminal-height bound (spec 2026-08-10-widget-height-bound-scrollback-fix) ──
 
-/**
- * Minimum rows reserved below/around the widget so pi's frame stays usable
- * when the widget is at its cap: status line (1) + editor minimum (3) +
- * footer (1) + a chat row (1). With the widget capped at
- * `terminalRows − WIDGET_HEIGHT_RESERVE`, the widget never fills the terminal:
- * the chat row stays in the frame, the widget's top lines stay within the
- * viewport (no pi-tui full-render scrollback wipe), and the editor/footer
- * stay visible — the equal-height scroll-up failure is impossible. Kept at
- * the minimum that still guarantees the chat row: a larger reserve would
- * slice dashboards that genuinely fit (e.g. the expanded 24-line dashboard
- * on a 30-row terminal renders unchanged at 24 + 5 chrome + 1 chat = 30).
- */
+// external: pi-tui can erase scrollback on a full render.
+/** Minimum rows reserved for surrounding terminal chrome and chat. */
 export const WIDGET_HEIGHT_RESERVE = 6;
 
-/**
- * Deterministic height guard: cap rendered lines to the terminal height minus
- * the reserved chrome. Head slice, because the dashboard's content priority
- * is top-down (identity → status → progress → tasks → details → hints); the
- * goal identity/status and the interactive task list stay in frame. Pure
- * index function — stable across renders, so the widget never shrinks on its
- * own and can never trigger pi-tui's clearOnShrink full-render
- * (`\x1b[2J\x1b[H\x1b[3J` scrollback wipe). No-op (unbounded) when
- * terminalRows is missing (mock TUI, headless contexts, /goal-status text).
- *
- * This pure head-slice is the terminal bound for direct callers. The live
- * component additionally applies the stable-height bound
- * (spec 2026-08-11-stable-widget-height) so the rendered height stays
- * constant within each regime — see applyStableHeightBound.
- */
+/** Bound widget lines to terminal height, or leave them unbounded without dimensions. */
 export function boundWidgetRenderLines(lines: string[], terminalRows: number | undefined): string[] {
 	if (!terminalRows || terminalRows <= 0) return lines;
 	const cap = Math.max(1, terminalRows - WIDGET_HEIGHT_RESERVE);
@@ -180,32 +140,7 @@ export function boundWidgetRenderLines(lines: string[], terminalRows: number | u
 	return lines.slice(0, cap);
 }
 
-/**
- * Stable rendered height per regime (spec 2026-08-11-stable-widget-height).
- *
- * The widget's natural (unbounded) height varies with goal state — activity
- * feed growth, current-task contract/evidence wrapping, verification text,
- * budget, task growth (measured 4..31 lines on a 24-row terminal). Every
- * natural-height change alters the dock height → the terminal buffer's line
- * count changes → the terminal scrolls to the bottom and the user cannot hold
- * a scroll position to read the chat. The latch makes the rendered height
- * invariant to goal-state changes in EVERY case (fits and capped):
- *
- * - the first render of each regime commits the rendered height
- *   (min(natural, cap)) and every later render of that regime renders exactly
- *   that many lines — growth is head-sliced, shrink is blank-padded, the
- *   height never changes;
- * - resizing the terminal clears the latch and re-evaluates
- *   min(natural, newCap): growing the terminal reveals more of the widget,
- *   shrinking re-caps;
- * - a regime change (goal id/status, widget state kind, compact↔expanded,
- *   debug mode, tasks disabled, first task appearing) clears the latch so the
- *   new mode starts from its own natural height.
- *
- * Pure given the persisted latch state: deterministic, no timers, no
- * randomness — the same goal state on the same terminal renders the same
- * lines on every render.
- */
+/** Keep widget height stable within a regime; reset on regime or terminal changes. */
 export function applyStableHeightBound(
 	lines: string[],
 	terminalRows: number | undefined,
@@ -216,44 +151,29 @@ export function applyStableHeightBound(
 	if (!terminalRows || terminalRows <= 0) return lines;
 	const cap = Math.max(1, terminalRows - reserve);
 	if (state.stickyTerminalRows !== terminalRows) {
-		// Terminal resized: adapt to the new height (grow/shrink to fit).
 		state.stickyCap = undefined;
 		state.stickyTerminalRows = terminalRows;
 	}
 	if (state.stickyReserve !== reserve) {
-		// The chrome below the widget changed (editor grew/shrunk, status,
-		// footer, pending): re-evaluate so the widget's block plus the chrome
-		// never exceeds the terminal — otherwise the chat's appended lines
-		// and the status line land above pi-tui's viewport top and every
-		// agent write triggers a 2J+3J scrollback wipe (spec 2026-08-11).
+		// external: pi-tui wipes scrollback when changed lines precede its viewport.
 		state.stickyCap = undefined;
 		state.stickyReserve = reserve;
 	}
 	if (state.stickyRegime !== regime) {
-		// Mode/state changed: the latch belongs to one regime.
 		state.stickyCap = undefined;
 		state.stickyRegime = regime;
 	}
 	if (state.stickyCap === undefined) {
-		// First render of the regime: latch the height — the natural height
-		// when it fits, else the cap. Constant from here on, fits AND capped.
 		state.stickyCap = Math.min(lines.length, cap);
 	}
 	if (lines.length > state.stickyCap) {
-		// Growth past the committed height: head-slice (the dashboard's
-		// content priority is top-down), so the buffer line count never
-		// changes.
 		return lines.slice(0, state.stickyCap);
 	}
 	if (lines.length < state.stickyCap) {
-		// Natural dipped below the committed height: pad deterministically so
-		// the buffer line count never changes. Blank rows after the box footer
-		// — honest filler (the …/↑ N more markers are only for hidden content).
 		const padded = lines.slice();
 		while (padded.length < state.stickyCap) padded.push("");
 		return padded;
 	}
-	// Exactly the committed height: unchanged.
 	return lines;
 }
 
@@ -313,9 +233,7 @@ export function renderAuditResultCardView(
 	return renderAuditResultCard(deriveAuditResultCard(view.verdict, view.report), theme, width);
 }
 
-export function renderGoalWidgetLines(goal: GoalWidgetRecord | null, theme: Theme, width: number, options: { openGoalCount?: number; auditorProgress?: AuditorWidgetProgress | null; disableTasks?: boolean; stalled?: boolean; ledgerEvents?: GoalLedgerEvent[]; expanded?: boolean; debug?: boolean; model?: GoalDashboardModel | null; compactScrollOffset?: number; expandedScrollOffset?: number; expandedTaskRows?: number; keybindings?: GoalDashboardKeybindings; /** Terminal-height bound (see boundWidgetRenderLines); undefined = unbounded. */ terminalRows?: number } = {}): string[] {
-	// When auditor progress is active, show the structured audit dashboard
-	// instead of the normal goal widget (§15.3).
+export function renderGoalWidgetLines(goal: GoalWidgetRecord | null, theme: Theme, width: number, options: { openGoalCount?: number; auditorProgress?: AuditorWidgetProgress | null; disableTasks?: boolean; stalled?: boolean; ledgerEvents?: GoalLedgerEvent[]; expanded?: boolean; debug?: boolean; model?: GoalDashboardModel | null; compactScrollOffset?: number; expandedScrollOffset?: number; expandedTaskRows?: number; keybindings?: GoalDashboardKeybindings; terminalRows?: number } = {}): string[] {
 	if (options.auditorProgress) {
 		return boundWidgetRenderLines(renderAuditorWidgetLines(options.auditorProgress, theme, width, {
 			showToolDetails: options.expanded === true || options.debug === true,
@@ -323,7 +241,6 @@ export function renderGoalWidgetLines(goal: GoalWidgetRecord | null, theme: Them
 	}
 	const openGoalCount = options.openGoalCount ?? 0;
 	if (!goal) {
-		// Unfocused panel when open goals exist; nothing when the pool is empty.
 		return boundWidgetRenderLines(openGoalCount > 0 ? renderUnfocusedDashboard(openGoalCount, theme, width) : [], options.terminalRows);
 	}
 	const safeWidth = Math.max(1, width);
@@ -354,9 +271,6 @@ export class GoalWidgetComponent implements Component {
 	private getLedgerEvents: () => GoalLedgerEvent[];
 	private getAuditResult: () => AuditResultView | null;
 
-	// §9.6 scroll state: viewport offsets for the compact top-level list and
-	// the expanded tree, compact scroll-focus engagement, and the re-anchor
-	// bookkeeping (a new completion or a new task in progress re-anchors).
 	private compactScrollOffset = 0;
 	private expandedScrollOffset = 0;
 	private lastRenderWidth = 100;
@@ -364,12 +278,6 @@ export class GoalWidgetComponent implements Component {
 	private lastSeenLatestCompletedAt: string | undefined;
 	private lastSeenActiveId: string | undefined;
 
-	// Stable-height latch (spec 2026-08-11-stable-widget-height): the first
-	// render of each regime commits the rendered height (natural when it fits,
-	// else the cap); the height stays constant (head-slice growth, pad shrink)
-	// until the regime, the terminal size, or the measured dock chrome changes,
-	// so the buffer line count never changes and the terminal stops jumping to
-	// the bottom.
 	private stableHeightState: { stickyCap: number | undefined; stickyRegime: string | undefined; stickyTerminalRows: number | undefined; stickyReserve?: number } = {
 		stickyCap: undefined,
 		stickyRegime: undefined,
@@ -391,7 +299,6 @@ export class GoalWidgetComponent implements Component {
 		this.getAuditResult = options.getAuditResult ?? (() => null);
 	}
 
-	/** Whether the dashboard is currently in expanded mode (§10). */
 	isExpanded(): boolean {
 		return this.getExpanded();
 	}
@@ -400,13 +307,11 @@ export class GoalWidgetComponent implements Component {
 		this.tui.requestRender();
 	}
 
-	/** Render debug info panel when debug mode is active */
 	private renderDebugPanel(width: number): string[] {
 		const t = this.theme;
 		const lines: string[] = [];
 		const safeWidth = Math.max(20, width);
 
-		// Divider
 		lines.push(t.fg("dim", "─".repeat(safeWidth)));
 		lines.push(t.fg("warning", "⊙ [DEBUG MODE]"));
 		lines.push("");
@@ -429,7 +334,6 @@ export class GoalWidgetComponent implements Component {
 			if (goal.archivedPath) lines.push(t.fg("dim", `  archivedPath: ${goal.archivedPath}`));
 			if (goal.verificationContract) lines.push(t.fg("dim", `  vContract: ${truncateText(goal.verificationContract, 60)}`));
 
-			// Task tree summary (from the shared dashboard model).
 			const model = deriveGoalDashboardModel(goal as GoalRecord | null, { focused: true, otherOpenGoals: 0 });
 			if (model?.taskProgress) {
 				lines.push(t.fg("dim", `  tasks: ${model.taskProgress.completed}/${model.taskProgress.total}`));
@@ -455,51 +359,20 @@ export class GoalWidgetComponent implements Component {
 	render(width: number): string[] {
 		const settings = this.getSettings();
 		this.lastRenderWidth = Math.max(1, width);
-		// Terminal-height bound (spec 2026-08-10): read pi's terminal rows at
-		// render time so the widget never fills the terminal — the chat/editor
-		// stay visible and scrollable and the widget can never trigger pi-tui's
-		// shrink full-render (\x1b[2J\x1b[H\x1b[3J) scrollback wipe. Same cast
-		// pattern as the questionnaire churn guard; mock TUIs without a
-		// `terminal` render unbounded.
+		// external: pi-tui can wipe scrollback when the widget overflows the terminal.
 		const terminalRows = (this.tui as unknown as { terminal?: { rows?: number } }).terminal?.rows;
-		// Render the current branch unbounded (natural), then apply the
-		// stable-height bound (spec 2026-08-11): the rendered height latches at
-		// the first render of each regime and stays constant (fits and capped),
-		// so the dock height / buffer line count stop changing and the
-		// terminal stops jumping to the bottom.
 		const natural = this.renderNatural(width);
 		const regime = this.stableHeightRegime();
-		// Reserve adapted to the actual dock chrome (status + editor + footer +
-		// pending): the widget's block plus the chrome must never exceed the
-		// terminal, or the chat's appended lines and the status line land above
-		// pi-tui's viewport top and every agent write wipes the scrollback.
 		const reserve = this.measureDockReserve(width) ?? WIDGET_HEIGHT_RESERVE;
 		return applyStableHeightBound(natural, terminalRows, this.stableHeightState, regime, reserve);
 	}
 
-	/**
-	 * Measure the rendered height of the dock chrome around the widget
-	 * (pending + status + editor + widgetBelow + footer) at the current width,
-	 * so the widget can size itself so its block plus the chrome never exceeds
-	 * the terminal (spec 2026-08-11): pi-tui full-renders (2J+3J, scrollback
-	 * wipe) whenever the first changed line is above its tracked viewport top
-	 * (`previousBufferLength − terminalRows`); when the widget's block pushes
-	 * the chat's append point and the status line above that, every agent
-	 * write wipes the terminal scrollback and the user is forced to the
-	 * bottom. Returns undefined (→ the static WIDGET_HEIGHT_RESERVE fallback)
-	 * when the TUI exposes no measurable dock (mock TUIs, headless).
-	 */
+	// external: pi-tui full renders erase scrollback when changes precede the viewport.
 	private measureDockReserve(width: number): number | undefined {
 		type DockChild = { children?: DockChild[]; render?: (w: number) => string[] };
 		const tui = this.tui as unknown as { children?: DockChild[] };
 		const top = tui.children;
 		if (!Array.isArray(top) || top.length < 2) return undefined;
-		// Locate the dock list and the widget's own container:
-		// regular mode — top-level [document, pending, status, widgetAbove,
-		//   editor, widgetBelow, footer] with the widget directly inside
-		//   widgetContainerAbove;
-		// fullscreen mode — top-level [transcript, dock] with the widget
-		//   inside widgetContainerAbove inside the dock VStack.
 		let dockList: typeof top | undefined;
 		let widgetContainer: (typeof top)[number] | undefined;
 		for (const c of top) {
@@ -520,9 +393,6 @@ export class GoalWidgetComponent implements Component {
 		let total = 0;
 		for (let i = 0; i < dockList.length; i++) {
 			const c = dockList[i]!;
-			// Skip the document container / transcript (its height cancels out
-			// of the viewport math: it sits above both the chat's append point
-			// and the viewport top) and the widget's own container.
 			if (dockList === top && i === 0) continue;
 			if (c === widgetContainer) continue;
 			if (typeof c?.render !== "function") continue;
@@ -530,21 +400,16 @@ export class GoalWidgetComponent implements Component {
 				const lines = c.render(width);
 				if (Array.isArray(lines)) total += lines.length;
 			} catch {
-				// A sibling render failure must never break the widget; fall
-				// back to the static reserve.
 				return undefined;
 			}
 		}
-		// +1 slack so the strictest safety condition (chat append point below
-		// the viewport top) holds even at the boundary.
+		// external: one line of slack keeps the chat append point below the viewport.
 		return total + 1;
 	}
 
-	/** The current widget branch rendered unbounded (no terminal-height bound). */
 	private renderNatural(width: number): string[] {
 		const settings = this.getSettings();
 		const safeWidth = Math.max(1, width);
-		// §15.4: a finished audit shows its result card until cleared.
 		const auditResult = this.getAuditResult();
 		if (auditResult) {
 			return clampLinesToWidth(renderAuditResultCardView(auditResult, this.theme, width), width);
@@ -580,15 +445,6 @@ export class GoalWidgetComponent implements Component {
 		return clampLinesToWidth(lines, width);
 	}
 
-	/**
-	 * Stable-height regime key: the latch belongs to one goal, goal status,
-	 * widget state kind (focused / audit / result / unfocused / none),
-	 * expansion mode, debug mode, task setting, and task presence — a change
-	 * clears the latch so the new mode starts from its own natural height.
-	 * Task presence re-latches a structurally empty goal (0 tasks → tiny
-	 * dashboard) when its first task appears — a rare structural jump, not
-	 * steady-state churn.
-	 */
 	private stableHeightRegime(): string {
 		const settings = this.getSettings();
 		const goal = this.getGoal();
@@ -601,13 +457,6 @@ export class GoalWidgetComponent implements Component {
 		return [goal?.id ?? "∅", goal?.status ?? "∅", stateKind, String(this.getExpanded()), String(this.getDebugMode()), String(settings.disableTasks === true), String(hasTasks)].join("|");
 	}
 
-	/**
-	 * §9.6 re-anchor rule: when the goal changes, a new task completes (the
-	 * latest completedAt moves) or another task becomes the one in progress,
-	 * reset both viewports to the anchored defaults so the work in progress
-	 * stays visible. Between such events the user's manual scroll position is
-	 * preserved.
-	 */
 	private maybeReanchor(model: GoalDashboardModel | null): void {
 		const tree = model?.taskTree ?? [];
 		const latest = latestCompletedNodeIndex(tree);
@@ -627,13 +476,8 @@ export class GoalWidgetComponent implements Component {
 		this.expandedScrollOffset = anchoredScrollOffset(model.taskTree, expandedTaskViewportRows(this.lastRenderWidth));
 	}
 
-	/**
-	 * Scroll the compact task list with a Ctrl+Shift chord (§9.6). The chords
-	 * are free in pi (the editor owns the plain arrows), so no focus state is
-	 * needed — but they are consumed only when the compact list actually
-	 * overflows its viewport, so they never swallow keystrokes for a short
-	 * list. Returns true when the key was consumed.
-	 */
+	// external: Pi's editor owns the plain arrow keys.
+	/** Scroll the compact task list; return true only when the key is consumed. */
 	handleCompactScrollKey(key: "up" | "down" | "pageUp" | "pageDown" | "home" | "end"): boolean {
 		if (this.getExpanded()) return false;
 		const settings = this.getSettings();
@@ -662,14 +506,7 @@ export class GoalWidgetComponent implements Component {
 		return true;
 	}
 
-	/**
-	 * Handle a navigation key for the expanded dashboard. The expanded
-	 * dashboard is modal — while it is open it owns the arrow keys (like the
-	 * session tree or model selector), so plain ↑/↓/PgUp/PgDn scroll the task
-	 * tree and Esc collapses. Returns true when the key was consumed.
-	 * Clamps at both ends; Home/End jump to the edges; PgUp/PgDn page by one
-	 * viewport.
-	 */
+	/** Scroll the expanded dashboard; return true if the key was consumed. */
 	handleNavigationKey(key: "up" | "down" | "pageUp" | "pageDown" | "home" | "end"): boolean {
 		if (!this.getExpanded()) return false;
 		const settings = this.getSettings();

@@ -1,6 +1,3 @@
-/**
- * Auditor model/thinking selector helpers (ll01 cb6760b pattern).
- */
 
 import assert from "node:assert/strict";
 import test from "node:test";

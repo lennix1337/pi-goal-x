@@ -1,17 +1,4 @@
-/**
- * B8 agent-exclusion guard state (shared by the wrapper modules).
- *
- * The wrapper modules (node-fs.mjs, node-net.mjs, node-http.mjs,
- * node-https.mjs, node-child-process.mjs) are installed via
- * bench-adapter-hooks.mjs registerHooks and shadow the real Node builtins
- * for every module in the process (extension + harness). They consult this
- * module for:
- *   - sync fs op counting (B2 per-turn I/O accounting),
- *   - injected read latency (B1 slow-storage emulation),
- *   - the no-model/no-network/no-spawn enforcement (B8): any net/http/https
- *     use throws; child_process use throws unless explicitly allowed by the
- *     contention harness (b5).
- */
+// external: Node hook wrappers must block network and process creation unless explicitly allowed.
 
 export const state = {
 	fsOpCount: 0,

@@ -23,7 +23,6 @@ export async function showEscapeDialog(
 	goalObjective: string,
 ): Promise<EscapeDialogResult> {
 	if (!ctx.hasUI) {
-		// Fallback for headless/RPC mode — return "continue" as the safe default
 		return "continue_working";
 	}
 
@@ -31,11 +30,9 @@ export async function showEscapeDialog(
 		(tui: TUI, theme: Theme, _keybindings: unknown, done: (result: EscapeDialogResult) => void): Component => {
 			const wasHardwareCursorShown = tui.getShowHardwareCursor();
 			tui.setShowHardwareCursor(false);
-			// Pause pi's working spinner for the dialog duration: its ~80ms re-renders
-			// write output that snaps a scrolled-up user back to the terminal bottom.
 			ctx.ui.setWorkingVisible(false);
 
-			let selectedIndex = 1; // Default: "Continue working" (index 1)
+			let selectedIndex = 1;
 			let cancelled = false;
 
 			const OPTIONS: Array<{ label: string; value: EscapeDialogResult; description: string }> = [
@@ -55,7 +52,6 @@ export async function showEscapeDialog(
 			const dim = (s: string) => theme.fg("dim", s);
 			const warning = (s: string) => theme.fg("warning", s);
 
-			// ── Component ────────────────────────────────────────────────────
 			const component: Component & { dispose?(): void } = {
 				dispose() {
 					tui.setShowHardwareCursor(wasHardwareCursorShown);
@@ -63,7 +59,6 @@ export async function showEscapeDialog(
 				},
 
 				invalidate(): void {
-					// No cached state to invalidate
 				},
 
 				render(width: number): string[] {
@@ -74,9 +69,7 @@ export async function showEscapeDialog(
 
 					const horizLine = horizontalRule(innerWidth);
 					const lines: string[] = [];
-					const p = "  "; // left padding inside the border
-
-					// ── Header ────────────────────────────────────────────────
+					const p = "  ";
 					lines.push(accent(`┌${horizLine}┐`));
 					const headerContent = p + theme.bold("Audit interrupted by Escape") + dim("  (continue = default)");
 					lines.push(line(truncateToWidth(headerContent, innerWidth, "…")));
@@ -84,7 +77,6 @@ export async function showEscapeDialog(
 					lines.push(line(p + dim("Goal: ") + dim(truncatedObjective)));
 					lines.push(accent(`├${horizLine}┤`));
 
-					// ── Options ─────────────────────────────────────────────
 					OPTIONS.forEach((opt, i) => {
 						const isSelected = i === selectedIndex && !cancelled;
 						const marker = isSelected ? "▸ " : "  ";
@@ -98,7 +90,6 @@ export async function showEscapeDialog(
 						}
 					});
 
-					// ── Footer ───────────────────────────────────────────────
 					lines.push(accent(`├${horizLine}┤`));
 					const footerText = dim("Enter to select  ·  ↑↓ to navigate  ·  Esc = continue working");
 						const truncFooter = truncateToWidth(footerText, innerWidth - 2, "…");

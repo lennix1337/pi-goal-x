@@ -23,11 +23,8 @@ import {
 
 const CORE = ["create_goal", "get_goal", "update_goal"];
 
-// Drafting tools belong to the separate transient user-started draft profile,
-// never to the steady three/five execution surface.
 const DRAFTING = ["goal_question", "goal_questionnaire", "propose_goal_draft"];
 
-// Removed steady-state lifecycle tools — none may exist in the module.
 const REMOVED_STEADY = [
 	"propose_goal_tweak", "step_complete", "abort_goal", "propose_task_list",
 	"complete_task", "skip_task", "complete_goal", "pause_goal",
@@ -47,9 +44,6 @@ test("fixed profiles: core three, task two, all five registered", () => {
 	assert.deepEqual(FIVE_GOAL_TOOLS, [...CORE, ...TASK_TOOL_NAMES]);
 	assert.deepEqual(CORE_GOAL_TOOLS, CORE);
 	assert.deepEqual(DRAFTING_GOAL_TOOLS, DRAFTING);
-	// The registry is the fixed five plus the transient drafting profile; the
-	// INSTALLED profile (installGoalToolProfile) still only ever installs the
-	// three/five execution set.
 	assert.deepEqual(ALL_REGISTERED_GOAL_TOOLS, [...FIVE_GOAL_TOOLS, ...DRAFTING_GOAL_TOOLS]);
 });
 
@@ -57,7 +51,6 @@ test("the module declares drafting names only in the transient profile", () => {
 	assert.equal(QUESTION_TOOL_NAME, "goal_question");
 	assert.equal(QUESTIONNAIRE_TOOL_NAME, "goal_questionnaire");
 	assert.equal(PROPOSE_DRAFT_TOOL_NAME, "propose_goal_draft");
-	// Drafting tools must never leak into the fixed execution profiles.
 	for (const name of DRAFTING) {
 		assert.equal(CORE_GOAL_TOOL_NAMES.includes(name as never), false, `${name} must not be a core tool`);
 		assert.equal(TASK_TOOL_NAMES.includes(name as never), false, `${name} must not be a task tool`);

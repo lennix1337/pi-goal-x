@@ -1,9 +1,3 @@
-/**
- * /goal-status tests (plan §13): standard mode composes the compact dashboard
- * + current-task details + recent activity + last audit from the shared model;
- * verbose mode carries the full diagnostic detail; neither mode emits lines
- * wider than the configured rendering width.
- */
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -75,10 +69,7 @@ test("standard mode renders the compact dashboard from the shared model (§13.1)
 	const text = buildGoalStatusText(base());
 	assert.match(text, /╭─ pi-goal-x ─ Add CSV export to reports/);
 	assert.match(text, /goal: running \[12m47s 18\.2K\] \(\+2 open\)/);
-	// The top-level task list is part of the compact dashboard now (step-11).
 	assert.match(text, /├─ Tasks /);
-	// The five-task list overflows the medium-status width (78 cols); t3 is in
-	// progress, so the window starts at t2 and the finished t1 is scrolled away.
 	assert.match(text, /✓ t2  Implement filtered CSV export/);
 	assert.match(text, /↑ 1 more task\b/);
 	assert.match(text, /Tasks · ✓3 done · 2 open/);
@@ -90,14 +81,11 @@ test("standard mode renders the compact dashboard from the shared model (§13.1)
 
 test("standard mode adds current-task details, activity, and the last audit", () => {
 	const text = buildGoalStatusText(base());
-	// Current-task details block (§13.1 item 2).
 	assert.match(text, /├─ Current task /);
 	assert.match(text, /Contract: The button downloads a CSV using the active filters/);
-	// Recent activity (§13.1 item 3) — ledger-derived, task titles preferred.
 	assert.match(text, /├─ Recent activity /);
 	assert.match(text, /Started “Add error handling”\./);
 	assert.match(text, /Completed “Implement filtered CSV export”\. — Done/);
-	// Last audit result (§13.1 item 4).
 	assert.match(text, /Last audit: CHANGES REQUIRED \(2026-01-02\)/);
 });
 
@@ -108,10 +96,6 @@ test("standard mode includes no effective settings noise by default", () => {
 });
 
 test("standard mode shows the anchored task window — parity with the widget default (§9.6)", () => {
-	// 30 top-level tasks; t5 and t20 completed, t21 current. The status
-	// width (78 cols, medium) budgets 4 task rows, so the anchored window is
-	// t20..t23: the task in progress with the latest completion above it,
-	// exactly like the compact widget's default rendering.
 	const tasks: GoalTask[] = Array.from({ length: 30 }, (_, i) => ({
 		id: `t${i + 1}`,
 		title: `Task number ${i + 1}`,
@@ -128,7 +112,6 @@ test("standard mode shows the anchored task window — parity with the widget de
 	assert.match(text, /Task number 20[\s\S]*▸ t21  Task number 21/, "the task in progress follows the latest completion");
 	assert.match(text, /… \+7 more tasks/, "pending tasks after the window stay reachable below");
 	assert.doesNotMatch(text, /[✓▸·~] t1\s/, "the earliest task row is not rendered");
-	// Width-safe including the indicator rows.
 	for (const line of text.split("\n")) {
 		assert.ok(visibleWidth(line) <= GOAL_STATUS_WIDTH, `line exceeds ${GOAL_STATUS_WIDTH}: ${JSON.stringify(line.slice(0, 60))}`);
 	}
@@ -145,20 +128,15 @@ test("verbose mode carries full diagnostic detail (§13.2)", () => {
 	assert.match(text, /Status: In progress \(focused\)/);
 	assert.match(text, /Objective:/);
 	assert.match(text, /Add CSV export to reports/);
-	// Full task tree with full evidence and contracts.
 	assert.match(text, /✓ t1  Review reports page and data source — evidence: Reviewed source/);
 	assert.match(text, /▸ t3  Add the download button — contract: The button downloads a CSV/);
 	assert.match(text, /~ t5  Add and run tests/);
-	// Current task detail.
 	assert.match(text, /Current task: t3 · Add the download button/);
 	assert.match(text, /subtasks: 2\/3 \(67%\)/);
-	// Recent ledger history.
 	assert.match(text, /Recent ledger:/);
 	assert.match(text, /task_started/);
-	// Last audit report.
 	assert.match(text, /Last audit \(2026-01-02\): disapproved/);
 	assert.match(text, /Tests were not run after the final change/);
-	// Effective settings with provenance.
 	assert.match(text, /Effective settings:/);
 	assert.match(text, /provider: anthropic \(from .pi\/pi-goal-x-settings.json\)/);
 });

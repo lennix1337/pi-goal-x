@@ -1,11 +1,4 @@
-/**
- * Shadow of node:fs with sync-op counting + latency injection (B1/B2).
- *
- * Resolves via bench-adapter-hooks.mjs registerHooks. Uses createRequire to
- * reach the REAL fs module (avoiding infinite hook recursion), then re-exports
- * every member with the ten sync ops the extension uses patched to count and
- * (optionally) sleep under injected latency.
- */
+// external: createRequire accesses the real fs module without hook recursion.
 
 import { createRequire } from "node:module";
 
@@ -37,7 +30,6 @@ const SYNC_OPS = [
 	"renameSync",
 	"unlinkSync",
 	"openSync", "closeSync", "readSync", "writeSync", "fsyncSync",
-	// used by harness fixture setup only:
 	"mkdtempSync",
 	"rmSync",
 ];
@@ -55,9 +47,6 @@ export const unlinkSync = wrapSync("unlinkSync");
 export const mkdtempSync = wrapSync("mkdtempSync");
 export const rmSync = wrapSync("rmSync");
 
-// Async promises API: wrapped for counting + latency injection too (P1-7's
-// parallel startup reader uses fs.promises; without wrapping, injected
-// latency would silently bypass the measured path).
 function wrapPromiseMethod(name, original) {
 	return async function patchedAsync(...args) {
 		state.fsOpCount++;

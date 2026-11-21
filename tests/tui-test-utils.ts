@@ -1,13 +1,6 @@
-/**
- * Test utilities for mocking the TUI rendering path.
- *
- * Provides mock implementations of TUI, Theme, and ExtensionContext
- * so that widget components can be tested without a real terminal.
- */
 import type { Theme, ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI, KeybindingsManager } from "@earendil-works/pi-tui";
 
-// ── Mock Theme ─────────────────────────────────────────────────────────
 
 export function createMockTheme(): Theme {
 	return {
@@ -18,7 +11,6 @@ export function createMockTheme(): Theme {
 	} as unknown as Theme;
 }
 
-// ── Mock TUI builder ────────────────────────────────────────────────────
 
 export interface MockTUIState {
 	getShowHardwareCursor: boolean;
@@ -43,17 +35,12 @@ export function createMockTUI(options: { terminalRows?: number } = {}): { tui: T
 		},
 		render: (_width: number) => [] as string[],
 		invalidate: () => {},
-		// Real pi TUIs expose `terminal.rows`; the widget's terminal-height
-		// bound (spec 2026-08-10) reads it at render time. Absent by default so
-		// existing tests keep rendering unbounded; pass `terminalRows` to
-		// exercise the bound.
 		...(options.terminalRows !== undefined ? { terminal: { rows: options.terminalRows } } : {}),
 	} as unknown as TUI;
 
 	return { tui, state };
 }
 
-// ── Mock ctx.ui.custom() ────────────────────────────────────────────────
 
 export type CustomFactory = (tui: TUI, theme: Theme, keybindings: unknown, done: (result: any) => void) => Component | Promise<Component>;
 
@@ -87,7 +74,6 @@ export function createMockUIContext(): {
 			customCalls.push(record);
 
 			return new Promise<T>((resolve) => {
-				// The promise resolves when the test calls done
 			});
 		},
 		select: async () => undefined,
@@ -154,7 +140,6 @@ export function createMockExtensionContext(): MockExtensionContext {
 	return ctx;
 }
 
-// ── Invoke a captured factory ───────────────────────────────────────────
 
 /**
  * Given a mock UI context that has captured a `custom()` call,

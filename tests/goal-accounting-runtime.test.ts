@@ -1,8 +1,3 @@
-/**
- * Unit tests for GoalAccounting (serialized idempotent accounting + budget
- * helpers) and GoalRuntime (continuation scheduling, turn-stop guard, stale
- * checkpoint, one-time reminders) — Stage 2 extraction.
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -21,17 +16,14 @@ function mockCtx(): ExtensionContext {
 	} as unknown as ExtensionContext;
 }
 
-// ── GoalAccounting ──────────────────────────────────────────────────────────
 
 describe("GoalAccounting", () => {
 	it("charges elapsed seconds and advances the baseline (idempotent)", () => {
 		const acct = new GoalAccounting();
 		acct.begin("g1");
-		// 10 seconds pass, 5 tokens.
 		const first = acct.charge({ now: Date.now() + 10_000, completedTurnTokens: 5 });
 		assert.equal(first.seconds, 10);
 		assert.equal(first.tokens, 5);
-		// Immediately charging again yields 0 seconds — no double-charge.
 		const second = acct.charge({ now: Date.now() + 10_000, completedTurnTokens: 3 });
 		assert.equal(second.seconds, 0);
 		assert.equal(second.tokens, 3);
@@ -59,13 +51,11 @@ describe("GoalAccounting", () => {
 		acct.begin("g1");
 		const now = Date.now();
 		assert.equal(acct.liveSeconds(now + 7000), 7);
-		// Baseline untouched: a subsequent charge still counts the full interval.
 		const charge = acct.charge({ now: now + 7000 });
 		assert.equal(charge.seconds, 7);
 	});
 });
 
-// ── Budget helpers ──────────────────────────────────────────────────────────
 
 describe("budget helpers", () => {
 	const base = { usage: { tokensUsed: 0 } };
@@ -93,7 +83,6 @@ describe("budget helpers", () => {
 	});
 });
 
-// ── GoalRuntime ─────────────────────────────────────────────────────────────
 
 function makeRuntime(overrides: Partial<{
 	isActionable: (id: string | null | undefined) => boolean;
@@ -126,7 +115,6 @@ describe("GoalRuntime continuation scheduling", () => {
 		const goal = activeGoal();
 		const { runtime } = makeRuntime({ isActionable: () => true, getGoal: () => goal });
 		runtime.queueContinuation(mockCtx(), goal, true);
-		// Timers are unref'd; fire the scheduled continuation deterministically.
 		runtime.clearContinuationState();
 		assert.equal(runtime.continuationPendingFor(goal.id), false);
 	});

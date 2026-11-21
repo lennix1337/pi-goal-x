@@ -1,14 +1,9 @@
-/**
- * Tests for the verification contract system.
- */
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import { extractVerificationContract } from "../extensions/goal-contract.ts";
 import { verificationContractBlock } from "../extensions/prompts/goal-prompts.ts";
 import type { GoalRecord } from "../extensions/goal-record.ts";
-
-// ── extractVerificationContract ─────────────────────────────────────────
 
 test("extractVerificationContract: no contract section returns objective unchanged", () => {
 	const objective = "=== Goal ===\nObjective: Test\nSuccess criteria: Nothing";
@@ -49,9 +44,7 @@ test("extractVerificationContract: handles multi-line objective with contract at
 test("extractVerificationContract: contract with empty value returns undefined", () => {
 	const objective = "=== Goal ===\nObjective: Test\nVerification contract:   \nSuccess criteria: OK";
 	const result = extractVerificationContract(objective);
-	// Empty/whitespace-only value is not a valid contract
 	assert.equal(result.verificationContract, undefined);
-	// The line stays in the objective when the value is empty (regex requires non-whitespace content)
 	assert.ok(result.objective.includes("Verification contract:"));
 });
 

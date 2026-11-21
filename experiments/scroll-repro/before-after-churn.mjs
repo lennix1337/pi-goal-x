@@ -1,31 +1,4 @@
-// Headless before/after measurement for the goal questionnaire's viewport churn.
-//
-// Drives the REAL runGoalQuestionnaire through the REAL pi-tui differential
-// renderer with a fake terminal, mirroring pi's showExtensionCustom (editor
-// swap for non-overlay) and the REAL pi frame layout (header, chat, status
-// with working spinner, editor -> dialog, footer). For each scenario it
-// reports:
-//   - open / nav / close terminal scrolls (a \n feed on the bottom row scrolls)
-//   - \x1b[2J / \x1b[3J emissions (screen clear / SCROLLBACK ERASE)
-//   - post-close viewport position (a 2J+3J full render homes the cursor and
-//     wipes scrollback — the "~10s to scroll back to the bottom" delay)
-//   - scrollback content: dialog tail in the main buffer, chat visible above
-//   - SPINNER PHASE: pi's working spinner ticks every ~80ms and calls
-//     requestRender; with the dialog open and the user scrolled up reading the
-//     proposal, each tick's output snaps the terminal viewport back to the
-//     bottom ("terminal scrolls back down after X seconds"). The goal dialogs
-//     pause the spinner (setWorkingVisible(false)) for their duration, so the
-//     fixed harness asserts 0 bytes per tick -> no snap.
-//
-// Usage:
-//   node before-after-churn.mjs                 # report mode (measures current behavior)
-//   node before-after-churn.mjs 40              # report mode, rows=40
-//   node before-after-churn.mjs --expect-fixed  # assertion mode
-//
-// Report mode exits 0 always; --expect-fixed fails when any open/nav/close
-// step emits 2J/3J, when a post-close viewport is yanked, when the fits
-// scenario scrolls, or when a spinner tick emits output while the user is
-// scrolled up reading the dialog.
+// external: terminal scrollback is cleared by 2J/3J full renders.
 
 import { Container } from "../../node_modules/@earendil-works/pi-tui/dist/tui.js";
 import { TuiMainScreen } from "../../node_modules/@earendil-works/pi-tui/dist/index.js";
@@ -49,9 +22,6 @@ function makeTerminal() {
 	};
 }
 
-// ANSI stream emulation: track cursor screen row + viewport scrolls (a \n feed
-// while the cursor is on the bottom row scrolls the terminal), count
-// 1049 / 2J / 3J, and count text writes. Returns final cursor screen row too.
 function analyze(stream, rows, startRow) {
 	let cursorRow = startRow;
 	let scrolled = 0;
@@ -114,9 +84,6 @@ const LONG_CONTEXT = [
 ].join("\n");
 const SHORT_CONTEXT = "● Goal draft/tweak ready for confirmation.\n\n=== Goal ===\nObjective: Short and simple.\nSuccess criteria: It works.";
 
-// ctx.ui mirroring pi's showExtensionCustom (editor swap / showOverlay) plus
-// setWorkingVisible mirroring interactive-mode's clearStatusIndicator: hides or
-// restores the statusContainer spinner.
 function makeCtx(tui, editorContainer, editor, statusContainer, spinner) {
 	const state = { component: null, handle: null };
 	const ctx = {
@@ -150,8 +117,6 @@ function makeCtx(tui, editorContainer, editor, statusContainer, spinner) {
 	return { ctx, state };
 }
 
-// pi's working spinner: changes its frame char every tick (~80ms) and
-// requestRender()s — the periodic output that snaps a scrolled-up user.
 function makeSpinner(tui) {
 	const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 	let idx = 0;
@@ -169,7 +134,6 @@ function makeSpinner(tui) {
 async function runScenario(chatLines, context, label, expectsFits) {
 	const { terminal, writes } = makeTerminal();
 	const tui = new TuiMainScreen(terminal, false, "/tmp/tui-before-after-churn");
-	// REAL pi layout: header, chat, status(spinner), editorContainer, footer.
 	const header = new Container();
 	header.render = () => ["pi • model • cwd"];
 	const chat = new Container();
@@ -196,7 +160,6 @@ async function runScenario(chatLines, context, label, expectsFits) {
 		recommended: 0, allowCustom: false,
 	}], undefined);
 
-	// open
 	const openStartRow = tui.hardwareCursorRow - tui.previousViewportTop;
 	tui.doRender();
 	const openStream = writes.join("");
@@ -204,8 +167,6 @@ async function runScenario(chatLines, context, label, expectsFits) {
 	const open = analyze(openStream, ROWS, openStartRow);
 	const openLines = (tui.previousLines ?? []).map(stripAnsi);
 
-	// spinner phase: the user scrolls up to read the proposal; pi's spinner
-	// ticks while the dialog is open. Any output per tick = snap to bottom.
 	let tickBytesTotal = 0;
 	let anyTickText = false;
 	for (let t = 0; t < SPINNER_TICKS; t++) {
@@ -218,7 +179,6 @@ async function runScenario(chatLines, context, label, expectsFits) {
 		if (res.textWrites > 0) anyTickText = true;
 	}
 
-	// nav: move selection down once
 	const component = state.component;
 	if (component?.handleInput) component.handleInput("\x1b[B");
 	const navStartRow = tui.hardwareCursorRow - tui.previousViewportTop;
@@ -227,7 +187,6 @@ async function runScenario(chatLines, context, label, expectsFits) {
 	writes.length = 0;
 	const nav = analyze(navStream, ROWS, navStartRow);
 
-	// close: escape (cancel)
 	if (component?.handleInput) component.handleInput("\x1b");
 	await resultPromise;
 	const closeStartRow = tui.hardwareCursorRow - tui.previousViewportTop;
@@ -237,8 +196,6 @@ async function runScenario(chatLines, context, label, expectsFits) {
 
 	const detailCount = (context.match(/Detail line \d+/g) ?? []).length;
 	const taskCount = (context.match(/\[ \] task-\d+/g) ?? []).length;
-	// Dialog content is written into the main buffer during OPEN (readable via
-	// scrollback while the dialog is up); check the open frame.
 	const fullDialogInBuffer = detailCount === 0 ? openLines.some((l) => /Objective:/.test(l)) : openLines.some((l) => l.includes(`Detail line ${detailCount - 1}`));
 	const fullTasksInBuffer = taskCount === 0 ? true : openLines.some((l) => l.includes(`task-${taskCount - 1}`));
 	const chatVisible = openLines.slice(0, chatLines).some((l) => l.startsWith("chat line"));
@@ -269,9 +226,6 @@ async function runScenario(chatLines, context, label, expectsFits) {
 	return failures;
 }
 
-// Scenario A: content fits -> must stay 0-churn, no clears, no periodic output.
-// Scenario B: proposal taller than the terminal -> the churn bug (2J+3J on close).
-// Scenario C: chat taller than the terminal + tall proposal -> same close bug.
 const scenarios = [
 	["A fits: short chat + short proposal", 10, SHORT_CONTEXT, true],
 	["B tall dialog: short chat + long proposal", 10, LONG_CONTEXT, false],

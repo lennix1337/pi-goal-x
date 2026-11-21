@@ -10,10 +10,8 @@ import { truncateToWidth } from "./widgets/text-cache.ts";
 export const GOAL_STATUS_EVENT = "goal-x:status:v1";
 
 export interface GoalStatusPayload {
-	/** Short footer text; empty when there is nothing to show. */
 	text: string;
 	focused: boolean;
-	/** Open (not complete) goals in the pool, the focused one included. */
 	open: number;
 }
 

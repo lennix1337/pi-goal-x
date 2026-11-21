@@ -1,6 +1,3 @@
-// Real managed Pi SDK + pi-goal-x + pi-multi-account; scripted providers, no external model calls.
-// Every account hits its quota while a goal runs; the goal must stay active, wait without
-// retrying, and resume exactly once by itself when an account comes back. No user message.
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -52,7 +49,6 @@ const sdk = await import(pathToFileURL(join(sdkRoot, 'pi-coding-agent/dist/index
 const ai = await import(pathToFileURL(join(sdkRoot, 'pi-ai/dist/index.js')).href);
 const runtime = await sdk.ModelRuntime.create({ authPath: join(agent, 'auth.json'), modelsPath: null, modelsStorePath: join(agent, 'models.json'), refreshOnCreate: false });
 
-// quota: 'open' before the goal exists, 'exhausted' until the test restores it, then 'restored'.
 let quota = 'open';
 let step = 0;
 const requests = [];
@@ -77,7 +73,7 @@ for (const provider of providers) runtime.registerProvider(provider, {
     let content;
     if (quota === 'open') {
       content = [call('create_goal', { objective: 'Disposable quota recovery validation', max_autonomous_runs: 5 })];
-      quota = 'exhausted'; // the goal exists from here on; every account is out of quota
+      quota = 'exhausted';
     } else if (last.role === 'toolResult') {
       content = [{ type: 'text', text: 'stopped after recovery' }];
     } else {
@@ -123,7 +119,6 @@ try {
   const created = results.find(row => row.tool === 'create_goal')?.goal;
   assert.ok(created, 'create_goal ran');
 
-  // Both accounts fail with quota; the goal must stay active and the session must stop asking.
   await waitFor(() => requests.filter(r => r.quota === 'exhausted').length >= providers.length, 'every account to hit its quota');
   await sleep(400);
   const exhaustedRequests = requests.filter(r => r.quota === 'exhausted').length;
@@ -135,13 +130,11 @@ try {
   assert.ok(failoverState.pendingFrom && failoverState.pendingReason, 'the wait is persisted, not only held in memory');
   let reload;
   if (reloadWhileWaiting) {
-    // A reload while waiting: the goal's own recovery continuation must carry the wait over.
     const before = requests.length;
     await session.reload();
     assert.deepEqual(loader.getExtensions().errors, []);
     await waitFor(() => requests.length > before, 'the goal to retry once after reload');
     await waitFor(() => requests.slice(before).filter(r => r.quota === 'exhausted').length >= providers.length, 'every account to refuse again after reload');
-    // Retries come from cooldown deadlines (COOLDOWN_MS), so measure well inside one.
     await sleep(300);
     const settled = requests.length;
     await sleep(500);
@@ -152,7 +145,7 @@ try {
   quota = 'restored';
   const restoredAt = Date.now();
   await waitFor(() => results.some(row => row.tool === 'update_goal' && row.goal?.status === 'paused'), 'the goal to resume by itself after quota recovery', COOLDOWN_MS * 6);
-  await sleep(COOLDOWN_MS + 500); // a duplicate wake would show up here
+  await sleep(COOLDOWN_MS + 500);
   const afterRecovery = requests.filter(r => r.quota === 'restored');
   const resumedRuns = userMessages.filter(m => m.quota === 'restored').length;
   assert.equal(resumedRuns, 1, `exactly one automatic resume message after recovery (got ${resumedRuns})`);

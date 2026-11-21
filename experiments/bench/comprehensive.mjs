@@ -1,4 +1,3 @@
-/** CPU/retention campaign complementing the complete filesystem/hook matrix. No model calls. */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -53,7 +52,6 @@ try {
   const events = Array.from({length: count}, (_,i) => ({type:'task_complete', goalId:goal.id, taskId:`t${i}`, evidence:'Verified 🧭', at:new Date(1700000000000+i).toISOString()}));
   fs.writeFileSync(path.join(f.cwd,'.pi/goals/goal_events.jsonl'), events.map(e => JSON.stringify(e)).join('\n')+'\n');
   invalidateGoalLedgerCache();
-  // Fourth argument is the candidate's opaque ledger generation. Baseline safely ignores it.
   const history = readGoalLedger({cwd:f.cwd});
   const first = goalDetailPage(goal, {section:'history'}, history.events, history.revision);
   measure(`detail.history.next.${count}`, () => goalDetailPage(goal, {section:'history', cursor:first.nextCursor}, history.events, history.revision), 1);

@@ -1,26 +1,3 @@
-/**
- * Benchmark orchestrator (B9 emitter + B8 assertion).
- *
- * Runs B1, B3, B2, B4, B5, B7 over the real extension functions with the
- * agent-free guard active, then writes (per campaign, see campaigns.mjs):
- *   experiments/bench/<prefix><phase>.json           (raw rows)
- *   specs/<campaign-spec-dir>/BENCH-<PHASE>.md       (human table)
- *
- * Usage:
- *   node --import experiments/bench/bench-adapter-hooks.mjs \
- *        --experimental-strip-types experiments/bench/run-bench.mjs before [campaign]
- *   ... same with "after" once the optimisations land.
- *
- * Campaign (optional positional, default "extension-review-plan"): the
- * before/after cycle to emit into. Each campaign writes its own spec-dir
- * BENCH-<PHASE>.md and JSON prefix (see campaigns.mjs) so campaigns never
- * clobber each other's committed artifacts.
- *
- * Agent-free guarantee (B8): the adapter stubs the pi packages (no live
- * agents; createAgentSession throws), shadows node:fs for counting + latency,
- * and forbids node:net/http/https/child_process use. assertNoViolations()
- * fails the run if any of those were touched.
- */
 
 import { writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";

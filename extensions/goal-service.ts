@@ -19,13 +19,7 @@ import {
 import { acquireGoalLock, type GoalLock } from "./storage/goal-lock.ts";
 import { mergeFocusedGoalWithDisk } from "./goal-pool.ts";
 
-/**
- * Session state access + runtime glue hooks that the GoalService needs.
- * The extension (`extensions/goal.ts`) wires these to its closure state so the
- * service stays the sole mutation boundary while the runtime effects
- * (continuation queue, accounting, nudge state, tools, UI) remain in the
- * extension's event handlers.
- */
+/** Session state access and runtime hooks for GoalService. */
 export interface GoalDiagnostic {
 	severity: "warning";
 	source: "ledger" | "storage";
@@ -36,7 +30,6 @@ export interface GoalDiagnostic {
 
 export interface GoalServiceRef {
 	getFocused(): GoalRecord | null;
-	/** Mirror of the `state.goal` setter: pool upsert + focus assignment. */
 	setFocused(goal: GoalRecord | null): void;
 	getPool(): Map<string, GoalRecord>;
 	replacePool(pool: Map<string, GoalRecord>): void;
@@ -92,25 +85,6 @@ export interface GoalMutationFailure {
 
 export type GoalMutationOutcome = GoalMutationResult | GoalMutationFailure;
 
-/**
- * GoalService — the extension's sole mutation boundary for goal records.
- *
- * Ordered pipeline for every focused-goal mutation (mirrors TECH.md storage
- * section):
- *
- *   1. safe focused record reconciliation from disk;
- *   2. expected goal id + focus revision check;
- *   3. mutation on a clone;
- *   4. active-file write (or archival for complete/clear/abort);
- *   5. ledger append best effort;
- *   6. in-memory pool/focus commit;
- *   7. runtime/UI effects (returned and signalled through the ref hooks).
- *
- * If the active-file write fails it throws, so memory/ledger/focus/archive are
- * never committed. A failed ledger append after the authoritative write keeps
- * the successful state transition and reports diagnostics via the hook, matching
- * the current best-effort ledger semantics.
- */
 export interface GoalTaskUpdateSpec {
 	/** If provided, the token must still be current (same goal id + focus revision). */
 	focusToken?: { goalId: string; revision: number };
@@ -127,17 +101,11 @@ export interface GoalTaskUpdateSpec {
 	 * (complete/skipped) and was the current task (§8.2/§8.3).
 	 */
 	setCurrentTaskId?: string;
-	/** Ledger events appended best-effort AFTER the authoritative file write. */
 	ledger?(written: GoalRecord, updatedTask: GoalTask): GoalLedgerEvent[];
 }
 
 export type GoalTaskUpdateOutcome = { ok: true; goal: GoalRecord; task: GoalTask } | { ok: false; message: string };
 
-/**
- * §8 execution-focus resolution for a task update: an explicit start sets the
- * currentTaskId (replacing any previous); otherwise completing or skipping the
- * current task clears it; otherwise focus is untouched.
- */
 function resolveUpdatedCurrentTaskId(spec: GoalTaskUpdateSpec, current: string | undefined, updatedTask: GoalTask): string | undefined {
 	if (spec.setCurrentTaskId !== undefined) return spec.setCurrentTaskId;
 	const terminal = updatedTask.status === "complete" || updatedTask.status === "skipped";
@@ -148,24 +116,8 @@ function resolveUpdatedCurrentTaskId(spec: GoalTaskUpdateSpec, current: string |
 export class GoalService {
 	private readonly ref: GoalServiceRef;
 
-	/**
-	 * The usage this session last wrote to disk for a goal (or the disk usage
-	 * the session's accounting is relative to after load/reconcile). The
-	 * baseline for additive usage merging: on a persist revision conflict the
-	 * delta since this baseline is merged onto the disk record instead of the
-	 * local usage being dropped.
-	 */
 	private lastPersistedUsage: { goalId: string; tokensUsed: number; activeSeconds: number } | null = null;
 
-	/**
-	 * Per-turn transaction buffer (P1-3): task/status/usage mutations and
-	 * ledger events accumulate in memory during a turn and flush once — one
-	 * lock acquire, one goal-file write, one ledger batch — at turn end or at
-	 * an explicit flush boundary (audit dispatch, pause/stop, focus change,
-	 * session reload). Reads during the turn overlay the buffered goal so
-	 * in-turn mutations are always visible; the optimistic revision check runs
-	 * at flush time.
-	 */
 	private flushError: string | null = null;
 	private turnBase: GoalRecord | null = null;
 
@@ -181,8 +133,6 @@ export class GoalService {
 	beginTurn(ctx: GoalServiceContext, goalId: string | null): void {
 		if (this.turn.active) {
 			this.flushTurn(ctx);
-			// Lock contention must not discard the previous transaction. Keep it
-			// open so the next turn boundary retries the same buffered write.
 			if (this.turn.active) return;
 		}
 		this.turn = { active: true, goalId, goal: null, archive: false, ledger: [] };
@@ -191,11 +141,7 @@ export class GoalService {
 		this.flushError = null;
 	}
 
-	/**
-	 * Flush the buffered transaction: one lock acquire, one (archived or
-	 * active) goal-file write with a revision bump, one batched ledger append.
-	 * No-op when nothing was buffered. Returns the written record or null.
-	 */
+	/** Flush buffered mutations; return the written record or null if nothing was buffered. */
 	flushTurn(ctx: GoalServiceContext): GoalRecord | null {
 		if (!this.turn.active) return null;
 		this.flushError = null;
@@ -209,8 +155,6 @@ export class GoalService {
 			lock = acquireGoalLock(ctx, goal.id);
 		} catch {
 			this.flushError = "Goal storage is locked; pending changes have not been persisted.";
-			// Another writer holds the lock; preserve the buffer so a later turn
-			// boundary can retry it instead of silently losing the mutation.
 			return null;
 		}
 		try {
@@ -218,7 +162,6 @@ export class GoalService {
    const expected = this.turnBase ?? goal;
    if (!freshDisk || (freshDisk.revision ?? 0) !== (expected.revision ?? 0)) {
     this.flushError = `Goal ${goal.id} changed in another process; buffered changes were rejected. Refresh and retry.`;
-    // Reject the speculative transaction, never overwrite another writer.
     this.turn.active = false;
     this.turn.goal = null;
     this.turn.ledger = [];
@@ -273,7 +216,6 @@ export class GoalService {
 		this.ref = ref;
 	}
 
-	/** Record the usage value the focused goal's in-memory accounting builds on. */
 	private trackBaseline(goalId: string, usage: GoalUsage): void {
 		this.lastPersistedUsage = { goalId, tokensUsed: usage.tokensUsed, activeSeconds: usage.activeSeconds };
 	}
@@ -293,11 +235,6 @@ export class GoalService {
 		};
 	}
 
-	/**
-	 * Append ledger events without making them part of the authoritative state
-	 * transaction. A batch is the common path; individual retries preserve the
-	 * existing best-effort behavior and keep failures observable per event.
-	 */
 	private appendLedgerEventsBestEffort(ctx: GoalServiceContext, events: GoalLedgerEvent[]): void {
 		if (events.length === 0) return;
 		if (events.length > 1 && appendGoalEvents(ctx, events).ok) return;
@@ -332,8 +269,6 @@ export class GoalService {
    return true;
   }
   const fresh = new Map(source);
-		// P1-3: overlay the buffered goal so in-turn mutations are visible to
-		// every read (reconcile, get_goal, prompts) without a disk round trip.
 		if (this.turn.active && this.turn.goal) fresh.set(this.turn.goal.id, this.turn.goal);
 		const focusedGoalId = this.ref.getFocusedGoalId();
 		if (!focusedGoalId) {
@@ -365,12 +300,6 @@ export class GoalService {
 		return true;
 	}
 
-	/**
-	 * Read the goal's authoritative active file directly (no complete-status
-	 * filter, unlike the pool reader) for the optimistic revision check under
-	 * the per-goal lock. Returns null when the file is gone (external
-	 * archive/delete) or the goal has no active path.
-	 */
 	private readFreshDiskGoal(ctx: GoalServiceContext, current: GoalRecord): GoalRecord | null {
 		if (!current.activePath) return null;
 		try {
@@ -380,23 +309,8 @@ export class GoalService {
 		}
 	}
 
-	/**
-	 * The single ordered mutation pipeline for a focused goal.
-	 * Returns the written record plus focus-change effects; the extension maps
-	 * failures to user-facing results.
-	 *
-	 * Cross-process control (follow-up Stage 4): after the session-local
-	 * validation, an exclusive per-goal lock is acquired (bounded, with stale
-	 * recovery) and the authoritative file is re-read under the lock. If the
-	 * persisted revision differs from the one captured at reconciliation, the
-	 * mutation returns a typed conflict carrying the current revision instead
-	 * of overwriting blindly. On success the revision is incremented, the file
-	 * is written atomically, ledger events are appended best-effort, memory is
-	 * committed, and the lock is released in a finally block.
-	 */
+	/** Apply a focused-goal mutation, returning a typed conflict for stale revisions. */
 		apply(ctx: GoalServiceContext, spec: GoalMutationSpec): GoalMutationOutcome {
-		// 1. reconcile (unless the caller opts out — e.g. the tweak path, which
-		//    must not clobber the authoritative new objective with the old file).
 		if (spec.reconcile !== false && !this.reconcileFocused(ctx)) {
 			return { ok: false, message: "The focused goal was lost during reconciliation; the mutation was not applied." };
 		}
@@ -405,7 +319,6 @@ export class GoalService {
 			return { ok: false, message: "No focused goal to mutate." };
 		}
 
-		// 2. expected goal id + focus revision validation.
 		if (spec.expectedGoalId != null && current.id !== spec.expectedGoalId) {
 			return { ok: false, message: `Mutation rejected: expected goal ${spec.expectedGoalId} but the focused goal is ${current.id}.` };
 		}
@@ -413,13 +326,8 @@ export class GoalService {
 			return { ok: false, message: `Mutation cancelled because goal ${spec.focusToken.goalId} is no longer focused in this session. The shared goal was not modified.` };
 		}
 
-		// 2b. P1-3: during a turn the mutation is buffered in memory (no lock, no
-		//     disk write yet); the flush acquires the lock, writes, and appends
-		//     the ledger once per turn. Outside a turn the immediate path below
-		//     (lock + optimistic revision check) is unchanged.
 		if (this.turn.active) {
 			if (this.turn.goalId !== null && current.id !== this.turn.goalId) {
-				// Focus changed mid-turn: persist the previous buffer first.
 				this.flushTurn(ctx);
 				if (this.turn.active) return {ok: false, message: this.flushError ?? "Previous goal changes are still awaiting persistence."};
 				this.turn.active = true;
@@ -444,7 +352,6 @@ export class GoalService {
 					const events = typeof spec.ledger === "function" ? spec.ledger(mutated) : spec.ledger;
 					this.turn.ledger.push(...events);
 				} catch {
-					// Ledger spec error: nothing appended (same swallow as the write path).
 				}
 			}
 			this.turn.goal = mutated;
@@ -461,7 +368,6 @@ export class GoalService {
 			return { ok: true, goal: mutated, previousGoalId, goalId, focusChanged };
 		}
 
-		// 2b. exclusive per-goal lock + optimistic revision check (follow-up Stage 4).
 		const capturedRevision = current.revision ?? 0;
 		const lock = acquireGoalLock(ctx, current.id);
 		try {
@@ -474,18 +380,14 @@ export class GoalService {
 				return { ok: false, message: `Goal ${current.id} was modified by another process (revision ${capturedRevision} -> ${diskRevision}); current revision is ${diskRevision}. Refresh and retry; the mutation was not applied.` };
 			}
 
-			// 3. mutation on a clone (after an optional authoritative objective merge).
 			const base = spec.refreshFromDisk ? mergeGoalPromptFromDisk(ctx, current) : current;
 			const mutated = {
 				...spec.mutate(cloneGoal(base)),
 				revision: capturedRevision + 1,
 			};
 
-			// 4. authoritative file write (active or archive). A failure here throws
-			//    and prevents any memory/ledger/focus/archive commit.
 			const written = spec.archive ? archiveGoalFile(ctx, mutated) : writeActiveGoalFile(ctx, mutated);
 
-			// 5. ledger append best effort.
 			if (spec.ledger) {
 				let events: GoalLedgerEvent[];
 				try {
@@ -496,7 +398,6 @@ export class GoalService {
 				this.appendLedgerEventsBestEffort(ctx, events);
 			}
 
-			// 6. in-memory pool/focus commit.
 			const previousGoalId = current.id;
 			const commitFocused = spec.commitFocused !== false;
 			if (commitFocused) {
@@ -506,7 +407,6 @@ export class GoalService {
 			const goalId = commitFocused ? written.id : this.ref.getFocusedGoalId();
 			const focusChanged = commitFocused && previousGoalId !== written.id;
 
-			// 7. runtime/UI effects.
 			if (focusChanged) this.ref.onFocusChanged(previousGoalId, written.id);
 
 			return { ok: true, goal: written, previousGoalId, goalId, focusChanged };
@@ -517,20 +417,7 @@ export class GoalService {
 
 
 
-/**
- * Disk-fresh single-task transaction. Pipeline:
- *  1. reconcile the focused record;
- *  2. validate focus token/id;
- *  3. load the fresh task from the cloned disk record;
- *  4. validate the requested transition against that fresh task;
- *  5. update only that task's path;
- *  6. write the active file, append the ledger, and commit.
- * Expected races (removed task, removed task list) return typed failures
- * instead of throwing.
- */
 		updateTask(ctx: GoalServiceContext, spec: GoalTaskUpdateSpec): GoalTaskUpdateOutcome {
-		// P1-3: during a turn, apply to the buffered goal in memory (validation
-		// still runs against the current in-turn state); the flush writes once.
 		if (this.turn.active) {
 			const current = this.turn.goal ?? this.ref.getFocused();
 			if (!current) {
@@ -557,8 +444,6 @@ export class GoalService {
 			const mutated = sanitizeGoalPaths(ctx, {
 				...current,
 				taskList: { ...current.taskList, tasks: updatedTasks },
-				// Execution focus (§8): start sets it explicitly; completing or
-				// skipping the current task clears it.
 				currentTaskId: resolveUpdatedCurrentTaskId(spec, current.currentTaskId, updatedTask),
 				updatedAt: nowIso(),
 				revision: (current.revision ?? 0) + 1,
@@ -636,19 +521,6 @@ export class GoalService {
   } finally { lock?.release(); }
  }
 
-	/**
-	 * Disk-fresh single-task transaction (follow-up Stage 4 adds the per-goal
-	 * lock + optimistic revision check). Pipeline:
-	 *  1. reconcile the focused record;
-	 *  2. validate focus token/id;
-	 *  3. acquire the per-goal lock and re-read the authoritative file;
-	 *  4. a stale writer gets a typed conflict; it retries ONCE with the fresh
-	 *     state — the transition validation re-checks that the same task and
-	 *     relevant status/structure are unchanged, so a genuinely concurrent
-	 *     edit is rejected rather than silently merged;
-	 *  5. load the fresh task, validate the transition, update only that task;
-	 *  6. write with an incremented revision, append the ledger, and commit.
-	 */
 	private updateTaskAttempt(ctx: GoalServiceContext, spec: GoalTaskUpdateSpec, retriesLeft: number): GoalTaskUpdateOutcome {
 		if (!this.reconcileFocused(ctx)) {
 			return { ok: false, message: "The focused goal was lost during reconciliation; the task was not updated." };
@@ -670,8 +542,6 @@ export class GoalService {
 			const diskRevision = freshDisk.revision ?? 0;
 			if (diskRevision !== capturedRevision) {
 				if (retriesLeft > 0) {
-					// Retry once against the fresh state; the transition validation
-					// below is the guard for task status/structure changes.
 					return this.updateTaskAttempt(ctx, spec, retriesLeft - 1);
 				}
 				return { ok: false, message: `Goal ${current.id} was modified by another process (revision ${capturedRevision} -> ${diskRevision}); current revision is ${diskRevision}. The task was not updated.` };
@@ -704,8 +574,6 @@ export class GoalService {
 				try {
 					this.appendLedgerEventsBestEffort(ctx, spec.ledger(written, updatedTask));
 				} catch (err) {
-					// Unexpected ledger-spec error after the authoritative write keeps
-					// the successful state transition.
 					this.ref.onDiagnostic({
 						severity: "warning",
 						source: "ledger",
@@ -732,8 +600,6 @@ export class GoalService {
 	persist(ctx: GoalServiceContext): GoalRecord | null {
 		const current = this.ref.getFocused();
 		if (!current) return null;
-		// P1-3: within a turn the persist is buffered; the flush at turn end
-		// performs the single write + ledger batch.
 		if (this.turn.active) {
 			const next = { ...current, updatedAt: nowIso() };
 			this.turn.goal = next;
@@ -743,18 +609,14 @@ export class GoalService {
 		const capturedRevision = current.revision ?? 0;
 		let lock: GoalLock;
 		try {
-			lock = acquireGoalLock(ctx, current.id, { attempts: 4, retryMs: 25 }); // P1-5: 100ms bound
+			lock = acquireGoalLock(ctx, current.id, { attempts: 4, retryMs: 25 });
 		} catch {
-			// Another writer holds the goal lock; skip this persist tick.
 			return null;
 		}
 		try {
 			const freshDisk = this.readFreshDiskGoal(ctx, current);
 			if (!freshDisk) return null;
 			if ((freshDisk.revision ?? 0) !== capturedRevision) {
-				// Revision moved concurrently: merge only the additive usage
-				// delta from this session onto the disk record and advance its
-				// revision. All other fields stay authoritative from disk.
 				const { tokens, seconds } = this.usageDelta(current, freshDisk);
 				if (tokens === 0 && seconds === 0) return null;
 				const merged = mergeGoalPromptFromDisk(ctx, {
@@ -781,7 +643,6 @@ export class GoalService {
 		}
 	}
 
-	/** Create a goal: write active file → ledger → memory/focus commit. */
 	create(ctx: GoalServiceContext, spec: { goal: GoalRecord; ledger?: GoalLedgerEvent[] }): GoalMutationResult {
 		const previousGoalId = this.ref.getFocused()?.id ?? null;
 		const written = writeActiveGoalFile(ctx, spec.goal);
@@ -797,7 +658,6 @@ export class GoalService {
 
 	/** Append ledger events best-effort (audit flow / focus changes happen mid-turn, outside apply). */
 	appendEvents(ctx: GoalServiceContext, events: GoalLedgerEvent[]): void {
-		// P1-3: within a turn the events join the transaction's ledger batch.
 		if (this.turn.active) {
 			this.turn.ledger.push(...events);
 			return;
@@ -805,19 +665,16 @@ export class GoalService {
 		this.appendLedgerEventsBestEffort(ctx, events);
 	}
 
-	/** Diagnostic write for the debug widget toggle (separate debug dir; not a goal mutation). */
 	writeDebugFile(ctx: GoalServiceContext, relPath: string, content: string): void {
 		const gfc: GoalFileContext = ctx;
 		ensureDirectory(gfc, ".pi/goals/debug");
 		atomicWriteGoalFile(gfc, ".pi/goals/debug", relPath, content);
 	}
 
-	/** Diagnostic removal for the debug widget toggle. */
 	removeDebugFile(ctx: GoalServiceContext, relPath: string): void {
 		try {
 			safeUnlinkGoalFile(ctx, ".pi/goals/debug", relPath);
 		} catch {
-			// Debug file removal is best-effort.
 		}
 	}
 }

@@ -1,25 +1,10 @@
-/**
- * B10 — Checkpoint growth gate (issue #30).
- *
- * Measures persisted checkpoint content growth across unchanged continuation
- * turns, provider-visible checkpoint history after context compaction, the
- * legacy-session recovery reduction, and full-goal-block duplication in the
- * composed request. Agent-free (B8): operates on extension functions and the
- * recovery transform only.
- *
- * Rows (ops = measured chars / counts):
- *   B10.checkpoint.persisted.{1,10,100,1000}   total persisted checkpoint chars after N turns
- *   B10.checkpoint.provider-context.1000       provider-visible checkpoints after compaction (must be <=1)
- *   B10.checkpoint.recovery.850                post-recovery checkpoint chars for a 850-entry legacy session
- *   B10.checkpoint.composed-request.50t        full goal blocks in the composed request (must be 1)
- */
 
 import { transformSessionLines } from "../../scripts/recover-session-checkpoints.mjs";
 import { compactGoalCheckpointContext } from "../../extensions/goal-events.ts";
 import { checkpointTriggerPrompt, goalPrompt, CHECKPOINT_TRIGGER_MAX_CHARS } from "../../extensions/prompts/goal-prompts.ts";
 import { makeGoalRecord } from "./bench-common.mjs";
 
-const LEGACY_CHECKPOINT_CHARS = 6400; // plan §17 fixture: ~6.4K chars per legacy full prompt
+const LEGACY_CHECKPOINT_CHARS = 6400;
 
 function legacyCheckpointLine(goalId, index) {
 	const entry = {
@@ -57,7 +42,6 @@ function taskTree(count) {
 }
 
 export function run(baseline) {
-	// ── persisted growth ─────────────────────────────────────────────────
 	const v2MarkerLen = checkpointTriggerPrompt("bench-goal").length;
 	if (v2MarkerLen > CHECKPOINT_TRIGGER_MAX_CHARS) {
 		throw new Error(`v2 marker ${v2MarkerLen} chars exceeds bound ${CHECKPOINT_TRIGGER_MAX_CHARS}`);
@@ -76,11 +60,9 @@ export function run(baseline) {
 		});
 	}
 
-	// Objective leakage check over the largest fixture.
 	const leaked = persistedCheckpointChars(1000);
 	if (leaked > 160_000) throw new Error(`B10 gate: persisted chars at 1000 turns = ${leaked} > 160000`);
 
-	// ── provider-visible history after context compaction ────────────────
 	const goal = makeGoalRecord({ objective: "Implement the full feature set." });
 	goal.taskList = { tasks: taskTree(50), blockCompletion: true, proposedAt: new Date().toISOString() };
 	goal.verificationContract = "Run the test suite.";
@@ -105,8 +87,6 @@ export function run(baseline) {
 	});
 	const compacted = compactGoalCheckpointContext(messages, goal);
 	const checkpoints = compacted.filter(m => m && m.customType === "pi-goal-event");
-	// Since #68, tiny triggers stay in their original positions for cache continuity.
-	// Full goal snapshots must still never survive normalization.
 	const visibleCheckpoints = checkpoints.filter(m => String(m.content).length > CHECKPOINT_TRIGGER_MAX_CHARS || String(m.content).includes("[PI GOAL ACTIVE")).length;
 	if (visibleCheckpoints !== 0) throw new Error(`B10 gate: ${visibleCheckpoints} unbounded/full-state checkpoints`);
 	if (compacted.length !== messages.length || checkpoints.length !== 1001) throw new Error("B10 gate: normalization changed history positions");
@@ -122,7 +102,6 @@ export function run(baseline) {
 		notes: "must be 0; all 1001 bounded triggers retain their history positions",
 	});
 
-	// ── legacy session recovery (850-entry issue #30 fixture) ────────────
 	const lines = ["session-header"];
 	for (let i = 0; i < 850; i += 1) lines.push(legacyCheckpointLine("g30", i));
 	const originalText = lines.join("\n");
@@ -149,11 +128,6 @@ export function run(baseline) {
 		notes: `was ~${LEGACY_CHECKPOINT_CHARS * 850} chars; saved ${result.savedChars}; must be <= 5% of legacy`,
 	});
 
-	// ── composed request duplication ──────────────────────────────────────
-	// The composed request ≈ system prompt (with one injected goal block) plus
-	// the provider-visible messages (at most one checkpoint marker). Counting
-	// full-goal-block markers and objective occurrences guards PR A's
-	// single-source invariant.
 	const systemPrompt = `${"base system ".repeat(10)}\n\n${goalPrompt(goal)}`;
 	const composed = systemPrompt + "\n" + compacted.map(m => typeof m.content === "string" ? m.content : JSON.stringify(m.content)).join("\n");
 	const fullGoalBlocks = (composed.match(/\[PI GOAL ACTIVE goalId=/g) ?? []).length;

@@ -79,27 +79,13 @@ export function goalLedgerPath(ctx: GoalLedgerContext): string {
 
 export type GoalLedgerAppendResult = { ok: true } | { ok: false; error: unknown };
 
-/**
- * Append one ledger event. Returns a discriminated result instead of swallowing
- * both append attempts internally: the authoritative state write is never
- * rolled back after a ledger failure, but callers (GoalService) route failures
- * through the onDiagnostic hook so they stay observable.
- *
- * NAF: after a successful append the in-memory ledger cache is extended with
- * the same event (sanitized), so the next readGoalLedger is zero-op and
- * always current for extension-mediated writes.
- */
+/** Append an event; report ledger failure without rolling back authoritative state. */
 export function appendGoalEvent(ctx: GoalLedgerContext, event: GoalLedgerEvent): GoalLedgerAppendResult {
   const result = appendLedgerLines(ctx, [event]);
   return result;
 }
 
-/**
- * Append several ledger events as one line block with the existing
- * temp-write→read→append durability (P1-8): one mkdir, one temp write, one
- * append, one unlink instead of N× the same sequence. NAF: extends the
- * in-memory ledger cache in one step too.
- */
+/** Append multiple ledger events as one block. */
 export function appendGoalEvents(ctx: GoalLedgerContext, events: GoalLedgerEvent[]): GoalLedgerAppendResult {
   if (events.length === 0) return { ok: true };
   return appendLedgerLines(ctx, events);
@@ -108,8 +94,6 @@ export function appendGoalEvents(ctx: GoalLedgerContext, events: GoalLedgerEvent
 function appendLedgerLines(ctx: GoalLedgerContext, events: GoalLedgerEvent[]): GoalLedgerAppendResult {
   const filePath = goalLedgerPath(ctx);
   const dir = path.dirname(filePath);
-  // NAF: per-dir memo — mkdir once per directory per process; steady-state
-  // appends skip it entirely (0 ops for the dir).
   if (!ledgerDirsKnown.has(dir)) {
     try {
       ensureGoalStorageDirectory(ctx, ".pi/goals", false);
@@ -120,9 +104,6 @@ function appendLedgerLines(ctx: GoalLedgerContext, events: GoalLedgerEvent[]): G
   }
 
   const lines = events.map((event) => JSON.stringify(event) + "\n").join("");
-  // NAF: direct O_APPEND write (one op) instead of the temp-write→read→append
-  // dance — a single JSONL line (or one batched block) is appended atomically
-  // by the OS; torn-line handling lives in the reader, not here.
   try {
     if (isExternalGoalStorage(ctx)) {
       ensureGoalStorageDirectory(ctx, ".pi/goals");
@@ -134,21 +115,12 @@ function appendLedgerLines(ctx: GoalLedgerContext, events: GoalLedgerEvent[]): G
     return { ok: false, error: err };
   }
   extendLedgerCache(filePath, lines, events);
-  // Best-effort checkpoint maintenance: bounded cold starts depend on it, but
-  // the ledger append above is authoritative and never rolled back.
   updateLedgerCheckpointAfterAppend(filePath, lines, events);
   return { ok: true };
 }
 
-/** Directories whose ledger file exists (per-dir mkdir memo). */
 const ledgerDirsKnown = new Set<string>();
 
-/**
- * Zero-op ledger cache (NAF 2026-08-06): keyed by absolute ledger path.
- * Steady-state reads serve the cache with no fs ops; appendGoalEvent(s)
- * extend it in memory (see extendLedgerCache). External (non-extension)
- * edits to the ledger go stale mid-session (documented in the naf spec).
- */
 interface LedgerCacheEntry {
   size: number;
   mtimeMs: number;
@@ -171,7 +143,6 @@ export function invalidateGoalLedgerCache(): void {
 	lastCheckpointDiskWrite.clear();
 }
 
-/** Keep the zero-op ledger cache in sync with an in-process append (no fs ops). */
 function extendLedgerCache(filePath: string, lines: string, events: GoalLedgerEvent[]): void {
   const cached = ledgerCache.get(filePath);
   if (!cached) return;
@@ -190,21 +161,16 @@ export function readGoalLedger(ctx: GoalLedgerContext): GoalLedgerReadResult {
   const filePath = goalLedgerPath(ctx);
   const cached = ledgerCache.get(filePath);
   if (cached) {
-    // NAF zero-op steady state: no stat, no read, no parse. The cache is kept
-    // current by extendLedgerCache on every in-process append; external
-    // (non-extension) edits to the ledger go stale mid-session (documented).
     return { events: cached.events, malformed: cached.malformed, revision: cached.revision };
   }
   return readGoalLedgerCold(ctx, filePath);
 }
 
-/** Cold read: full file read + parse, populating the zero-op cache. */
 function readGoalLedgerCold(ctx: GoalLedgerContext, filePath: string): GoalLedgerReadResult {
   let content: string;
   try {
     content = fs.readFileSync(filePath, "utf8");
   } catch {
-    // Missing or unreadable: cache the empty result so repeated reads are zero-op.
     const empty = {events: [], malformed: 0, revision: {}};
     ledgerCache.set(filePath, {size: 0, mtimeMs: 0, chars: 0, ...empty});
     return empty;
@@ -215,10 +181,8 @@ function readGoalLedgerCold(ctx: GoalLedgerContext, filePath: string): GoalLedge
   return result;
 }
 
-/** Parse a JSONL ledger body into sanitized events + a malformed-line count. */
 function parseLedgerLines(content: string): GoalLedgerReadResult {
   const events: GoalLedgerEvent[] = [];
-  // Goal IDs repeat across most rows. A bounded per-read map avoids repeated sanitation.
   const goalIds = new Map<string, string>();
   let malformed = 0;
   for (const line of content.split("\n")) {
@@ -243,20 +207,6 @@ function parseLedgerLines(content: string): GoalLedgerReadResult {
   return { events, malformed };
 }
 
-// ---------------------------------------------------------------------------
-// Ledger checkpoint (reliability campaign 2026-08-09)
-//
-// The zero-op cache bounds steady-state reads, but a fresh session still reads
-// and parses the complete JSONL ledger. The checkpoint bounds the COLD path:
-// it stores the reconstructed accumulator (state + focus bookkeeping), the
-// per-goal recent-event tails, and the byte position of the ledger it covers.
-// A cold read then costs 2 fs ops (checkpoint read + stat) when covered, or a
-// bounded positioned tail read when the ledger grew. The JSONL ledger itself
-// is untouched and remains authoritative: the checkpoint is a best-effort
-// optimization — missing/corrupt/version-mismatched checkpoints fall back to
-// the full parse, and any coveredBytes mismatch (external edits, truncation)
-// falls back or replays the tail.
-// ---------------------------------------------------------------------------
 
 export const LEDGER_CHECKPOINT_FILE = ".goal-ledger-checkpoint.json";
 export const LEDGER_CHECKPOINT_VERSION = 3;
@@ -267,13 +217,9 @@ export interface LedgerCheckpoint {
   version: typeof LEDGER_CHECKPOINT_VERSION;
   format: "goal-ledger-checkpoint";
   createdAt: string;
-  /** Byte length of the ledger covered (compared against stat().size). */
   coveredBytes: number;
-  /** Number of ledger events covered. */
   coveredEvents: number;
-  /** Pre-finalize accumulator (focus bookkeeping kept for incremental tail apply). */
   acc: ReconstructAccumulator;
-  /** Per-goal recent-event tails (capped), already sanitized. */
   recentEventsByGoal: Map<string, GoalLedgerEvent[]>;
   runtimeIndex: Map<string, GoalLedgerIndex>;
 }
@@ -287,17 +233,8 @@ export interface LedgerStateReadResult {
   source: "cache" | "checkpoint" | "tail" | "full";
 }
 
-/** In-process checkpoint mirror (null = known absent). */
 const checkpointCache = new Map<string, LedgerCheckpoint | null>();
 
-/**
- * Disk-write throttle for the mutation path: the in-memory mirror updates on
- * every append (0 fs ops), but the atomic temp-write+rename lands at most once
- * per CHECKPOINT_WRITE_INTERVAL appends or CHECKPOINT_WRITE_MIN_MS elapsed —
- * keeping the NAF append headroom (B1.append.x4 <= 2 ops) while still bounding
- * cold-start tails for long sessions. Staleness is always safe: a coveredBytes
- * mismatch only costs a tail replay.
- */
 const CHECKPOINT_WRITE_INTERVAL = 32;
 const CHECKPOINT_WRITE_MIN_MS = 2000;
 const lastCheckpointDiskWrite = new Map<string, { appendsSinceWrite: number; at: number }>();
@@ -310,7 +247,6 @@ function checkpointPathFor(filePath: string): string {
   return path.join(path.dirname(filePath), LEDGER_CHECKPOINT_FILE);
 }
 
-/** JSON-safe checkpoint shape (Maps serialized as arrays). */
 function checkpointToJson(cp: LedgerCheckpoint): unknown {
   const goalStateToJson = (s: ReconstructedGoalState) => ({
     goalId: s.goalId,
@@ -377,7 +313,6 @@ function parseGoalState(value: unknown): ReconstructedGoalState | null {
   };
 }
 
-/** Parse + validate a checkpoint file body; null on any mismatch (version/format/shape). */
 function checkpointFromJson(value: unknown): LedgerCheckpoint | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const o = value as Record<string, unknown>;
@@ -450,7 +385,6 @@ function checkpointFromJson(value: unknown): LedgerCheckpoint | null {
   };
 }
 
-/** Atomic checkpoint write: temp file + rename in the ledger directory. Best-effort. */
 function writeLedgerCheckpointAtomic(filePath: string, cp: LedgerCheckpoint): void {
   try {
     const cpPath = checkpointPathFor(filePath);
@@ -458,13 +392,10 @@ function writeLedgerCheckpointAtomic(filePath: string, cp: LedgerCheckpoint): vo
     fs.writeFileSync(tmp, JSON.stringify(checkpointToJson(cp)), "utf8");
     fs.renameSync(tmp, cpPath);
   } catch (err) {
-    // The checkpoint is an optimization; a failed write only costs a full
-    // parse on the next cold read.
     console.error("[goal-ledger] checkpoint write failed:", err);
   }
 }
 
-/** Read + validate the checkpoint for a ledger path (cached per process). */
 function readLedgerCheckpointFile(filePath: string): LedgerCheckpoint | null {
   const cached = checkpointCache.get(filePath);
   if (cached !== undefined) return cached;
@@ -479,7 +410,6 @@ function readLedgerCheckpointFile(filePath: string): LedgerCheckpoint | null {
   return cp;
 }
 
-/** Append one event to a per-goal recent tail, keeping the newest cap entries. */
 function appendRecent(recent: Map<string, GoalLedgerEvent[]>, goalId: string, event: GoalLedgerEvent): void {
   const tail = recent.get(goalId) ?? [];
   tail.push(event);
@@ -487,7 +417,6 @@ function appendRecent(recent: Map<string, GoalLedgerEvent[]>, goalId: string, ev
   recent.set(goalId, tail);
 }
 
-/** Build a checkpoint from full events (used to bootstrap / refresh). */
 function buildCheckpointFromEvents(events: GoalLedgerEvent[], coveredBytes: number): LedgerCheckpoint {
   const runtimeIndex = buildLedgerIndex(events);
   return {
@@ -502,7 +431,6 @@ function buildCheckpointFromEvents(events: GoalLedgerEvent[], coveredBytes: numb
   };
 }
 
-/** Positioned read of the ledger bytes past `offset`, parsed as JSONL. */
 function readLedgerTailFrom(filePath: string, offset: number): GoalLedgerReadResult {
   try {
     const fd = fs.openSync(filePath, "r");
@@ -520,14 +448,6 @@ function readLedgerTailFrom(filePath: string, offset: number): GoalLedgerReadRes
   }
 }
 
-/**
- * Maintain the checkpoint after an in-process append (best-effort).
- *
- * Requires an existing checkpoint or a warm full-event cache to extend the
- * accumulator incrementally; otherwise the checkpoint is deferred to the next
- * cold load (bootstrap). Failures are swallowed — the ledger append itself is
- * authoritative and never rolled back.
- */
 function updateLedgerCheckpointAfterAppend(filePath: string, lines: string, events: GoalLedgerEvent[]): void {
   try {
     let cp = checkpointCache.get(filePath);
@@ -557,21 +477,9 @@ function updateLedgerCheckpointAfterAppend(filePath: string, lines: string, even
       lastCheckpointDiskWrite.set(filePath, { appendsSinceWrite: cp.coveredEvents, at: Date.now() });
     }
   } catch {
-    // Best-effort only.
   }
 }
 
-/**
- * Bounded cold read of the ledger's reconstructed state (reliability campaign).
- *
- * Serves in this priority order:
- *  - warm cache: zero fs ops, same semantics as today's consumers;
- *  - fresh checkpoint: 2 fs ops (checkpoint read + stat);
- *  - checkpoint + grown ledger: positioned tail read + incremental replay;
- *  - no/valid-but-stale-beyond-use checkpoint: full parse + reconstruct, then
- *    writes a fresh checkpoint so the next session is bounded.
- */
-/** Current bounded runtime projections, initialized once from checkpoint + tail. */
 function runtimeIndex(ctx: GoalLedgerContext): Map<string, GoalLedgerIndex> {
  const filePath = goalLedgerPath(ctx);
  if (!runtimeReady.has(filePath)) {
@@ -581,7 +489,6 @@ function runtimeIndex(ctx: GoalLedgerContext): Map<string, GoalLedgerIndex> {
    const full = readGoalLedger(ctx);
    checkpointCache.set(filePath, buildCheckpointFromEvents(full.events, ledgerCache.get(filePath)?.size ?? 0));
   }
-  // Hot consumers do not retain a second full-history representation.
   ledgerCache.delete(filePath);
   runtimeReady.add(filePath);
  }
@@ -661,8 +568,6 @@ export function loadLedgerState(ctx: GoalLedgerContext): LedgerStateReadResult {
     lastCheckpointDiskWrite.set(filePath, { appendsSinceWrite: updated.coveredEvents, at: Date.now() });
     return { state, recentEventsByGoal: recent, malformed: tail.malformed, coveredBytes: size, coveredEvents: updated.coveredEvents, source: "tail" };
   }
-  // Full fallback: missing/corrupt checkpoint, version mismatch, or the ledger
-  // was rewritten to be smaller than the checkpoint's coverage.
   const full = readGoalLedgerCold(ctx, filePath);
   const fresh = buildCheckpointFromEvents(full.events, size);
   checkpointCache.set(filePath, fresh);
@@ -752,14 +657,11 @@ function isValidLedgerEvent(value: unknown): value is GoalLedgerEvent {
 function sanitizeEvent(event: GoalLedgerEvent, owned = false): GoalLedgerEvent {
   if (!("goalId" in event)) return event;
   const goalId = safeGoalId(event.goalId);
-  // Parsed JSON is privately owned; avoid allocating a second object per line.
-  // Caller-supplied append events still get a defensive copy.
   if (owned) { event.goalId = goalId; return event; }
   return { ...event, goalId };
 }
 
 export function reconstructGoalLedger(events: GoalLedgerEvent[]): ReconstructedLedgerState {
-  // Inline accumulator allocation (no helper call on the measured path).
   return finalizeLedgerState(applyLedgerEvents({
     goals: new Map(),
     terminalGoals: new Map(),
@@ -795,8 +697,6 @@ export function freshAccumulator(): ReconstructAccumulator {
 }
 
 function applyLedgerEvents(acc: ReconstructAccumulator, events: GoalLedgerEvent[]): ReconstructAccumulator {
-  // Locals instead of property chains: B3.reconstruct is measured over 10k
-  // event lists and must hold the NAF 10x headroom (0.3ms at 5k).
   const goals = acc.goals;
   const terminalGoals = acc.terminalGoals;
   const focusGenByGoal = acc.focusGenByGoal;
@@ -851,15 +751,12 @@ function applyLedgerEvents(acc: ReconstructAccumulator, events: GoalLedgerEvent[
         break;
       }
       case "completion_requested": {
-        // No status change until audit_result or goal_completed
         break;
       }
       case "audit_started": {
-        // No state change
         break;
       }
       case "audit_skipped": {
-        // audit was skipped; goal continues as-is
         break;
       }
       case "audit_result": {
@@ -894,7 +791,6 @@ function applyLedgerEvents(acc: ReconstructAccumulator, events: GoalLedgerEvent[
       case "oracle_started":
       case "oracle_failed":
       case "oracle_followup_attempted": {
-        // Bounded metadata only; no reconstructed state change.
         break;
       }
       case "oracle_result": {
@@ -917,20 +813,16 @@ function applyLedgerEvents(acc: ReconstructAccumulator, events: GoalLedgerEvent[
   return acc;
 }
 
-/** Apply one ledger event (checkpoint incremental paths; not on the measured hot path). */
 function applyLedgerEvent(acc: ReconstructAccumulator, event: GoalLedgerEvent): void {
   applyLedgerEvents(acc, [event]);
 }
 
-/** Materialize focus flags once (O(goals)), clearing focus on terminal goals. */
 function finalizeLedgerState(acc: ReconstructAccumulator): ReconstructedLedgerState {
   const { goals, terminalGoals, focusGenByGoal } = acc;
   const focusGeneration = acc.focusGeneration;
-  // Materialize the generation-based focus flags (O(goals) once, not per event).
   for (const g of goals.values()) g.latestFocus = focusGenByGoal.get(g.goalId) === focusGeneration;
   for (const g of terminalGoals.values()) g.latestFocus = focusGenByGoal.get(g.goalId) === focusGeneration;
 
-  // If the focused goal was moved to terminal (e.g., aborted/completed), clear focus.
   if (acc.focusedGoalId && !goals.has(acc.focusedGoalId)) {
     acc.focusedGoalId = null;
   }
@@ -938,7 +830,6 @@ function finalizeLedgerState(acc: ReconstructAccumulator): ReconstructedLedgerSt
   return { focusedGoalId: acc.focusedGoalId, goals, terminalGoals };
 }
 
-/** Shallow-clone an accumulator so finalizing (or extending) never mutates a cached copy. */
 function cloneAccumulator(acc: ReconstructAccumulator): ReconstructAccumulator {
   return {
     goals: new Map(acc.goals),

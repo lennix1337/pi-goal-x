@@ -1,4 +1,3 @@
-// Real managed Pi SDK + registered goal tools; scripted provider, no external model calls.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -102,7 +101,7 @@ try {
   const before = results.at(-1).goal;
   assert.equal(before.status, 'paused');
   const beforeTasks = JSON.stringify(before.taskList);
-  await session.reload(); // Actual SDK reload lifecycle, not a re-imported mock extension.
+  await session.reload();
   assert.deepEqual(loader.getExtensions().errors, []);
   const update = loader.getExtensions().extensions.flatMap(extension => [...extension.tools]).find(([name]) => name === 'update_goal')[1].definition;
   assert.ok(JSON.stringify(update.parameters).includes('active'));
@@ -113,7 +112,6 @@ try {
   const resumed = results.filter(row => row.goal?.status === 'active' && row.tool === 'update_goal');
   assert.equal(resumed.length, 2);
   assert.equal(resumed[0].goal.id, before.id);
-  // turn_start may update runtime bookkeeping between calls; the resume must not reset the generation or allowance.
   assert.equal(resumed[1].goal.scheduler.generation, resumed[0].goal.scheduler.generation);
   assert.equal(resumed[1].goal.scheduler.used, resumed[0].goal.scheduler.used);
   assert.equal(resumed[0].goal.objective, before.objective);

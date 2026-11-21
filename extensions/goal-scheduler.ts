@@ -86,7 +86,6 @@ export class GoalScheduler {
 		return this.limit(ctx) === 0 ? "Automatic continuation disabled by maxAutonomousRuns=0. Change the per-goal allowance with /goal-tweak (or inherited limits in /goal-settings), then use /goal-resume." : "Autonomous-run allowance exhausted. Use /goal-tweak to increase or remove this goal's allowance, or /goal-resume to renew.";
 	}
 
-	/** Bind once per live session. The event is deliberately not a triggerTurn message. */
 	attach(ctx: ExtensionContext): void {
 		this.ctx = ctx;
 		this.unsubscribe?.();
@@ -107,12 +106,8 @@ export class GoalScheduler {
 			if (!goal || goal.status !== "active" || !goal.autoContinue || !goal.scheduler) return;
 			const s = goal.scheduler;
 			if (s.owner !== this.owner(ctx)) { ctx.ui.notify("Goal owned by another session. Use /goal-resume to take ownership.", "info"); return; }
-			// "idle" on an active goal means its last run ended without settling successfully (a
-			// provider error such as quota): every successful settlement leaves it ready or waiting.
-			// The failover extension drops its own wake on reload, so the goal must not wait for it.
+			// external: the failover extension drops its own wake on reload.
 			if (["idle", "claimed", "running", "interrupted"].includes(s.phase)) {
-				// The old dispatch is never replayed: one fresh recovery continuation replaces it
-				// and still passes the normal allowance and budget checks in schedule().
 				this.write(ctx, g => ({ ...g, scheduler: { ...g.scheduler!, generation: randomUUID(), phase: "ready", dispatch: undefined, decision: { kind: "ready", purpose: "recovery" } } }));
 			}
 			this.schedule(ctx);
@@ -138,15 +133,13 @@ export class GoalScheduler {
 				return { ...g, status: "active", autoContinue: true, stopReason: undefined, pauseReason: undefined, pauseSuggestedAction: undefined,
 					scheduler: { ...newGoalScheduler(this.owner(ctx)), used: options.preserveAllowance ? g.scheduler?.used ?? 0 : 0, phase: "ready", decision: { kind: "ready", purpose: "kickoff" } } };
 			});
-			// A resume during host work waits for settlement; another model turn
-			// still invalidates it through turn(), just like a declaration.
 			this.declared = this.inRun;
 			this.schedule(ctx);
 			return { ok: true };
 		} catch (error) { return { ok: false, message: String(error) }; }
 	}
 	kickoff(ctx: ExtensionContext): void {
-		if (this.inRun) return; // creating a goal within a user run needs no extra run
+		if (this.inRun) return;
 		this.safe(ctx, () => {
 			const goal = this.core.state.goal;
 			if (!goal || goal.status !== "active" || !goal.autoContinue) return;
@@ -159,7 +152,7 @@ export class GoalScheduler {
 	declare(ctx: ExtensionContext, input: GoalContinuation): GoalToolResult {
 		try {
 			if (!this.core.state.goal || this.core.state.goal.status !== "active" || !this.core.state.goal.autoContinue || this.denied) throw new Error("Scheduling requires an active auto-continue goal in this session.");
-			invalidateGoalSettingsCache(); // an agent may have just configured the allowance
+			invalidateGoalSettingsCache();
 			const goal = this.update(ctx, (s, g) => {
 				if (!this.available(ctx, s, g)) throw new Error(this.allowanceReason(ctx));
 				if (input.kind === "ready") {
@@ -217,7 +210,6 @@ export class GoalScheduler {
 			try {
 				this.update(ctx, (s, g) => {
 					if (d.version !== 3 || s.phase !== "claimed" || g.id !== d.goalId || s.generation !== d.generation || s.dispatch?.id !== d.dispatchId || g.status !== "active" || !g.autoContinue) throw new Error("Stale or unclaimed goal checkpoint.");
-					// Retain the admitted action as context; phase prevents reusing its authorization.
 					s.phase = "running";
 				});
 			} catch (error) {
@@ -228,7 +220,6 @@ export class GoalScheduler {
 			}
 			return;
 		}
-		// Genuine host work supersedes an old scheduling claim, but never resets used.
 		this.takeover(ctx);
 	}
 	takeover(ctx: ExtensionContext): void {
@@ -295,7 +286,6 @@ export class GoalScheduler {
 			if (!["ready", "waiting"].includes(s.phase)) return;
 			if (budgetReached(g)) { this.pause(ctx, "Goal token budget exhausted."); return; }
 			if (!this.available(ctx, s)) { this.pause(ctx, this.allowanceReason(ctx)); return; }
-			// Recovery and repair retain the wait while changing phase to ready.
 			if (s.wait && Date.now() >= s.wait.deadline) { this.pause(ctx, "Wait deadline reached."); return; }
 			if (s.phase === "waiting" && s.wait) {
 				this.core.clearActiveAccounting();
@@ -306,7 +296,6 @@ export class GoalScheduler {
 				}
 			}
 			this.cancelTimer();
-			// Runtime readiness polling cannot authorize: claim() is called again at delivery.
 			this.armedGeneration = s.generation;
 			this.core.runtime.queueContinuation(ctx, g, true);
 		});

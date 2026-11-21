@@ -1,10 +1,3 @@
-/**
- * B2 — Real-session per-turn I/O accounting (synthetic turn over real
- * functions). A read turn performs the same sync reads the pipeline performs
- * (settings + pool + focused-goal parse + ledger + prompt build); a mutation
- * turn performs one real task mutation through the tool surface. Reports fs
- * op counts and wall ms per turn — the top-line user-felt number.
- */
 
 import { performance } from "node:perf_hooks";
 import {
@@ -38,7 +31,6 @@ function readTurn(cwd, goals, goal) {
 }
 
 export async function run(baseline) {
-	// ── read turns at 1 and 10 open goals, ledger 1k ────────────────────
 	for (const [goalCount, label] of [[1, "1 goal"], [10, "10 goals"]]) {
 		const cwd = makeFixtureCwd("b2-");
 		try {
@@ -66,7 +58,6 @@ export async function run(baseline) {
 		}
 	}
 
-	// Each sample starts from a fresh fixture; setup stays outside the timed mutation.
 	{
 		const samples = [];
 		const opSamples = [];

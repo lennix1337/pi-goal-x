@@ -1,14 +1,5 @@
 #!/usr/bin/env node
-/**
- * Portable outer watchdog for the experiment harness (macOS has no GNU
- * `timeout` by default). Usage:
- *
- *   node watchdog.mjs <seconds> <command> [args...]
- *
- * Spawns <command> with its args, kills it with SIGKILL after <seconds>
- * (matching GNU timeout's default exit code 124), and forwards the child's
- * exit code otherwise.
- */
+// external: macOS does not provide GNU timeout by default.
 
 import { spawn } from "node:child_process";
 

@@ -1,12 +1,3 @@
-/**
- * GoalRuntime — continuation scheduling, stale-checkpoint state, the turn-stop
- * guard, and one-time steering reminders (post-compaction, budget reached).
- *
- * The extension (`extensions/goal.ts`) instantiates one GoalRuntime with hooks
- * bound to its closure state and the pi API; every runtime decision is
- * encapsulated here so the scheduling/guarding behavior is independently
- * testable with a mock context.
- */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { GoalCheckpointDetailsV3, GoalRecord } from "./goal-record.ts";
@@ -39,26 +30,20 @@ export interface GoalRuntimeHooks {
 }
 
 export class GoalRuntime {
-	// ── continuation scheduling ──────────────────────────────────────────
-	/** Goal whose checkpoint was dispatched and not yet picked up by a turn. */
 	private continuationQueuedFor: string | null = null;
-	/** Pending send attempt: the goal and its timer exist together or not at all. */
 	private continuationScheduled: { goalId: string; timer: ReturnType<typeof setTimeout> } | null = null;
 	private networkErrorRetryGoalId: string | null = null;
 	private networkErrorRetryAttempt = 0;
 	private networkErrorRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
-	// ── turn-stop guard ──────────────────────────────────────────────────
 	private turnSeq = 0;
 	private turnStoppedFor: { goalId: string; turnSeq: number } | null = null;
 
-	// ── stale checkpoint state ───────────────────────────────────────────
 	private checkpointGoalId: string | null = null;
 
 	/** Monotonic per-session counter persisted on v2 checkpoint details (issue #30). */
 	private checkpointSeq = 0;
 
-	// ── one-time steering reminders ──────────────────────────────────────
 	private postCompactReminderPending = false;
 	private postBudgetReminderPending = false;
 
@@ -68,7 +53,6 @@ export class GoalRuntime {
 		this.hooks = hooks;
 	}
 
-	// ── continuation scheduling ──────────────────────────────────────────
 
 	clearContinuationState(resetNetworkErrorBackoff = true): void {
 		this.clearContinuationTimer();
@@ -152,12 +136,6 @@ export class GoalRuntime {
 		this.networkErrorRetryAttempt = 0;
 	}
 
-	/**
-	 * Issue #30: the delivered follow-up must trigger the turn, but it no longer
-	 * carries goal state. The persisted content is a tiny v2 marker and the
-	 * details are a bounded structured record; before_agent_start injects the
-	 * authoritative full prompt once per turn.
-	 */
 	/** 0 when the checkpoint may go now, the wait before the next try otherwise, null once the context is gone. */
 	private retryDelay(ctx: ExtensionContext): number | null {
 		try {
@@ -208,7 +186,6 @@ export class GoalRuntime {
 		catch { this.hooks.dispatchFailed?.(ctx); }
 	}
 
-	// ── turn-stop guard ──────────────────────────────────────────────────
 
 	advanceTurn(): void {
 		this.turnSeq += 1;
@@ -230,7 +207,6 @@ export class GoalRuntime {
 		return this.turnStoppedFor.goalId;
 	}
 
-	// ── stale checkpoint state ───────────────────────────────────────────
 
 	setCheckpoint(goalId: string | null): void {
 		this.checkpointGoalId = goalId;
@@ -245,7 +221,6 @@ export class GoalRuntime {
 		return !POST_STOP_ALLOWED.has(toolName);
 	}
 
-	// ── one-time steering reminders ──────────────────────────────────────
 
 	armPostCompactReminder(): void {
 		this.postCompactReminderPending = true;

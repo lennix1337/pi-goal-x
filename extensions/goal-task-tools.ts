@@ -1,11 +1,3 @@
-/**
- * Task-tool support for the Stage 4 consolidation:
- * flat parent-linked `set_goal_tasks` input → recursive GoalTask[] tree,
- * with the same validation rules the recursive path enforced (unique ids,
- * non-empty titles, existing parents, acyclic, ≤50 tasks, configured depth,
- * valid lightweight-subtask placement), plus id-stable merging that preserves
- * status/evidence/timestamps for matching ids.
- */
 
 import { StringEnum, Type } from "@earendil-works/pi-ai";
 import { defineTool, type AgentToolResult, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
@@ -43,16 +35,7 @@ export type FlatTaskConversion =
 	| { ok: true; tasks: GoalTask[] }
 	| { ok: false; message: string };
 
-/**
- * Convert a flat parent-linked task list into the recursive GoalTask[]
- * representation, validating:
- *  - non-empty unique ids and titles;
- *  - parent_id references an existing task in the same input;
- *  - acyclic parent relationships;
- *  - at most MAX_TASKS tasks total;
- *  - subtask depth within maxDepth (subtaskDepth setting, default 1);
- *  - lightweight_subtasks is only set on tasks that actually have children.
- */
+/** Convert flat parent-linked tasks into a validated task tree. */
 export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?: number } = {}): FlatTaskConversion {
 	if (!Array.isArray(flat)) return { ok: false, message: "tasks must be an array." };
 	if (flat.length > MAX_TASKS) return { ok: false, message: `Task list cannot exceed ${MAX_TASKS} tasks.` };
@@ -67,7 +50,6 @@ export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?
 		if (!title) return { ok: false, message: `Task "${id}" must have a non-empty title.` };
 	}
 
-	// Parent must exist and relationships must be acyclic.
 	const byId = new Map<string, FlatTaskInput>(flat.map((item) => [item.id.trim(), item]));
 	for (const item of flat) {
 		const parentId = typeof item.parent_id === "string" && item.parent_id.trim() ? item.parent_id.trim() : undefined;
@@ -75,7 +57,6 @@ export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?
 			return { ok: false, message: `Task "${item.id.trim()}" references missing parent "${parentId}".` };
 		}
 		if (parentId) {
-			// Walk up; if we return to the node itself, there is a cycle.
 			let cursor: FlatTaskInput | undefined = byId.get(parentId);
 			const seen = new Set<string>([item.id.trim()]);
 			while (cursor) {
@@ -89,7 +70,6 @@ export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?
 		}
 	}
 
-	// Build the tree.
 	const childrenOf = new Map<string, FlatTaskInput[]>();
 	const roots: FlatTaskInput[] = [];
 	for (const item of flat) {
@@ -119,10 +99,8 @@ export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?
 		}
 		return node;
 	}
-	// Both buckets were populated in input order, so sorting would repeat that work.
 	const tasks = roots.map(buildNode);
 
-	// Lightweight placement: lightweight_subtasks must be on a task with children.
 	for (const item of flat) {
 		if (item.lightweight_subtasks === true) {
 			const children = childrenOf.get(item.id.trim());
@@ -169,7 +147,6 @@ export function mergeTasksWithExisting(existing: GoalTask[] | undefined, incomin
 		const base: GoalTask = {
 			id: input.id,
 			title: input.title,
-			// Structural fields are authoritative; undefined (omitted) clears.
 			verificationContract: input.verificationContract,
 			lightweightSubtasks: input.lightweightSubtasks,
 			...progress,
@@ -177,7 +154,6 @@ export function mergeTasksWithExisting(existing: GoalTask[] | undefined, incomin
 		if (input.subtasks && input.subtasks.length > 0) {
 			base.subtasks = input.subtasks.map((child) => mergeTask(child));
 		} else if (prior?.subtasks) {
-			// Structural removal of all children for this id.
 			delete base.subtasks;
 		}
 		return base;
@@ -246,12 +222,10 @@ function progressSpec(input: TaskProgressInput, core: import("./goal-state.ts").
  };
 }
 
-// ── Tool registration (moved from goal-tools.ts in the Stage 5 module split) ─
 
 export function registerTaskTools(core: import("./goal-state.ts").GoalCore): void {
 	const { pi } = core;
 
-	// ── set_goal_tasks: flat parent-linked structural task-tree tool ───────────
 pi.registerTool(defineTool({
 	name: SET_GOAL_TASKS_TOOL_NAME,
 	label: "Set Goal Tasks",
@@ -305,9 +279,6 @@ pi.registerTool(defineTool({
 		const blockCompletion = params.block_completion === true;
 		const now = nowIso();
 
-		// Render the proposed STRUCTURAL tree for the confirmation dialog.
-		// Progress merge happens inside GoalService.apply against the
-		// disk-refreshed clone.
 		function renderTaskLines(tasks: GoalTask[], indent = 0): string[] {
 			const prefix = "  ".repeat(indent);
 			const lines: string[] = [];
@@ -325,8 +296,6 @@ pi.registerTool(defineTool({
 		const gateLabel = blockCompletion ? " (blockCompletion enabled)" : "";
 		const proposalText = [`Proposed task list${gateLabel}:`, "", ...taskLines].join("\n");
 		const taskListFocus = core.focusedOperationToken(core.state.goal.id);
-		// Task-only confirmation: the complete result is the user's decision.
-		// No auditor toggle and no goal-state mutation happen here.
 		core.enterGoalModal();
 		let dialogResult: TaskConfirmationResult;
 		try {
@@ -347,13 +316,8 @@ pi.registerTool(defineTool({
 			reconcile: false,
 			focusToken: taskListFocus,
 			refreshFromDisk: true,
-			// Merge the confirmed structural input against the disk-refreshed
-			// clone so a concurrent external edit is preserved unless the
-			// requested operation changes the same task.
 			mutate: (g) => {
 				const merged = mergeTasksWithExisting(g.taskList?.tasks, converted.tasks);
-				// §7.5: preserve currentTaskId only when the same id remains pending;
-				// otherwise clear it. Dashboard state recomputes on the next render.
 				const currentTaskId =
 					g.currentTaskId && currentTaskIdIsPending(merged, g.currentTaskId) ? g.currentTaskId : undefined;
 				return { ...g, currentTaskId, taskList: { tasks: merged, blockCompletion, proposedAt: now }, updatedAt: now };
@@ -367,9 +331,6 @@ pi.registerTool(defineTool({
 			}],
 		});
 		if (!applyResult.ok) {
-			// A stale writer receives a typed conflict carrying the current
-			// revision; whole-tree replacement is authoritative and must not
-			// silently merge unknown new structure (follow-up Stage 4).
 			return {
 				content: [{ type: "text", text: `Task list not applied: ${applyResult.message ?? "the state mutation was rejected"}. Review the current goal and re-propose the task list.` }],
 				details: goalDetails(core.state.goal),
@@ -394,7 +355,6 @@ pi.registerTool(defineTool({
 	},
 }));
 
-// ── update_goal_task: discriminated per-task status tool ───────────────────
 pi.registerTool(defineTool({
 	name: UPDATE_GOAL_TASK_TOOL_NAME,
 	label: "Update Goal Task",
@@ -435,8 +395,6 @@ pi.registerTool(defineTool({
 				isError: true,
 			};
 		}
-		// update_goal_task applies only to an active goal with an existing task
-		// list; invalid lifecycle calls return a state-aware failure.
 		if (!core.state.goal) {
 			return { content: [{ type: "text", text: "No goal is focused." }], details: goalDetails(core.state.goal), isError: true };
 		}
@@ -465,8 +423,6 @@ pi.registerTool(defineTool({
 					return { ok: true };
 				},
 				update: (task) => task,
-				// §8.1: set explicit execution focus; a later start replaces it, and
-				// completing/skipping this task clears it.
 				setCurrentTaskId: params.task_id,
 				ledger: (written) => [{
 					type: "task_started",
@@ -479,8 +435,6 @@ pi.registerTool(defineTool({
 				return { content: [{ type: "text", text: result.message }], details: goalDetails(core.state.goal), isError: true };
 			}
 			core.updateUI(ctx);
-			// §8.1: surface the task contract so the next continuation prompt and
-			// the dashboard can show what starting this task requires.
 			const started = findTaskInTree(core.state.goal.taskList?.tasks ?? [], params.task_id);
 			const contract = started?.verificationContract ? ` Contract: ${started.verificationContract}` : "";
 			return {
@@ -564,7 +518,6 @@ pi.registerTool(defineTool({
 			};
 		}
 
-		// status === "pending": reopen a skipped task; completed tasks are immutable.
 		const result = core.goalService.updateTask(ctx, {
 			focusToken: taskFocus,
 			taskId: params.task_id,

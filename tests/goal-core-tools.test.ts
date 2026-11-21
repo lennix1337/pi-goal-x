@@ -1,19 +1,4 @@
 import { appendGoalEvent } from "../extensions/goal-ledger.ts";
-/**
- * Stage 3 core-tools tests: create_goal / get_goal / update_goal.
- *
- * Verifies:
- *  - exactly three advertised goal tools when tasks are disabled;
- *  - create_goal is real, objective-explicit, focuses, reports other-open goals,
- *    honors the configurable max objective length setting (no limit by default),
- *    and accepts token_budget;
- *  - get_goal returns the complete stable snapshot;
- *  - update_goal(complete) runs the audit WITHOUT a verification-summary
- *    parameter (audit from actual evidence); approval archives, rejection stays
- *    open;
- *  - update_goal(blocked) records a distinct agent-blocked state only from
- *    active, with the goal_blocked ledger event.
- */
 
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -130,7 +115,6 @@ async function start(h: ReturnType<typeof createHarness>): Promise<void> {
 	await h.handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "test", systemPromptOptions: {} }, h.ctx);
 }
 
-// ── Tool surface ─────────────────────────────────────────────────────────────
 
 test("exactly three goal tools are advertised when tasks are disabled", async () => {
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-core-notasks-"));
@@ -159,7 +143,6 @@ test("exactly three goal tools are advertised when tasks are disabled", async ()
 	}
 });
 
-// ── create_goal ──────────────────────────────────────────────────────────────
 
 test("create_goal creates, focuses, and reports other open goals", async () => {
 	const f = makeFixture();
@@ -246,7 +229,6 @@ test("create_goal enforces the configured max objective length setting", async (
 	}
 });
 
-// ── get_goal ─────────────────────────────────────────────────────────────────
 
 test("get_goal returns the complete stable snapshot", async () => {
 	const now = new Date().toISOString();
@@ -266,8 +248,6 @@ test("get_goal returns the complete stable snapshot", async () => {
 		});
 		await start(h);
 		const get = h.tools.get("get_goal")!;
-		// PR E: the concise default omits verbose-only sections; pass verbose to
-		// pin the complete stable snapshot.
 		const result = await (get.execute as any)("get-1", { verbose: true }, undefined, undefined, h.ctx);
 		const text = result.content?.[0]?.text ?? "";
 		assert.ok(text.includes("Snapshot goal"), "objective present");
@@ -283,7 +263,6 @@ test("get_goal returns the complete stable snapshot", async () => {
 	}
 });
 
-// ── PR E §53: concise get_goal default ───────────────────────────────
 
 test("get_goal default is concise; verbose retains full diagnostics", async () => {
 	const now = new Date().toISOString();
@@ -326,7 +305,6 @@ test("get_goal default is concise; verbose retains full diagnostics", async () =
 	}
 });
 
-// ── update_goal(complete) without paperwork ──────────────────────────────────
 
 test("update_goal(complete) runs the auditor without a verification-summary parameter", async () => {
 	const f = makeFixture();
@@ -347,13 +325,11 @@ test("update_goal(complete) runs the auditor without a verification-summary para
 		assert.equal(auditArgs.completionSummary, undefined, "no completion claim required");
 		assert.match(auditArgs.warmContext, /Previous rejection.*Missing boundary test/);
 		assert.ok(auditArgs.warmContext.length < 1200, "previous findings are bounded");
-		// Deferred archival happens at turn_end.
 		await h.handlers.get("turn_end")?.({ message: { role: "assistant", stopReason: "stop", usage: { input: 0, output: 0 } } }, h.ctx);
 		assert.equal(activeGoalFiles(f.cwd).length, 0, "approved completion archives the goal");
 		const events = ledgerEvents(f.cwd);
 		assert.ok(events.some((e) => e.type === "audit_result" && (e as any).verdict === "approved"), "audit_result ledger event");
 		assert.ok(events.some((e) => e.type === "goal_completed"), "goal_completed ledger event");
-		// §15.4: approval shows the result card during deferred completion.
 		assert.equal(h.core.auditResult?.verdict, "approved", "approval sets the result card verdict");
 	} finally {
 		f.cleanup();
@@ -378,7 +354,6 @@ test("update_goal(complete) with a rejection keeps the goal open with feedback",
 		assert.equal(activeGoalFiles(f.cwd).length, 1, "goal stays open");
 		const events = ledgerEvents(f.cwd);
 		assert.ok(events.some((e) => e.type === "audit_result" && (e as any).verdict === "disapproved"), "disapproved audit recorded");
-		// §15.4: the result card state is set for the widget, then clears.
 		assert.deepEqual(h.core.auditResult?.verdict, "disapproved", "rejection sets the result card verdict");
 		h.core.clearAuditResult();
 		assert.equal(h.core.auditResult, null, "clearAuditResult restores the normal dashboard state");
@@ -387,7 +362,6 @@ test("update_goal(complete) with a rejection keeps the goal open with feedback",
 	}
 });
 
-// ── update_goal(blocked) ─────────────────────────────────────────────────────
 
 test("update_goal(blocked) records a distinct agent-blocked state from active", async () => {
 	const f = makeFixture();
@@ -436,7 +410,6 @@ test("update_goal(blocked) surfaces an apply failure instead of claiming success
 	try {
 		const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries });
 		await start(h);
-		// Simulate a failed mutation (lock contention / revision conflict).
 		const service = h.core.goalService;
 		const originalApply = service.apply.bind(service);
 		service.apply = () => ({ ok: false, message: "simulated conflict: goal modified by another process" });
@@ -450,7 +423,6 @@ test("update_goal(blocked) surfaces an apply failure instead of claiming success
 		} finally {
 			service.apply = originalApply;
 		}
-		// The goal on disk is untouched: still active, no blocked event.
 		const active = activeGoalFiles(f.cwd);
 		const parsed = parseGoalFile(path.join(f.cwd, ".pi", "goals", active[0]!));
 		assert.equal(parsed?.status, "active", "goal must remain active");
@@ -487,12 +459,10 @@ test("update_goal(paused) surfaces an apply failure instead of claiming success 
 	}
 });
 
-// ── Stage 1 hardening: lifecycle authority and completion paths ──────────────
 
 test("legacy paused record with autoContinue:true stays paused after session restore", async () => {
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-core-pausedrestore-"));
 	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });
-	// Legacy on-disk record: paused status with a stale true continuation flag.
 	const legacy = normalizeGoalRecord({
 		id: "legacy-paused",
 		objective: "=== Goal ===\nObjective: Legacy paused goal",
@@ -514,7 +484,6 @@ test("legacy paused record with autoContinue:true stays paused after session res
 		const text = result.content?.[0]?.text ?? "";
 		assert.ok(text.includes("paused"), `restored legacy goal must be paused, got: ${text.slice(0, 120)}`);
 		assert.ok(!text.includes("running"), "paused goal must not read as running");
-		// The on-disk file must also still say paused after the restore reads.
 		const parsed = parseGoalFile(path.join(cwd, written.activePath ?? "missing"));
 		assert.equal(parsed?.status, "paused", "disk record must stay paused after restore");
 		assert.equal(parsed?.autoContinue, true, "autoContinue flag survives as data");
@@ -541,7 +510,6 @@ test("update_goal(complete) with auditor disabled in settings skips audit and re
 		assert.ok(text.includes("Goal audit skipped"), "report must state audit skipped");
 		assert.ok(text.includes("auditor disabled in settings"), "report must carry the settings reason");
 		assert.equal(auditorCalled, 0, "auditor must not run when globally disabled");
-		// Deferred archival at turn_end.
 		await h.handlers.get("turn_end")?.({ message: { role: "assistant", stopReason: "stop", usage: { input: 0, output: 0 } } }, h.ctx);
 		assert.equal(activeGoalFiles(f.cwd).length, 0, "disabled-auditor completion archives the goal");
 		const events = ledgerEvents(f.cwd);
@@ -562,7 +530,6 @@ test("update_goal(complete) honors a legacy persisted skipAuditor:true record", 
 	const f = makeFixture();
 	let auditorCalled = 0;
 	try {
-		// Simulate the legacy per-goal bypass record on disk.
 		const active = readdirSync(path.join(f.cwd, ".pi", "goals")).filter((n) => n.startsWith("active_goal_"))[0]!;
 		const filePath = path.join(f.cwd, ".pi", "goals", active);
 		const parsed = parseGoalFile(filePath)!;
@@ -622,7 +589,6 @@ test("focus changed while audit runs cancels completion without modifying the go
 			cwd: f.cwd,
 			sessionEntries: f.sessionEntries,
 			runCompletionAuditor: async () => {
-				// The user changes focus during the independent audit, before its result.
 				await h.commands.get("goal-unfocus").handler("", h.ctx);
 				return { approved: true, disapproved: false, output: "All good\n<approved/>" };
 			},
@@ -660,7 +626,6 @@ test("create_goal rejects fractional, zero, and unsafe token_budget values", asy
 	}
 });
 
-// ── AXI: explicit unlimited allowance and native handler errors ─────────────
 
 function runsFixture(opts: { maxAutonomousRuns?: number | null; settings?: Record<string, unknown> }) {
 	const f = makeFixture({ objective: "Runs line goal" });
@@ -837,7 +802,6 @@ test("completion task gates are native errors and never invoke the auditor", asy
  } finally { f.cleanup(); }
 });
 
-// Oracle blocked flow decided from durable ledger state: no consultation runs, so no provider is reachable.
 async function withOutboundRejected<T>(body: () => Promise<T>): Promise<T> {
 	const originalFetch = globalThis.fetch;
 	globalThis.fetch = (() => { throw new Error("outbound request attempted"); }) as typeof fetch;
@@ -902,9 +866,7 @@ test("Oracle failure limit blocks with a durable failure annotation instead of c
 	assert.equal(r.events.some((e) => e.type === "oracle_started"), false);
 });
 
-// Registered update_goal(blocked) driving a runner injected at the registration boundary; fetch is rejected.
 const adviceFor = (disposition: "actionable" | "needs_human" | "insufficient_context") => ({ diagnosis: "Stale pool holds the lock.", alternatives: [{ title: "Drain the pool", rationale: "Lock clears.", steps: ["Close connections"], expectedEvidence: ["migration OK"] }], recommendedIndex: 0, unresolvedQuestions: [], disposition });
-// Delegates to the REAL runBlockerOracle with a scripted session; no provider is launched.
 const scriptedOracle = (script: (submit: (advice: unknown) => Promise<unknown>) => Promise<void>) => (args: any) => runBlockerOracle({
 	...args,
 	ctx: { ...args.ctx, modelRegistry: { find: () => ({ provider: "stub", id: "stub" }) } },
@@ -990,7 +952,7 @@ for (const disposition of ["needs_human", "insufficient_context"] as const) {
 test("update_goal blocked: provider and invalid-output failures are native errors that stay active, and the retry limit then blocks without consulting", async () => {
 	const outcomes = [
 		async () => ({ ok: false, errorCode: "provider", message: "provider unavailable" }),
-		scriptedOracle(async () => {}), // real runner whose session never submits advice -> invalid_output
+		scriptedOracle(async () => {}),
 	];
 	let calls = 0;
 	await oracleToolFlow((args) => outcomes[calls++]!(args), async ({ goalId, block, goalFile, events }) => {

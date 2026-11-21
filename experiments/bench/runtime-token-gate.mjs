@@ -1,4 +1,3 @@
-/** Acceptance gate for the isolated 2026-09-07 campaign. No model calls. */
 import fs from 'node:fs';
 const directory = new URL('../../specs/2026-09-07-runtime-token-optimization/', import.meta.url);
 const read = name => JSON.parse(fs.readFileSync(new URL(name, directory), 'utf8'));
@@ -18,8 +17,7 @@ const map = new Map(after.rows.map(row => [row.id, row]));
 for (const row of before.rows) {
  const next = map.get(row.id);
  if (!next) {failures.push(`Missing runtime row: ${row.id}`);continue;}
- // Absolute 2ms floor avoids pretending tiny differences are meaningful.
- // Above the floor, require p50 within 20%; p95 has a separate 50% noise allowance.
+ // external: the 2ms floor accounts for timing noise.
  if (next.p50 > Math.max(row.p50 * 1.2, row.p50 + 2)) failures.push(`p50 regression: ${row.id} (${row.p50.toFixed(3)} -> ${next.p50.toFixed(3)}ms)`);
  if (next.p95 > Math.max(row.p95 * 1.5, row.p95 + 2)) failures.push(`p95 regression: ${row.id}`);
  if (/^(activity|dashboard|before_agent_start)\./.test(row.id) && next.fsOps !== 0) failures.push(`Warm read performed filesystem operations: ${row.id}`);

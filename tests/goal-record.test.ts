@@ -115,7 +115,6 @@ test("normalizeGoalRecord with malformed taskList returns taskList undefined", (
 	assert.ok(normalized);
 	assert.equal(normalized.taskList, undefined);
 
-	// Empty tasks array
 	const normalized2 = normalizeGoalRecord({
 		id: "goal-empty",
 		objective: "Test",
@@ -149,7 +148,6 @@ test("cloneGoal deep-clones tasks array", () => {
 	assert.ok(cloned.taskList);
 	assert.equal(cloned.taskList.tasks.length, 2);
 
-	// Mutation should not affect original
 	cloned.taskList.tasks[0]!.status = "complete";
 	cloned.taskList.blockCompletion = true;
 
@@ -192,7 +190,6 @@ test("goal focus entries persist only session focus metadata", () => {
 	assert.equal(normalizeGoalFocusEntry({ version: 3, focusedGoalId: "abc" }), null);
 });
 
-// Machine: goal lifecycle status read back from persisted JSON (docs/state-machines.md, "Goal lifecycle status").
 test("normalizeGoalRecord does not turn an unrecognized persisted status into a running goal", () => {
 	for (const status of ["failed", "cancelled", "running", "", 7, null]) {
 		const record = normalizeGoalRecord({ id: "g1", objective: "x", status, autoContinue: true });

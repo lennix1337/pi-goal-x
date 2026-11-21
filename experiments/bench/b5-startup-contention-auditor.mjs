@@ -1,11 +1,3 @@
-/**
- * B5 — Startup, contention, and auditor timing.
- *  - startup: createGoalCore + loadState over 1/10/50 open goal files (P1-7).
- *  - contention: two-process lock acquire wait (P1-5) — child holds the lock
- *    3s, parent measures how long acquireGoalLock blocks.
- *  - auditor: completion dispatch to the pre-audit gate with an injected
- *    auditor stub (no live agent); cold (first) vs warm (subsequent) calls.
- */
 
 import { performance } from "node:perf_hooks";
 import path from "node:path";
@@ -55,7 +47,6 @@ function makeCtx(cwd) {
 }
 
 export async function run(baseline) {
-	// ── startup: loadState at 1 / 10 / 50 goals ─────────────────────────
 	for (const [count, label] of [[1, "1 goal"], [10, "10 goals"], [50, "50 goals"]]) {
 		const cwd = makeFixtureCwd("b5-start-");
 		try {
@@ -75,7 +66,6 @@ export async function run(baseline) {
 			opSamples.sort((a, b) => a - b);
 			const p50 = Math.round(samples[3] * 10) / 10;
 			const p95 = Math.round(samples[5] * 10) / 10;
-			// Slow-storage variant (25ms/op latency injection, P1-7 claim).
 			const latSamples = [];
 			const latOps = [];
 			for (let i = 0; i < 3; i++) {
@@ -104,7 +94,6 @@ export async function run(baseline) {
 		}
 	}
 
-	// ── contention: two-process lock wait (child holds 3s) ──────────────
 	{
 		const cwd = makeFixtureCwd("b5-lock-");
 		try {
@@ -115,13 +104,12 @@ export async function run(baseline) {
 				"--experimental-strip-types",
 				childPath, cwd, goalId, "3000",
 			], { stdio: "ignore" }));
-			// Give the child a moment to acquire first.
 			sleepMs(300);
 			const t0 = performance.now();
 			let waitMs;
 			let outcome;
 			try {
-				const lock = acquireGoalLock({ cwd }, goalId); // DEFAULT bounds (P1-5)
+				const lock = acquireGoalLock({ cwd }, goalId);
 				waitMs = Math.round((performance.now() - t0) * 10) / 10;
 				lock.release();
 				outcome = "acquired";
@@ -140,7 +128,6 @@ export async function run(baseline) {
 		}
 	}
 
-	// ── auditor: completion dispatch with stubbed auditor ───────────────
 	{
 		const times = [];
 		const ops = [];

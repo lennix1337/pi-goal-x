@@ -1,7 +1,3 @@
-/**
- * Shadow of node:http (B8 enforcement). Any request/get/server/agent in a
- * benchmark throws; constants and header helpers pass through.
- */
 
 import { createRequire } from "node:module";
 import { recordViolation } from "./guard-state.mjs";

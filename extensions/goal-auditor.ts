@@ -18,19 +18,14 @@ import { loadGoalSettings, type GoalSettings, type ThinkingLevel } from "./goal-
 import { statusLabel } from "./goal-core.ts";
 
 export interface AuditorProgress {
-	/** Current tool being executed by the auditor, if any */
 	currentTool?: string;
 	/** Arguments passed to the current tool (truncated for display) */
 	currentToolArgs?: string;
 	/** When the current tool started (ms since epoch) */
 	currentToolStartedAt?: number;
-	/** Recent text output lines from the auditor's assistant messages */
 	recentOutput: string[];
-	/** Phase of the audit */
 	phase: "running" | "tool_executing" | "producing_report" | "thinking" | "done";
-	/** Elapsed ms since audit started */
 	elapsedMs: number;
-	/** Current step label shown to the user (e.g. "Inspecting files...") */
 	label?: string;
 	/** Completion percentage from 0 to 100 */
 	percentage?: number;
@@ -61,18 +56,13 @@ function asThinkingLevel(value: unknown): ThinkingLevel | undefined {
 
 
 export function parseAuditorDecision(output: string): { approved: boolean; disapproved: boolean } {
-	// The prompt contract: the verdict marker must be the FINAL line of the
-	// report. Matching anywhere lets a prose mention of the marker (e.g. "I
-	// would only emit <approved/> if ...") be misread as the verdict.
 	const lines = output.split("\n").map((l) => l.trim()).filter(Boolean);
 	const marker = lines[lines.length - 1];
 	return { approved: marker === "<approved/>", disapproved: marker === "<disapproved/>" };
 }
 
 export interface AuditorVerificationEvidence {
-	/** The agent's verification summary describing what was checked. */
 	summary: string;
-	/** The goal's verification contract (what the agent was required to verify), if any. */
 	contract?: string;
 }
 
@@ -99,12 +89,7 @@ function taskSummaryBlock(taskList?: GoalTaskList | null): string {
 	return lines.join("\n");
 }
 
-/**
- * Escape operator/model-controlled payloads before interpolating them between
- * XML-ish delimiters in the auditor prompt, so a payload containing
- * `</objective>` (or other delimiter text) cannot close the block early and
- * have the remainder read as instructions. Entities stay human-readable.
- */
+// external: untrusted payloads can contain closing XML delimiters and inject instructions.
 function escapePromptPayload(value: string): string {
 	return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -151,10 +136,6 @@ export function estimateAuditProgress(toolName: string): number {
 	}
 }
 
-/**
- * §61: goal metadata WITHOUT the objective or task tree — those appear exactly
- * once each in their own blocks. Replaces detailedSummary in the auditor prompt.
- */
 function minimalGoalMetadata(goal: GoalRecord): string {
 	return [
 		`Goal id: ${goal.id}`,
@@ -169,8 +150,6 @@ export function buildGoalAuditorPrompt(args: {
 	detailedSummary: string;
 	completionSummary?: string | null;
 	settings?: GoalSettings;
-	/** P1-6: parent-rendered evidence (ledger tail + turn trail) so the audit
-	 * starts warm instead of re-deriving what the parent session already holds. */
 	warmContext?: string | null;
 }): string {
 	return [
@@ -204,8 +183,6 @@ export function buildGoalAuditorPrompt(args: {
 			"",
 			"Task tree:",
 			"<task_state>",
-			// Task titles are already escaped inside renderAuditorTaskTree; an
-			// extra pass would double-escape (&amp;lt;).
 			taskSummaryBlock(args.goal.taskList),
 			"</task_state>",
 		] : []),
@@ -255,8 +232,6 @@ export function resolveAuditorModel(ctx: ExtensionContext, config: GoalSettings)
 		return model ? { model } : { model: undefined, error: `Configured auditor model not found: ${config.provider}/${config.model}` };
 	}
 	if (config.provider) {
-		// Refuse provider-only config: silently picking the first available model
-		// hides misconfiguration. An explicit provider/model is required.
 		return {
 			model: undefined,
 			error: `Provider-only auditor configuration is refused; select an explicit model for provider: ${config.provider}`,
@@ -275,18 +250,8 @@ export function resolveAuditorModel(ctx: ExtensionContext, config: GoalSettings)
 	return { model: undefined, error: `Configured auditor model is ambiguous or unavailable: ${config.model}` };
 }
 
-/**
- * Options that reuse the parent session's auth + registered providers for the nested auditor.
- *
- * Pi 0.81+ `createAgentSession` accepts `modelRuntime` (and ignores `modelRegistry`).
- * ExtensionContext still exposes `modelRegistry`, which wraps the live ModelRuntime.
- * Sharing that runtime keeps extension providers such as `pi-cursor-sdk`'s `cursor`
- * provider (and its auth) available. Without this, the auditor builds a fresh runtime
- * with an empty resource loader, so Cursor models fail with "No API key found for cursor"
- * even when `~/.pi/agent/auth.json` has a Cursor key.
- *
- * Older SDKs still accept `modelRegistry`; pass both for compatibility.
- */
+// external: newer Pi SDKs use modelRuntime; older SDKs accept modelRegistry.
+/** Reuse the parent session providers and authentication for the auditor. */
 export function resolveAuditorSessionModelOptions(ctx: ExtensionContext): {
 	modelRegistry: ExtensionContext["modelRegistry"];
 	modelRuntime?: unknown;
@@ -310,15 +275,9 @@ export async function runGoalCompletionAuditor(args: {
 	detailedSummary: string;
 	completionSummary?: string | null;
 	settings?: GoalSettings;
-	/** P1-6: parent-rendered evidence (ledger tail + turn trail). */
 	warmContext?: string | null;
 	signal?: AbortSignal;
 	onProgress?: AuditorProgressCallback;
-	/**
-	 * Optional factory for creating the auditor agent session.
-	 * Exposed for testing so a mock/controllable session can be injected.
-	 * Defaults to the real createAgentSession from @earendil-works/pi-coding-agent.
-	 */
 	createSession?: typeof createAgentSession;
 }): Promise<GoalAuditorResult> {
 	const config = loadGoalSettings(args.ctx.cwd);
@@ -349,9 +308,6 @@ export async function runGoalCompletionAuditor(args: {
 			model,
 			thinkingLevel,
 			...resolveAuditorSessionModelOptions(args.ctx),
-			// E3: default = the empty isolated loader (deliberate isolation);
-			// when auditorProjectResources is on, let the runtime build its own
-			// loader so the project's skills/extensions reach the auditor.
 			...(projectResources
 				? { resourceLoaderOptions: { noExtensions: false, noSkills: false, noPromptTemplates: false, noThemes: false, noContextFiles: false } }
 				: { resourceLoader: makeAuditorResourceLoader() }),
@@ -361,8 +317,6 @@ export async function runGoalCompletionAuditor(args: {
 		} as Parameters<typeof createAgentSession>[0]);
 		const unsubscribe = session.subscribe((event) => {
 			if (event.type === "agent_start") {
-				// PR E §60: progress is derived from session events — no model-facing
-				// report_auditor_progress tool exists anymore.
 				progress.label = "Starting audit...";
 				progress.percentage = 0;
 				progress.phase = "running";
@@ -376,7 +330,6 @@ export async function runGoalCompletionAuditor(args: {
 					: String(event.args ?? "").slice(0, 120);
 				progress.currentToolStartedAt = Date.now();
 				progress.phase = "tool_executing";
-				// §60 derive the human label + estimate from the read-only tool.
 				progress.label = labelForReadOnlyTool(event.toolName);
 				progress.percentage = Math.max(progress.percentage ?? 0, estimateAuditProgress(event.toolName));
 				emitProgress();
@@ -391,7 +344,6 @@ export async function runGoalCompletionAuditor(args: {
 				return;
 			}
 			if (event.type === "message_update") {
-				// Check for thinking events from the assistant stream
 				const streamEvent = (event as { assistantMessageEvent?: { type?: string } }).assistantMessageEvent;
 				if (streamEvent?.type === "thinking_start") {
 					progress.phase = "thinking";
@@ -404,13 +356,11 @@ export async function runGoalCompletionAuditor(args: {
 					emitProgress();
 					return;
 				}
-				// For text content, show producing_report phase
 				progress.phase = "producing_report";
 				const message = event.message as { role?: string; content?: Array<{ type?: string; text?: string }> };
 				if (message?.role === "assistant") {
 					for (const part of message.content ?? []) {
 						if (part.type === "text" && typeof part.text === "string") {
-							// Keep the last 5 non-empty text lines for live display
 							const lines = recentNonEmptyLines(part.text, 5);
 							if (lines.length) progress.recentOutput = lines;
 						}
@@ -428,22 +378,17 @@ export async function runGoalCompletionAuditor(args: {
 					outputTail = [...outputTail, ...recentNonEmptyLines(part.text, 8)].slice(-8);
 				}
 			}
-			// Final report production: derived label for the widget.
 			if (outputTail.length > 0) {
 				progress.label = "Producing report...";
 				progress.percentage = Math.max(progress.percentage ?? 0, 90);
 				progress.phase = "producing_report";
 			}
-			// Show the accumulated output in progress
 			progress.recentOutput = outputTail;
 			emitProgress();
 		});
-		// Wire the external AbortSignal to abort the running session when fired
-		// This is the mechanism that makes Esc-to-skip actually stop the auditor.
 		const abortSession = () => { session.abort(); };
 		args.signal?.addEventListener("abort", abortSession, { once: true });
 
-		// Emit initial progress
 		progress.label = "Starting audit...";
 		progress.percentage = 0;
 		emitProgress();
@@ -459,10 +404,7 @@ export async function runGoalCompletionAuditor(args: {
 			unsubscribe();
    session.dispose?.();
 		}
-		// session.abort() does NOT throw — the agent loop returns normally with
-		// whatever output was captured before the abort. Check the signal after
-		// prompt completes and treat any abort as auditor-aborted regardless of
-		// whether an exception propagated.
+		// external: Pi session.abort() may resolve prompt normally with partial output.
 		if (args.signal?.aborted) {
 			return {
 				approved: false,

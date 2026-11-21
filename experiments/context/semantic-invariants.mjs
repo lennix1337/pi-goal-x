@@ -1,14 +1,6 @@
-/**
- * Semantic occurrence counting over the SERIALIZED composed request (PR D).
- *
- * Every semantic field the goal system must communicate is counted exactly:
- * later optimization PRs must keep required markers present while removing
- * duplicate restatements.
- */
-
 const MARKERS = {
-	objective: null, // per-fixture: the exact objective text
-	verificationContract: null, // per-fixture
+	objective: null,
+	verificationContract: null,
 	currentTask: (fixture) => fixture.currentTaskLine,
 	lifecyclePolicyThirdBlocker: /SAME blocker recur(s)? on three consecutive goal turns|THIRD consecutive identical blocker/g,
 	independentAuditor: /independent (completion )?auditor/g,

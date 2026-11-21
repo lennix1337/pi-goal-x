@@ -95,15 +95,12 @@ test("renderAuditorWidgetLines shows the structured audit dashboard (§15.3)", (
 	const progress = auditorProgress({ auditorLabel: "anthropic/claude" });
 	const lines = renderAuditorWidgetLines(progress, theme, 100);
 	assert.match(lines[0]!, /Independent completion audit ─ anthropic\/claude/);
-	// Five check stages in order.
 	const text = lines.join("\n");
 	assert.ok(text.indexOf("Objective and success criteria") < text.indexOf("Verification contracts"));
 	assert.ok(text.indexOf("Verification contracts") < text.indexOf("Tasks and recorded evidence"));
 	assert.ok(text.indexOf("Tasks and recorded evidence") < text.indexOf("Workspace inspection"));
 	assert.ok(text.indexOf("Workspace inspection") < text.indexOf("Final decision"));
-	// Active audit footer.
 	assert.match(lines.at(-1) ?? "", /Esc: stop audit/);
-	// Tool + output details are hidden by default (shown only in expanded/debug).
 	assert.doesNotMatch(text, /tool read/);
 	assert.doesNotMatch(text, /checking file exists/);
 });
@@ -227,7 +224,6 @@ test("renderGoalWidgetLines omits task rows when no taskList", () => {
 	assert.equal(body.includes("Current"), false);
 });
 
-// ── Subtask widget display ──────────────────────────────────────────────
 
 test("renderGoalWidgetLines shows subtask progress for the current parent task (§9.3)", () => {
 	const lines = renderGoalWidgetLines(goal({
@@ -298,7 +294,6 @@ test("renderGoalWidgetLines suppresses task info when disableTasks is true with 
 	assert.equal(body.includes("Current"), false);
 });
 
-// ── TUI rendering path: GoalWidgetComponent ───────────────────────────
 
 test("GoalWidgetComponent renders through mock TUI path", () => {
 	const { tui } = createMockTUI();
@@ -383,7 +378,6 @@ test("GoalWidgetComponent renders the audit dashboard when audit progress is pre
 	const text = lines.join("\n");
 	assert.match(text, /Independent completion audit/);
 	assert.match(text, /Objective and success criteria/);
-	// Tool details are hidden unless the dashboard is expanded (debug/audit mode).
 	assert.doesNotMatch(text, /tool read/);
 });
 
@@ -449,7 +443,7 @@ for (const width of [50, 70, 100, 109, 120]) {
 
 test("GoalWidgetComponent with auditor progress at width 109 (crash regression)", () => {
 	const { tui } = createMockTUI();
-	const width = 109; // Matches the crash terminal width
+	const width = 109;
 	const component = new GoalWidgetComponent({
 		tui,
 		theme: createMockTheme(),
@@ -497,7 +491,6 @@ test("GoalWidgetComponent unfocused with 38 open goals at width 109", () => {
 	}
 });
 
-// ── §19.5 dashboard interaction tests ────────────────────────────────────────
 
 import { syncTerminalInputPause } from "../extensions/goal-widget.ts";
 
@@ -641,7 +634,6 @@ test("expanded mode renders the full dashboard without mutating editor state", (
 	const text = expandedLines.join("\n");
 	assert.match(text, /├─ Tasks /);
 	assert.match(text, /Esc\/Ctrl\+Shift\+T: collapse/);
-	// Rendering is pure: re-rendering returns identical lines.
 	assert.deepEqual(component.render(100), expandedLines);
 	expanded.current = false;
 	assert.deepEqual(component.render(100), compactLines, "collapsing returns the compact view");
@@ -705,7 +697,6 @@ test("ledger events flow into the dashboard recent-activity feed", () => {
 	assert.match(text, /Started “T1”\./, "ledger task_started maps to readable activity with the task title");
 });
 
-// ── §9.6 task-list scrolling ─────────────────────────────────────────────────
 
 const UP = "\x1b[A";
 const DOWN = "\x1b[B";
@@ -713,7 +704,6 @@ const PGUP = "\x1b[5~";
 const PGDN = "\x1b[6~";
 const HOME = "\x1b[H";
 const END = "\x1b[F";
-// Ctrl+Shift chords (free in pi — the editor owns the plain arrows).
 const CS_UP = "\x1b[1;6A";
 const CS_DOWN = "\x1b[1;6B";
 const CS_HOME = "\x1b[1;6H";
@@ -721,10 +711,6 @@ const CS_END = "\x1b[1;6F";
 const CS_PGUP = "\x1b[5;6~";
 const CS_PGDN = "\x1b[6;6~";
 
-/** 30 top-level tasks with t5 and t20 completed (t20 latest, mid-list): both
- * the compact (5 rows @100) and expanded (20 rows @100) views overflow, the
- * anchored window is a middle slice that can scroll in BOTH directions, and
- * the earliest task row is hidden by default. */
 function manyTasksGoal(): GoalWidgetRecord {
 	const tasks: GoalTask[] = Array.from({ length: 30 }, (_, i) => ({
 		id: `t${i + 1}`,
@@ -811,7 +797,6 @@ test("Ctrl+Shift+↑/↓ scroll the compact list one row; Esc is untouched", () 
 	assert.match(h.component.render(100).join("\n"), /↑ 18 more tasks/, "up scrolls the compact window");
 	h.fire(CS_DOWN);
 	assert.match(h.component.render(100).join("\n"), /↑ 19 more tasks/, "down scrolls the compact window back");
-	// plain arrows and Esc still reach the editor afterwards — nothing to disengage
 	h.fire(UP);
 	h.fire("\u001b");
 	assert.equal(h.consumed.filter((c) => c === "c:" + UP).length, 0, "plain ↑ is never consumed");
@@ -827,9 +812,9 @@ test("Ctrl+Shift+Home/End/PgUp/PgDn jump and page in the compact list", () => {
 	h.fire(CS_END);
 	assert.match(h.component.render(100).join("\n"), /↑ 25 more tasks/, "end jumps to the tail (max offset 25)");
 	assert.doesNotMatch(h.component.render(100).join("\n"), /… \+\d+ more tasks/);
-	h.fire(CS_PGDN); // at max: clamped, still consumed
+	h.fire(CS_PGDN);
 	assert.match(h.component.render(100).join("\n"), /↑ 25 more tasks/);
-	h.fire(CS_PGUP); // page up 5 rows → offset 20
+	h.fire(CS_PGUP);
 	assert.match(h.component.render(100).join("\n"), /↑ 20 more tasks/);
 });
 
@@ -862,19 +847,19 @@ test("Ctrl+Shift chords are not consumed when the compact list fits", () => {
 
 test("expanded mode scrolls the task tree with arrows, Home, End, and page keys", () => {
 	const h = scrollHarness(true);
-	h.component.render(100); // expanded rows 20 over 30 nodes; current t21 → offset 19, clamped to 10
+	h.component.render(100);
 	assert.match(h.component.render(100).join("\n"), /↑ 10 more tasks/, "the window opens on the work in progress");
 	assert.match(h.component.render(100).join("\n"), /✓ t20  Task number 20[\s\S]*▸ t21  Task number 21/);
 	h.fire(UP);
 	assert.match(h.component.render(100).join("\n"), /↑ 9 more tasks/, "up moves the expanded window");
 	h.fire(HOME);
 	assert.doesNotMatch(h.component.render(100).join("\n"), /↑ \d+ more tasks/, "home jumps to the top");
-	h.fire(UP); // at top: clamped, still consumed
+	h.fire(UP);
 	h.fire(END);
 	assert.match(h.component.render(100).join("\n"), /↑ 10 more tasks/, "end jumps to the tail (max offset 10)");
-	h.fire(PGDN); // at max: clamped, still consumed
+	h.fire(PGDN);
 	assert.match(h.component.render(100).join("\n"), /↑ 10 more tasks/);
-	h.fire(PGUP); // page up 20 rows → top
+	h.fire(PGUP);
 	assert.doesNotMatch(h.component.render(100).join("\n"), /↑ \d+ more tasks/);
 	assert.ok(h.consumed.filter((c) => c.startsWith("c:")).length >= 6, "every navigation key is consumed while expanded");
 });
@@ -882,13 +867,13 @@ test("expanded mode scrolls the task tree with arrows, Home, End, and page keys"
 test("Ctrl+Shift+T toggles expansion; plain arrows scroll only while expanded", () => {
 	const h = scrollHarness(false);
 	h.component.render(100);
-	h.fire(CS_UP); // compact scroll — chord
+	h.fire(CS_UP);
 	assert.ok(h.consumed.includes("c:" + CS_UP));
-	h.fire(CTRL_SHIFT_T); // expand
+	h.fire(CTRL_SHIFT_T);
 	assert.equal(h.expanded(), true);
-	h.fire(UP); // expanded is modal → plain arrow scrolls
+	h.fire(UP);
 	assert.ok(h.consumed.includes("c:" + UP));
-	h.fire("\u001b"); // collapse
+	h.fire("\u001b");
 	assert.equal(h.expanded(), false);
 	h.fire(UP);
 	assert.equal(h.consumed.filter((c) => c.startsWith("c:")).length, 4, "chord + Ctrl+Shift+T + expanded ↑ + Esc consumed; plain ↑ reaches the editor after collapse");
@@ -937,22 +922,17 @@ test("a new completion or a new current task re-anchors the viewport to the work
 		getOpenGoalCount: () => 1,
 		getSettings: () => ({}),
 	});
-	// t21 is next after the latest completion (t20) → compact window t20..t24
 	assert.match(component.render(100).join("\n"), /↑ 19 more tasks/);
-	// scroll to the top with the compact chord
 	assert.equal(component.handleCompactScrollKey("home"), true, "compact list overflows → chord consumed");
 	assert.doesNotMatch(component.render(100).join("\n"), /↑ \d+ more tasks/);
 	assert.match(component.render(100).join("\n"), /[✓▸·~] t1\s/, "the earliest task row is visible after scrolling up");
-	// a short list: the chord is inert
 	assert.equal(component.handleCompactScrollKey("down"), true, "still overflows → consumed");
-	// t21 completes → t22 is in progress: window t21..t25
 	const tasks = (current.taskList!.tasks as GoalTask[]).map((t) => ({ ...t }));
 	tasks[20] = { ...tasks[20]!, status: "complete", completedAt: "2026-01-01T12:00:00.000Z" };
 	current = { ...current, currentTaskId: "t22", taskList: { tasks, blockCompletion: false, proposedAt: testProposedAt } };
 	const text = component.render(100).join("\n");
 	assert.match(text, /↑ 20 more tasks/, "re-anchored window keeps the new completion as context");
 	assert.match(text, /✓ t21  Task number 21[\s\S]*t22  Task number 22/, "the next task is visible below it");
-	// scrolled away again, then the operator makes t3 current without a completion → re-anchor to t3
 	component.handleCompactScrollKey("end");
 	current = { ...current, currentTaskId: "t3" };
 	const moved = component.render(100).join("\n");
@@ -960,7 +940,6 @@ test("a new completion or a new current task re-anchors the viewport to the work
 	assert.match(moved, /▸ t3  Task number 3/);
 });
 
-// ── terminal-height bound (spec 2026-08-10-widget-height-bound-scrollback-fix) ──
 
 import { boundWidgetRenderLines, WIDGET_HEIGHT_RESERVE } from "../extensions/widgets/goal-widget.ts";
 
@@ -974,17 +953,16 @@ test("boundWidgetRenderLines is a no-op when terminal rows are unknown", () => {
 test("boundWidgetRenderLines leaves content that fits unchanged", () => {
 	const lines = Array.from({ length: 8 }, (_, i) => `line ${i}`);
 	assert.deepEqual(boundWidgetRenderLines(lines, 30), lines);
-	assert.deepEqual(boundWidgetRenderLines(lines, 14), lines); // 8 <= 30-6
+	assert.deepEqual(boundWidgetRenderLines(lines, 14), lines);
 });
 
 test("boundWidgetRenderLines head-slices content over the cap deterministically", () => {
 	const lines = Array.from({ length: 13 }, (_, i) => `line ${i}`);
-	const rows = 13; // terminal == natural widget height (equal-height case)
-	const cap = Math.max(1, rows - WIDGET_HEIGHT_RESERVE); // 7
+	const rows = 13;
+	const cap = Math.max(1, rows - WIDGET_HEIGHT_RESERVE);
 	const out = boundWidgetRenderLines(lines, rows);
 	assert.equal(out.length, cap);
 	assert.deepEqual(out, lines.slice(0, cap), "keeps the head (identity/status/tasks)");
-	// deterministic: same input + rows -> same output, no oscillation
 	assert.deepEqual(boundWidgetRenderLines(lines, rows), out);
 });
 
@@ -997,7 +975,7 @@ test("boundWidgetRenderLines floors at 1 line for tiny terminals", () => {
 test("renderGoalWidgetLines accepts an optional terminalRows bound (pure path)", () => {
 	const withGoal = goal({ taskList: undefined });
 	const unbounded = renderGoalWidgetLines(withGoal, theme, 100, { openGoalCount: 1 });
-	const rows = Math.max(1, unbounded.length - 1); // force the bound to engage
+	const rows = Math.max(1, unbounded.length - 1);
 	const bounded = renderGoalWidgetLines(withGoal, theme, 100, { openGoalCount: 1, terminalRows: rows });
 	const cap = Math.max(1, rows - WIDGET_HEIGHT_RESERVE);
 	assert.ok(bounded.length <= cap, `bounded to ${cap}, got ${bounded.length}`);
@@ -1005,7 +983,7 @@ test("renderGoalWidgetLines accepts an optional terminalRows bound (pure path)",
 });
 
 test("GoalWidgetComponent with terminalRows caps the compact dashboard at equal terminal height", () => {
-	const { tui } = createMockTUI({ terminalRows: 13 }); // terminal == compact natural height
+	const { tui } = createMockTUI({ terminalRows: 13 });
 	const component = new GoalWidgetComponent({
 		tui,
 		theme: createMockTheme(),
@@ -1021,7 +999,7 @@ test("GoalWidgetComponent with terminalRows caps the compact dashboard at equal 
 });
 
 test("GoalWidgetComponent caps the expanded dashboard at equal terminal height", () => {
-	const { tui } = createMockTUI({ terminalRows: 24 }); // terminal == expanded natural height
+	const { tui } = createMockTUI({ terminalRows: 24 });
 	const component = new GoalWidgetComponent({
 		tui,
 		theme: createMockTheme(),
@@ -1037,7 +1015,7 @@ test("GoalWidgetComponent caps the expanded dashboard at equal terminal height",
 });
 
 test("GoalWidgetComponent leaves the expanded dashboard unchanged when it fits", () => {
-	const { tui } = createMockTUI({ terminalRows: 30 }); // 24 natural + 6 chrome = 30
+	const { tui } = createMockTUI({ terminalRows: 30 });
 	const component = new GoalWidgetComponent({
 		tui,
 		theme: createMockTheme(),
@@ -1048,7 +1026,7 @@ test("GoalWidgetComponent leaves the expanded dashboard unchanged when it fits",
 	});
 	const lines = component.render(100);
 	const natural = new GoalWidgetComponent({
-		tui: createMockTUI().tui, // no terminal rows -> unbounded
+		tui: createMockTUI().tui,
 		theme: createMockTheme(),
 		getGoal: () => goal(),
 		getOpenGoalCount: () => 1,
@@ -1069,7 +1047,6 @@ test("GoalWidgetComponent bounds the audit dashboard, result card, debug panel, 
 			...opts.extra,
 		});
 
-	// Audit dashboard at its natural height (8 lines) on an 8-row terminal.
 	const audit = mk({
 		rows: 8,
 		extra: { getAuditorProgress: () => auditorProgress() },
@@ -1077,7 +1054,6 @@ test("GoalWidgetComponent bounds the audit dashboard, result card, debug panel, 
 	assert.ok(audit.length <= Math.max(1, 8 - WIDGET_HEIGHT_RESERVE), `audit rendered ${audit.length}`);
 	assert.match(audit[0]!, /^╭─ Independent completion audit/, "audit header preserved");
 
-	// Audit result card on a 6-row terminal.
 	const card = mk({
 		rows: 6,
 		extra: { getAuditResult: () => ({ verdict: "approved" as const, report: "Everything checks out." }) },
@@ -1085,12 +1061,10 @@ test("GoalWidgetComponent bounds the audit dashboard, result card, debug panel, 
 	assert.ok(card.length <= Math.max(1, 6 - WIDGET_HEIGHT_RESERVE), `card rendered ${card.length}`);
 	assert.match(card[0]!, /^╭─ Audit result/, "card header preserved");
 
-	// Debug panel at its natural height (36) on a 36-row terminal.
 	const debug = mk({ rows: 36, extra: { getDebugMode: () => true } }).render(100);
 	assert.ok(debug.length <= Math.max(1, 36 - WIDGET_HEIGHT_RESERVE), `debug rendered ${debug.length}`);
 	assert.match(debug[0]!, /^╭─ pi-goal-x/, "dashboard header preserved");
 
-	// Unfocused panel on a 4-row terminal.
 	const unfocused = new GoalWidgetComponent({
 		tui: createMockTUI({ terminalRows: 4 }).tui,
 		theme: createMockTheme(),
@@ -1117,7 +1091,6 @@ test("GoalWidgetComponent render height is deterministic across repeated renders
 	assert.equal(second, third);
 });
 
-// ── stable height per regime (spec 2026-08-11-stable-widget-height) ────────
 
 const freshStableState = () => ({ stickyCap: undefined as number | undefined, stickyRegime: undefined as string | undefined, stickyTerminalRows: undefined as number | undefined, stickyReserve: undefined as number | undefined });
 
@@ -1126,12 +1099,10 @@ test("applyStableHeightBound: adaptive reserve caps the widget so the block + ch
 	const natural14 = Array.from({ length: 14 }, (_, i) => `n${i}`);
 	const natural20 = Array.from({ length: 20 }, (_, i) => `n${i}`);
 
-	// A tall editor (measured chrome = 7) shrinks the cap: 15 - 7 = 8.
 	const out = applyStableHeightBound(natural14, 15, state, "regime", 7);
 	assert.equal(out.length, 8, "cap = terminalRows - measured reserve");
 	assert.equal(state.stickyCap, 8);
 
-	// Same render again: latch holds.
 	assert.equal(applyStableHeightBound(natural20, 15, state, "regime", 7).length, 8);
 });
 
@@ -1139,20 +1110,16 @@ test("applyStableHeightBound: chrome change (editor grew) re-evaluates the latch
 	const state = freshStableState();
 	const natural14 = Array.from({ length: 14 }, (_, i) => `n${i}`);
 
-	// First render with small chrome: latches at 15 - 4 = 11.
 	const first = applyStableHeightBound(natural14, 15, state, "regime", 4);
 	assert.equal(first.length, 11);
 	assert.equal(state.stickyCap, 11);
 
-	// The editor grew (chrome 4 -> 8): the latch re-evaluates to 15 - 8 = 7
-	// so the widget's block plus the chrome never exceeds the terminal (else
-	// pi-tui full-renders on every agent write).
+	// external: pi-tui full-renders if the widget and dock exceed the terminal.
 	const second = applyStableHeightBound(natural14, 15, state, "regime", 8);
 	assert.equal(second.length, 7, "reserve change clears the latch and re-evaluates");
 	assert.equal(state.stickyCap, 7);
 	assert.equal(state.stickyReserve, 8);
 
-	// Back to small chrome: re-evaluates up again.
 	const third = applyStableHeightBound(natural14, 15, state, "regime", 4);
 	assert.equal(third.length, 11);
 });
@@ -1167,22 +1134,19 @@ test("applyStableHeightBound: default reserve keeps the 6-row contract unchanged
 
 test("applyStableHeightBound: latches at the first render and holds (fits or capped)", () => {
 	const state = freshStableState();
-	const cap = Math.max(1, 24 - WIDGET_HEIGHT_RESERVE); // 18
+	const cap = Math.max(1, 24 - WIDGET_HEIGHT_RESERVE);
 	const natural10 = Array.from({ length: 10 }, (_, i) => `n${i}`);
 	const natural25 = Array.from({ length: 25 }, (_, i) => `n${i}`);
 	const natural30 = Array.from({ length: 30 }, (_, i) => `n${i}`);
 
-	// first render above the cap: latches at the cap, head slice
 	const out = applyStableHeightBound(natural25, 24, state, "regime");
 	assert.equal(out.length, cap);
 	assert.deepEqual(out, natural25.slice(0, cap));
 	assert.equal(state.stickyCap, cap);
 
-	// still above: constant
 	assert.equal(applyStableHeightBound(natural30, 24, state, "regime").length, cap);
 	assert.equal(applyStableHeightBound(natural25, 24, state, "regime").length, cap);
 
-	// first render fits: byte-identical, but the height is now committed
 	assert.deepEqual(applyStableHeightBound(natural10, 24, freshStableState(), "regime"), natural10);
 });
 
@@ -1192,29 +1156,25 @@ test("applyStableHeightBound: fits case latches at the first-render natural and 
 	const natural16 = Array.from({ length: 16 }, (_, i) => `line ${i}`);
 	const natural10 = Array.from({ length: 10 }, (_, i) => `line ${i}`);
 
-	// first render fits: byte-identical, but the height is now committed
 	assert.deepEqual(applyStableHeightBound(natural13, 30, state, "regime"), natural13);
 	assert.equal(state.stickyCap, 13, "fits case latches at the natural height");
 
-	// growth past the committed height: head slice, height never changes
 	const grown = applyStableHeightBound(natural16, 30, state, "regime");
 	assert.equal(grown.length, 13, "growth is head-sliced to the committed height");
 	assert.deepEqual(grown, natural16.slice(0, 13));
 
-	// shrink: blank padding, height never changes
 	const shrunk = applyStableHeightBound(natural10, 30, state, "regime");
 	assert.equal(shrunk.length, 13, "shrink is padded to the committed height");
 	assert.deepEqual(shrunk.slice(0, 10), natural10);
 	assert.deepEqual(shrunk.slice(10), Array(3).fill(""));
 
-	// back to the committed height: unchanged
 	assert.deepEqual(applyStableHeightBound(natural13, 30, state, "regime"), natural13);
 });
 
 test("applyStableHeightBound: pads deterministically when natural dips below the cap (cap crossing down)", () => {
 	const state = freshStableState();
-	const cap = Math.max(1, 24 - WIDGET_HEIGHT_RESERVE); // 18
-	applyStableHeightBound(Array.from({ length: 25 }), 24, state, "regime"); // latch at 18
+	const cap = Math.max(1, 24 - WIDGET_HEIGHT_RESERVE);
+	applyStableHeightBound(Array.from({ length: 25 }), 24, state, "regime");
 	const natural12 = Array.from({ length: 12 }, (_, i) => `n${i}`);
 
 	const padded = applyStableHeightBound(natural12, 24, state, "regime");
@@ -1222,10 +1182,8 @@ test("applyStableHeightBound: pads deterministically when natural dips below the
 	assert.deepEqual(padded.slice(0, 12), natural12, "content preserved");
 	assert.deepEqual(padded.slice(12), Array(cap - 12).fill(""), "blank filler rows");
 
-	// back above the cap: head slice again, still the same height
 	const natural20 = Array.from({ length: 20 }, (_, i) => `n${i}`);
 	assert.equal(applyStableHeightBound(natural20, 24, state, "regime").length, cap);
-	// exactly at the cap: unchanged, still the same height
 	assert.equal(applyStableHeightBound(Array.from({ length: cap }), 24, state, "regime").length, cap);
 });
 
@@ -1233,18 +1191,16 @@ test("applyStableHeightBound: terminal resize clears the latch and adapts to the
 	const state = freshStableState();
 	const natural22 = Array.from({ length: 22 }, (_, i) => `n${i}`);
 	const natural25 = Array.from({ length: 25 }, (_, i) => `n${i}`);
-	const cap24 = Math.max(1, 24 - WIDGET_HEIGHT_RESERVE); // 18
+	const cap24 = Math.max(1, 24 - WIDGET_HEIGHT_RESERVE);
 
-	applyStableHeightBound(natural25, 24, state, "regime"); // latch at 18
+	applyStableHeightBound(natural25, 24, state, "regime");
 	assert.equal(state.stickyCap, cap24);
 
-	// grow the terminal: more of the widget renders (min(natural, new cap))
-	const cap30 = Math.max(1, 30 - WIDGET_HEIGHT_RESERVE); // 24
+	const cap30 = Math.max(1, 30 - WIDGET_HEIGHT_RESERVE);
 	const grown = applyStableHeightBound(natural22, 30, state, "regime");
 	assert.equal(grown.length, Math.min(natural22.length, cap30), "grow reveals more of the widget");
 	assert.equal(state.stickyCap, Math.min(natural22.length, cap30), "latch re-engages at the first render after the resize");
 
-	// shrink back: re-latches at the new cap
 	const shrunk = applyStableHeightBound(natural25, 24, state, "regime");
 	assert.equal(shrunk.length, cap24, "re-latches at the 24-row cap");
 });
@@ -1255,16 +1211,13 @@ test("applyStableHeightBound: regime change clears the latch so the new mode sta
 	const small = Array.from({ length: 10 }, (_, i) => `n${i}`);
 	const cap = Math.max(1, 24 - WIDGET_HEIGHT_RESERVE);
 
-	applyStableHeightBound(big, 24, state, "expanded"); // latch at 18
+	applyStableHeightBound(big, 24, state, "expanded");
 	assert.equal(state.stickyCap, cap);
 
-	// regime change: fresh evaluation — compact starts from its own natural
-	// height (fits -> unchanged) and re-latches there
 	const out = applyStableHeightBound(small, 24, state, "compact");
 	assert.deepEqual(out, small, "compact starts from its own natural height");
 	assert.equal(state.stickyCap, small.length, "latch re-engages at the first render of the new regime");
 
-	// the compact regime holds its committed height as natural grows
 	const out2 = applyStableHeightBound(big, 24, state, "compact");
 	assert.equal(out2.length, small.length, "compact holds its committed height");
 });
@@ -1299,7 +1252,7 @@ test("GoalWidgetComponent: rendered height is constant across goal-state changes
 		getExpanded: () => true,
 		getLedgerEvents: () => events as never,
 	});
-	const cap = Math.max(1, 24 - WIDGET_HEIGHT_RESERVE); // 18
+	const cap = Math.max(1, 24 - WIDGET_HEIGHT_RESERVE);
 
 	const heights: number[] = [];
 	const steps: Array<() => void> = [
@@ -1313,9 +1266,6 @@ test("GoalWidgetComponent: rendered height is constant across goal-state changes
 		step();
 		heights.push(component.render(100).length);
 	}
-	// the first render latches the height and every later goal-state change
-	// (task completions, feed growth, verification, budget, usage) keeps it
-	// constant — the buffer line count never changes
 	assert.ok(heights.every((h) => h <= cap), `bounded by the cap: ${heights.join(",")}`);
 	assert.equal(new Set(heights).size, 1, `constant across all goal-state changes: ${heights.join(",")}`);
 });
@@ -1331,10 +1281,10 @@ test("GoalWidgetComponent: the first task appearing re-latches (task presence is
 		getSettings: () => ({}),
 		getExpanded: () => true,
 	});
-	const h0 = component.render(100).length; // 0 tasks: small dashboard, latched
+	const h0 = component.render(100).length;
 	current = { ...current, taskList: { tasks: [{ id: "t1", title: "Task one", status: "pending" }], blockCompletion: false, proposedAt: "2026-08-10T00:00:00Z" } };
-	const h1 = component.render(100).length; // first task: regime change, re-latch
-	const h2 = component.render(100).length; // same regime: constant
+	const h1 = component.render(100).length;
+	const h2 = component.render(100).length;
 	assert.ok(h1 > h0, `first task grows the dashboard (${h0} -> ${h1})`);
 	assert.equal(h2, h1, "stable within the task-present regime");
 });
@@ -1367,23 +1317,18 @@ test("GoalWidgetComponent: expanding the terminal reveals more of the widget, co
 });
 
 test("GoalWidgetComponent: measured dock chrome shrinks the widget so the block + chrome fits the terminal", () => {
-	// A fake TUI with the regular-mode child structure:
-	// [document, status, widgetContainer(component), editor, footer].
-	// The widget must size itself so its block + the chrome (status + editor
-	// + footer) never exceeds the terminal — otherwise pi-tui full-renders
-	// (2J+3J wipe) whenever the agent writes and the chrome pushes the chat
-	// append point above the viewport top.
+	// external: pi-tui can erase scrollback when a changed line precedes the viewport.
 	let current: GoalWidgetRecord = { ...goal(), taskList: { tasks: Array.from({ length: 12 }, (_, i) => ({ id: `t${i}`, title: `Task ${i} long title for wrapping`, status: i < 5 ? "complete" : "pending", createdAt: "2026-08-10T00:00:00Z", updatedAt: "2026-08-10T00:00:00Z", completedAt: i < 5 ? "2026-08-10T00:01:00Z" : undefined })), blockCompletion: false, proposedAt: "2026-08-10T00:00:00Z" } };
 	let editorLines: string[] = [""];
 	const tui = {
 		terminal: { rows: 15 },
 		requestRender: () => {},
 		children: [
-			{ render: () => ["chat 0", "chat 1", "chat 2"] }, // document
-			{ render: () => ["status"] },                     // status
-			{ children: [] as unknown[] },                    // widgetContainer (component added below)
-			{ render: () => ["❯", ...editorLines] },          // editor
-			{ render: () => ["footer a", "footer b"] },       // footer
+			{ render: () => ["chat 0", "chat 1", "chat 2"] },
+			{ render: () => ["status"] },
+			{ children: [] as unknown[] },
+			{ render: () => ["❯", ...editorLines] },
+			{ render: () => ["footer a", "footer b"] },
 		],
 	};
 	const component = new GoalWidgetComponent({
@@ -1394,24 +1339,16 @@ test("GoalWidgetComponent: measured dock chrome shrinks the widget so the block 
 		getSettings: () => ({}),
 		getExpanded: () => true,
 	});
-	// Register the component inside its container so the measurement finds it.
 	tui.children[2]!.children!.push(component);
 
-	// Small editor: chrome = status(1) + editor(1) + footer(2) = 4 -> reserve 5
-	// -> cap = 15 - 5 = 10; the natural height (9) fits, so it renders natural.
 	const small = component.render(100);
 	assert.equal(small.length, 9, "with a small editor the widget renders its natural height (9 < cap 10)");
 
-	// Tall editor (user's typed message): chrome = status(1) + editor(4:
-	// "❯" + 3 wrapped lines) + footer(2) = 7 -> reserve 8 -> cap = 15 - 8 = 7.
-	// The widget must shrink so the block + chrome (7 + 7 = 14) still fits the
-	// 15-row terminal.
 	editorLines = ["l1", "l2", "l3"];
 	const tall = component.render(100);
 	assert.equal(tall.length, 7, "with a tall editor the widget shrinks to 15 - (7 + 1) = 7 lines");
 	assert.ok(tall.length < small.length, "taller chrome shrinks the widget");
 
-	// Editor back to small: the widget grows again.
 	editorLines = [""];
 	const back = component.render(100);
 	assert.equal(back.length, 9, "chrome shrinking re-evaluates the latch up");

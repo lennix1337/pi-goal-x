@@ -1,12 +1,3 @@
-/**
- * Handler-level integration suite (Stage 6 of the hardening plan): drives the
- * ACTUAL registered five tools and the GoalService through a mock pi, with an
- * injected auditor fixture — no removed tools, no model-only bypass fields.
- *
- * This replaces the historical tests/e2e/extension.test.ts (complete_goal +
- * confirmBypassAuditor surface) and joins the validation scripts as
- * `npm run test:integration`.
- */
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, appendFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -106,7 +97,6 @@ const HOST_TOOLS = ["read", "bash", "edit", "write"];
 const FIVE = ["create_goal", "get_goal", "update_goal", "set_goal_tasks", "update_goal_task"];
 const THREE = ["create_goal", "get_goal", "update_goal"];
 
-/** The installed profile (from captured setActiveTools calls) contains these names. */
 function installedProfileContains(history: string[][], names: string[]): boolean {
 	for (const snapshot of history) {
 		if (names.every((name) => snapshot.includes(name))) return true;
@@ -114,7 +104,6 @@ function installedProfileContains(history: string[][], names: string[]): boolean
 	return false;
 }
 
-/** The installed profile (from captured setActiveTools calls) excludes these names. */
 function installedProfileExcludes(history: string[][], names: string[]): boolean {
 	for (const snapshot of history) {
 		if (names.some((name) => snapshot.includes(name))) return false;
@@ -160,8 +149,7 @@ function ledgerEvents(cwd: string): Array<Record<string, unknown>> {
 
 describe("five-tool handler integration", () => {
 	it("extension loading defers getActiveTools until session_start", async () => {
-		// The fixed profile is installed at session_start; extension loading
-		// itself must not touch the active-tool API (host compatibility).
+		// external: loading the extension must not call the host active-tool API before session_start.
 		let getActiveToolsCalls = 0;
 		const isolatedHandlers = new Map<string, Function>();
 		const isolatedPi = {
@@ -215,9 +203,6 @@ describe("five-tool handler integration", () => {
 	it("/goal-refresh invalidates caches and reports external changes", async () => {
 		const f = fixture();
 		try {
-			// Initial settings file so the settings diff compares content, not
-			// absence -> presence (a first-time write is already visible to the
-			// before-stat and correctly reports no change).
 			writeFileSync(path.join(f.cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify({ subtaskDepth: 2 }), "utf8");
 			const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries });
 			await start(h);
@@ -226,9 +211,6 @@ describe("five-tool handler integration", () => {
 			const first = h.notifies.at(-1)?.msg ?? "";
 			assert.match(first, /no changes detected/, "unchanged state reports no changes");
 
-			// External edits (raw fs, bypassing the extension's own cache
-			// invalidation): a second goal file, a ledger line, and a settings
-			// rewrite with different content.
 			const second = createGoal({ objective: "External goal", autoContinue: false, sisyphus: false }, Date.UTC(2026, 8, 4, 10, 0, 0));
 			writeFileSync(path.join(f.cwd, ".pi", "goals", path.basename(activePathForGoal({ cwd: f.cwd }, second))), serializeGoalFile(second), "utf8");
 			appendFileSync(goalLedgerPath({ cwd: f.cwd }), JSON.stringify({ type: "goal_created", goalId: second.id, objective: "External goal", sisyphus: false, autoContinue: false, at: new Date().toISOString() }) + "\n", "utf8");
@@ -241,7 +223,6 @@ describe("five-tool handler integration", () => {
 			assert.match(report, /ledger: 0 -> 1 events/);
 			assert.match(report, /settings: effective settings changed \(external edit\)/);
 
-			// A second refresh with no new external edits reports no changes again.
 			await h.commands.get("goal-refresh")?.handler("", h.ctx);
 			const again = h.notifies.at(-1)?.msg ?? "";
 			assert.match(again, /no changes detected/);
@@ -361,13 +342,10 @@ describe("five-tool handler integration", () => {
 			for (const present of ["create_goal", "get_goal", "update_goal"]) {
 				assert.ok(h.tools.has(present), `${present} registered`);
 			}
-			// Captured setActiveTools calls (not just registered names): the
-			// three-core profile is installed and task tools are never active.
 			assert.ok(installedProfileContains(h.activeToolsHistory, [...HOST_TOOLS, ...THREE]),
 				"captured profile includes host + three core tools");
 			assert.ok(installedProfileExcludes(h.activeToolsHistory, ["set_goal_tasks", "update_goal_task"]),
 				"task tools are never installed when tasks are disabled");
-			// The executors reject task calls when disabled.
 			const setTasks = h.tools.get("set_goal_tasks")!;
 			const result = await (setTasks.execute as any)("s-2", { tasks: [{ id: "t1", title: "X" }] },
 				new AbortController().signal, undefined, h.ctx);
@@ -392,7 +370,7 @@ describe("five-tool handler integration", () => {
 			await start(h);
 			const settingsCmd = h.commands.get("goal-settings");
 			assert.ok(settingsCmd, "goal-settings command registered");
-			await settingsCmd.handler("", h.ctx); // must not throw (regression: recursive saveSettings)
+			await settingsCmd.handler("", h.ctx);
 			const settingsPath = path.join(f.cwd, ".pi", "pi-goal-x-settings.json");
 			const saved = JSON.parse(readFileSync(settingsPath, "utf8"));
 			assert.equal(saved.disabled, true, "menu toggle must persist disabled: true");
@@ -490,8 +468,6 @@ describe("five-tool handler integration", () => {
 				assert.equal(saved.disableContracts, true);
 				assert.equal(saved.disabled, true);
 				assert.equal(saved.autoSelectSingleGoal, true);
-				// Second pass removes the local overrides via the action menu's
-				// inherit choice; the file then omits both keys.
 				const selects2 = ["  disableTasks: true (project override)", "Use inherited value", "  autoSelectSingleGoal: true (project override)", "Use inherited value", "Done"];
 				const h2 = createHarness({
 					cwd: f.cwd, sessionEntries: f.sessionEntries, hasUI: true,
@@ -512,8 +488,6 @@ describe("five-tool handler integration", () => {
 		it("edits and clears provider and model text fields", async () => {
 			const f = fixture();
 			try {
-				// Set both via the manual provider/model entry: filter first, then
-				// pick "✎ Enter provider/model manually (advanced)", then type the pair.
 				const selects = [
 					"  provider: (default) (default)", "✎ Enter provider/model manually (advanced)",
 					"  model: claude-sonnet-4 (project override)", "✎ Enter provider/model manually (advanced)",
@@ -530,8 +504,6 @@ describe("five-tool handler integration", () => {
 				const saved = readSettings(f.cwd);
 				assert.equal(saved.provider, "anthropic");
 				assert.equal(saved.model, "claude-sonnet-4");
-				// Clear both by returning to the current-session/default choice from
-				// either row: the default choice deletes provider and model together.
 				const selects2 = ["  provider: anthropic (project override)", "  Current session / default (system default)", "Done"];
 				const inputs2 = [""];
 				const h2 = createHarness({
@@ -571,7 +543,6 @@ describe("five-tool handler integration", () => {
 				await h.commands.get("goal-settings").handler("", h.ctx);
 				const saved = readSettings(f.cwd);
 				assert.equal(saved.thinking_level, "xhigh", "all six levels accepted in sequence");
-				// Unknown value is rejected with a warning and nothing is persisted.
 				const notifiesBefore = h.notifies.length;
 				const selects2 = ["  thinking_level: xhigh (project override)", "bogus", "Done"];
 				const inputs2 = ["bogus"];
@@ -629,10 +600,8 @@ describe("five-tool handler integration", () => {
 					select: async () => selects.shift(),
 				});
 				await start(h);
-				// session_start installed the five-tool profile: history[0].
 				assert.equal(h.activeToolsHistory.length, 1, "one install at session_start");
 				await h.commands.get("goal-settings").handler("", h.ctx);
-				// Each real change reinstalls exactly once: three, five, three.
 				assert.equal(h.activeToolsHistory.length, 4, "three reinstalls after session_start");
 				const installed = h.activeToolsHistory.slice(1).map((tools) => (tools.includes("set_goal_tasks") ? "five" : "three"));
 				assert.deepEqual(installed, ["three", "five", "three"], "profile alternates three/five/three, never skipping a toggle");
@@ -646,7 +615,6 @@ describe("five-tool handler integration", () => {
 		it("hideUnfocusedBanner hides and restores the unfocused chrome live (PR #29)", async () => {
 			const f = fixture();
 			try {
-				// Two open goals, nothing focused: the unfocused banner renders.
 				writeActiveGoalFile({ cwd: f.cwd }, { ...f.goal, id: "second-open-goal", objective: "Second open goal for the banner test" } as never);
 				const entries = [{ type: "custom", customType: "pi-goal-focus", data: goalFocusDetails(null, "unfocused") }];
 				const h = createHarness({
@@ -656,14 +624,12 @@ describe("five-tool handler integration", () => {
 					},
 				});
 				await start(h);
-				await Promise.resolve(); // flush the coalesced UI microtask
+				await Promise.resolve();
 				assert.ok(
 					h.statusCalls.some((c) => c.key === "goal" && typeof c.value === "string" && c.value.startsWith("meta: ") && c.value.includes("/goal-focus")),
 					`unfocused hint visible before the setting: ${JSON.stringify(h.statusCalls)}`,
 				);
 
-				// Turn the setting on through the menu; the hide must be visible in
-				// captured UI state before the handler resolves.
 				let queue = ["  hideUnfocusedBanner: false (default)", "Set project override to true", "Done"];
 				const h2 = createHarness({
 					cwd: f.cwd, sessionEntries: entries, hasUI: true,
@@ -676,14 +642,13 @@ describe("five-tool handler integration", () => {
 				});
 				await start(h2);
 				await h2.commands.get("goal-settings").handler("", h2.ctx);
-				await Promise.resolve(); // coalesced flush is a single microtask
+				await Promise.resolve();
 				const cleared = h2.statusCalls.some((c) => c.key === "goal" && c.value === undefined)
 					&& h2.widgetCalls.some((w) => w.factory === undefined || w.factory === null);
 				assert.ok(cleared, `live hide clears status + widget: ${JSON.stringify(h2.statusCalls)} / ${h2.widgetCalls.length} widget calls`);
 				const saved = readSettings(f.cwd);
 				assert.equal(saved.hideUnfocusedBanner, true);
 
-				// Restore via the action menu's inherit choice.
 				queue = ["  hideUnfocusedBanner: true (project override)", "Use inherited value", "Done"];
 				const h3 = createHarness({
 					cwd: f.cwd, sessionEntries: entries, hasUI: true,
@@ -726,14 +691,10 @@ describe("five-tool handler integration", () => {
 			const prevTasks = process.env.PI_GOAL_DISABLE_TASKS;
 			process.env.PI_GOAL_DISABLE_TASKS = "true";
 			try {
-				// session_start installs the three-tool profile because the env
-				// override forces disableTasks even though the file is absent.
 				const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries, hasUI: true });
 				await start(h);
 				assert.equal(h.activeToolsHistory.length, 1, "three-tool install at session_start");
 				assert.ok(!h.activeToolsHistory[0]!.includes("set_goal_tasks"), "env override installs the core profile");
-				// The env override makes the disableTasks row read-only: selecting it
-				// warns and never mutates, so no reinstall may happen.
 				const selects = ["  disableTasks: false (environment; read-only)", "Done"];
 				const h2 = createHarness({
 					cwd: f.cwd, sessionEntries: f.sessionEntries, hasUI: true,
@@ -828,10 +789,7 @@ describe("confirmation and audit UX (follow-up Stage 2)", () => {
 			const auditorStarted = new Promise<void>((resolve) => { auditorStartedResolve = resolve; });
 			const update = h.tools.get("update_goal")!;
 			const pending = (update.execute as any)("abort-1", { status: "complete" }, new AbortController().signal, undefined, h.ctx);
-			// The auditor fixture is now running: progress display and the abort
-			// controller are set. Simulate the user pressing Escape mid-audit.
 			await auditorStarted;
-			// The widget's Escape handler matches the raw ESC byte (\x1b).
 			h.terminalInputHandler?.("");
 			const result = await pending;
 			const text = result.content?.[0]?.text ?? "";
@@ -864,7 +822,6 @@ describe("confirmation and audit UX (follow-up Stage 2)", () => {
 			const update = h.tools.get("update_goal")!;
 			const pending = (update.execute as any)("abort-2", { status: "complete" }, new AbortController().signal, undefined, h.ctx);
 			await auditorStarted;
-			// The widget's Escape handler matches the raw ESC byte (\x1b).
 			h.terminalInputHandler?.("");
 			const result = await pending;
 			const text = result.content?.[0]?.text ?? "";
@@ -887,7 +844,6 @@ describe("completion transaction hardening (follow-up Stage 3)", () => {
 		const goalsDir = path.join(f.cwd, ".pi", "goals");
 		let restore: (() => void) | undefined;
 		try {
-			// Keep real ledger appends available while refusing only the authoritative replacement.
 			writeFileSync(goalLedgerPath({ cwd: f.cwd }), "", "utf8");
 			const h = createHarness({
 				cwd: f.cwd, sessionEntries: f.sessionEntries,
@@ -895,7 +851,7 @@ describe("completion transaction hardening (follow-up Stage 3)", () => {
 					({ approved: true, disapproved: false, output: "All good\n<approved/>", model: "fixture" }),
 			});
 			await start(h);
-			// Explicit fault injection works on Windows and under privileged POSIX users too.
+			// external: explicit fault injection also works on Windows and for privileged POSIX users.
 			restore = denyAtomicReplacement(t, path.join(goalsDir, activeGoalFiles(f.cwd)[0]!));
 			const update = h.tools.get("update_goal")!;
 			const result = await (update.execute as any)("fail-write-1", { status: "complete" }, new AbortController().signal, undefined, h.ctx);
@@ -904,12 +860,10 @@ describe("completion transaction hardening (follow-up Stage 3)", () => {
 			assert.ok(text.includes("not completed"), "must state the goal was not completed");
 			assert.ok(!text.includes("Goal audit approved"), "no success report when the state mutation failed");
 			assert.notEqual(result.terminate, true, "no termination request on failed completion");
-			// The deferred archival at turn_end must not emit goal_completed.
 			await h.handlers.get("turn_end")?.({ message: { role: "assistant", stopReason: "stop", usage: { input: 0, output: 0 } } }, h.ctx);
 			const events = ledgerEvents(f.cwd);
 			assert.equal(events.some((e) => e.type === "goal_completed"), false, "no goal_completed event");
 			assert.ok(events.some((e) => e.type === "audit_result"), "audit itself ran and recorded its result");
-			// The goal stays open and focused (get_goal still reports it, not complete).
 			const get = h.tools.get("get_goal")!;
 			const snapshot = await (get.execute as any)("g-1", {}, new AbortController().signal, undefined, h.ctx);
 			const snapText = snapshot.content?.[0]?.text ?? "";
@@ -933,7 +887,6 @@ describe("completion transaction hardening (follow-up Stage 3)", () => {
 			const result = await (update.execute as any)("fail-arch-1", { status: "complete" }, new AbortController().signal, undefined, h.ctx);
 			const text = result.content?.[0]?.text ?? "";
 			assert.ok(text.includes("Goal audit approved"), "commit itself succeeded");
-			// Sabotage the archived directory: the deferred archive write fails.
 			const archivedDir = path.join(f.cwd, ".pi", "goals", "archived");
 			rmSync(archivedDir, { recursive: true, force: true });
 			writeFileSync(archivedDir, "not a directory", "utf8");
@@ -942,7 +895,6 @@ describe("completion transaction hardening (follow-up Stage 3)", () => {
 			assert.equal(events.some((e) => e.type === "goal_completed"), false, "no goal_completed when archive failed");
 			assert.ok(h.notifies.some((n) => n.msg.includes("Failed to archive completed goal")), "archive failure is observable");
 			assert.equal(activeGoalFiles(f.cwd).length, 1, "goal file stays in the active pool");
-			// The active file still holds the completed goal (not archived).
 			const remaining = parseGoalFile(path.join(f.cwd, ".pi", "goals", activeGoalFiles(f.cwd)[0]!));
 			assert.equal(remaining?.status, "complete", "completed goal remains on disk, unarchived");
 		} finally {

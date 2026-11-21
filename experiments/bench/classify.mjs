@@ -1,32 +1,3 @@
-/**
- * Headroom / noise-floor classifier for a campaign baseline.
- *
- * Applies the goal contract's exemption rule to a before-baseline and prints
- * (or writes, with --md <path>) the explicit per-row classification:
- *
- *   EXEMPT (noise floor) — wall-clock row with p50 < 0.5ms AND ≤ 1 fs op.
- *       Must not regress; no 10x requirement.
- *   EXEMPT (durable-write floor) — rows whose cost is bounded by a mandatory
- *       durable/atomic write that cannot disappear without breaking
- *       atomicity or cross-process safety (see WRITE_FLOOR_RATIONALE).
- *       No-regression only; achievable op reductions are non-contract wins.
- *   EXEMPT (read floor) — cold single-read rows (B5b): one mandatory read op
- *       (the redundant stat already removed); ≤0 ops impossible.
- *   EXEMPT (content floor) — B4 prompt rows: token size is bounded by the
- *       fixed agent guidance + per-task status/contract text the agent must
- *       see; 10x would require removing guidance (behavior change, forbidden).
- *   HEADROOM — everything else. Primary metric per flow class:
- *       B2.*            fs ops/turn (the per-turn I/O cost driver)
- *       B4.*            estimated prompt tokens (prompt-bound)
- *       any row with > 1 fs op → fs ops (I/O-bound; wall-clock is
- *                   latency-injection- or parse-dominated)
- *       otherwise       wall-clock p50 (ms)
- *   Target for a headroom row: primary metric in the after run ≤ before / 10
- *   (p50 in ms, rounded to 1 decimal to match round1'd measurements; fs ops
- *   and tokens rounded down to integers).
- *
- * Usage: node --experimental-strip-types experiments/bench/classify.mjs [campaign] [--md <path>]
- */
 
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -34,7 +5,6 @@ import { fileURLToPath } from "node:url";
 
 import { campaignConfig } from "./campaigns.mjs";
 
-/** Rows whose cost is bounded by mandatory durable/atomic writes (see header). */
 const WRITE_FLOOR_EXEMPT = new Set([
 	"B1.lock.uncontended",
 	"B1.append.single",
@@ -47,27 +17,10 @@ const WRITE_FLOOR_EXEMPT = new Set([
 	"B7.tool.update_goal_task",
 ]);
 
-/**
- * B4 prompt rows are content-floor bounded: measured 2026-08-06 on this
- * machine, continuationPrompt is ~596 tokens with a ZERO-task goal (fixed
- * [OUTCOMES] guidance + objective + contract + status scaffolding) — the 10x
- * target of ≤108 is unreachable by any amount of goal-content trimming. Only
- * deleting the ~560 tokens of agent-facing guidance (lifecycle policy,
- * audit-before-complete, blocker rule) could reach it, and that text is the
- * extension's behavioral contract with the agent (removal = behavior change
- * the goal forbids). taskListBlock (≤38) and goalPrompt (≤86) hit the same
- * wall: each task line is ~4-6 tokens of status/contract the agent must see.
- * Exempt on the documented no-regression rule; the metric is still watched.
- */
+// external: fixed agent guidance limits how much prompt size can shrink.
 const CONTENT_FLOOR_EXEMPT_PREFIX = "B4.";
 
-/**
- * Cold single-read rows (B5b): one mandatory read op (the file's content)
- * cannot disappear — a cold settings/ledger load must read the file once.
- * The redundant stat was removed (2→1 op); ≤0 ops is impossible. At 25ms/op
- * the wall-clock floor is the single op's latency (25ms), so the lat25
- * variants are floor-bound too. Exempt on the no-regression rule.
- */
+// external: a cold file read requires at least one I/O operation.
 const READ_FLOOR_EXEMPT = new Set([
 	"B1.settings.cold",
 	"B1.settings.cold.lat25",
@@ -109,7 +62,6 @@ export function targetFor(row) {
 	return null;
 }
 
-/** p50 targets are compared against round1'd measurements, so round the limit the same way. */
 function roundTarget(v) {
 	return Math.round(v * 10) / 10;
 }

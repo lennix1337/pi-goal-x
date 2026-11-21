@@ -45,16 +45,10 @@ export interface GoalRecord {
 	activePath?: string;
 	archivedPath?: string;
 	stopReason?: StopReason;
-	// Set when the model reports the goal blocked. Cleared when the goal becomes active again.
 	pauseReason?: string;
 	pauseSuggestedAction?: string;
 	skipAuditor?: boolean;
-	/**
-	 * Persisted monotonic mutation counter (follow-up Stage 4). Missing
-	 * historical values normalize to zero. Cross-process writers compare the
-	 * revision captured at reconciliation with the disk value under the
-	 * per-goal lock; a mismatch is a typed conflict instead of a blind write.
-	 */
+	/** Persisted revision; absent values normalize to zero. Concurrent writes with a stale revision conflict. */
 	revision?: number;
 	/** Optional token budget (whole tokens). When accounted usage reaches it, the runtime marks the goal budget_limited. */
 	tokenBudget?: number;
@@ -76,7 +70,6 @@ export interface GoalRecord {
 export interface GoalStateEntry {
 	version: 3;
 	goal: GoalRecord | null;
-	/** E7: expandable tool-result detail line (e.g. full pause reason). */
 	resultDetail?: string;
 }
 
@@ -87,12 +80,7 @@ export interface GoalFocusEntry {
 	reason: GoalFocusReason;
 }
 
-/**
- * Issue #30 v2 checkpoint details: a tiny structured trigger record. Never
- * contains objective text, task text, verification contracts, budget strings,
- * or policy text — the authoritative state is injected once per turn by
- * before_agent_start from goal storage.
- */
+/** Bounded checkpoint details without objective, task, contract, budget or policy text. */
 export interface GoalCheckpointDetailsV2 {
 	version: 2;
 	kind: "checkpoint";
@@ -145,7 +133,6 @@ export interface GoalCreationConfig {
 	autoContinue: boolean;
 	sisyphus: boolean;
 	taskList?: GoalTaskList;
-	/** User-chosen per-draft auditor bypass, persisted on the created goal. */
 	skipAuditor?: boolean;
 }
 
@@ -291,18 +278,8 @@ export function normalizeTaskList(value: unknown): GoalTaskList | undefined {
 	};
 }
 
-/**
- * Shared positive-safe-integer normalization for persisted numeric values such
- * as tokenBudget. Non-finite, fractional, zero, negative, and unsafe numbers
- * normalize to absent rather than silently changing meaning. Live tool input
- * is validated separately (rejected with a user-facing message); this handles
- * persisted legacy values.
- */
-/**
- * Live-input validation for token_budget (shared by slash-command parsing, tool
- * execution, and record creation). Tool callers are untrusted, so the schema
- * Type.Integer bound is double-checked at runtime with Number.isSafeInteger.
- */
+// external: tool callers are untrusted, including callers bypassing the schema.
+/** Validate token budgets as safe integers. */
 export function validateTokenBudgetInput(value: unknown): { ok: true; value: number } | { ok: false; message: string } {
 	if (typeof value !== "number" || !Number.isFinite(value)) {
 		return { ok: false, message: "token_budget must be a number." };
@@ -356,17 +333,11 @@ export function normalizeGoalRecord(value: unknown): GoalRecord | null {
 	if (!objective) return null;
 
 	const timestamp = nowIso();
-	// Persisted lifecycle status is authoritative. autoContinue is an execution
-	// preference only: it must never rewrite status during reads or migration.
 	const status = normalizeGoalStatus(raw.status);
-	// autoContinue normalizes independently of status.
 	const autoContinue = typeof raw.autoContinue === "boolean" ? raw.autoContinue : true;
 	const usage = normalizeUsage(raw.usage);
 	const sisyphus = raw.sisyphus === true;
 	const taskList = normalizeTaskList(raw.taskList);
-	// §7.4: accept a persisted currentTaskId only when it references an existing
-	// pending task; otherwise leave it absent. Historical files stay absent and
-	// are never rewritten just because the field is missing.
 	const currentTaskId =
 		typeof raw.currentTaskId === "string" && currentTaskIdIsPending(taskList?.tasks, raw.currentTaskId.trim())
 			? raw.currentTaskId.trim()

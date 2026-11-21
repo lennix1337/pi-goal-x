@@ -1,18 +1,5 @@
 import { saveGoalSettingsFileConfig } from "../extensions/goal-settings.ts";
 import type { GoalCore } from "../extensions/goal-state.ts";
-/**
- * Stage 0 golden tests: the continuation checkpoint contract.
- *
- * Pins how the extension treats queued/injected continuation checkpoints
- * today (specs/2026-08-03-codex-inspired-goal-interface Stage 0):
- *
- *   1. A checkpoint for a goal that is no longer the focused active goal is
- *      stale: the turn is aborted and `[GOAL STALE goalId=...]` guidance is
- *      injected instead of doing goal work.
- *   2. A checkpoint that matches the focused active goal proceeds normally.
- *   3. A user-driven turn cancels any pending continuation, so a queued
- *      checkpoint is never delivered after the user takes over.
- */
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -33,7 +20,6 @@ import { writeActiveGoalFile } from "../extensions/storage/goal-files.ts";
 
 const FIXTURE_GOAL = readFileSync(new URL("./fixtures/goals/active_goal_fixture.md", import.meta.url), "utf8");
 
-// ── Harness ──────────────────────────────────────────────────────────────────
 
 interface HandlerMap {
 	[key: string]: (event: any, ctx: ExtensionContext) => Promise<unknown> | unknown;
@@ -103,11 +89,7 @@ function fixtureCwd(): { cwd: string; goal: GoalRecord } {
 	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });
 	writeFileSync(path.join(cwd, ".pi", "goals", "active_goal_fixture.md"), FIXTURE_GOAL);
 
-	// The fixture's JSON header is authoritative here: read it back through the
-	// extension's own parser path so the goal record matches what loadState sees.
 	const parsed = createGoal({ objective: "Golden fixture goal objective", autoContinue: true, sisyphus: false }, Date.UTC(2026, 7, 3, 9, 0, 0));
-	// Overwrite the fixture with a record whose id we know, then write via the
-	// extension's serializer so the activePath is correct.
 	writeFileSync(path.join(cwd, ".pi", "goals", "active_goal_fixture.md"), FIXTURE_GOAL);
 	return { cwd, goal: { ...parsed, id: "golden_fixture_goal" } };
 }
@@ -138,7 +120,6 @@ async function startSession(handlers: HandlerMap, ctx: ExtensionContext, entries
 	} as unknown as ExtensionContext);
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
 
 test("golden: stale checkpoint for a non-focused goal aborts the turn and injects GOAL STALE", async () => {
 	const { cwd, goal } = fixtureCwd();
@@ -149,7 +130,6 @@ test("golden: stale checkpoint for a non-focused goal aborts the turn and inject
 		const bas = h.handlers["before_agent_start"];
 		assert.ok(bas);
 
-		// A checkpoint claims a goal that is not focused/active in this session.
 		await bas({
 			systemPrompt: "base",
 			prompt: '<pi_goal_continuation goal_id="ghost-goal" kind="checkpoint">continue',
@@ -162,7 +142,7 @@ test("golden: stale checkpoint for a non-focused goal aborts the turn and inject
 		assert.match(systemPrompt, /\[GOAL STALE goalId=ghost-goal\]/);
 		assert.match(systemPrompt, /Do not perform task work for this stale checkpoint/);
 	} finally {
-		// temp dir cleanup is best-effort.
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -186,7 +166,7 @@ test("golden: matching checkpoint proceeds without stale handling", async () => 
 		const systemPrompt = (result as { messages?: {content: string}[] } | undefined)?.messages?.at(-1)?.content ?? "";
 		assert.doesNotMatch(systemPrompt, /GOAL STALE/);
 	} finally {
-		// temp dir cleanup is best-effort.
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -196,22 +176,17 @@ test("golden: user-driven turn cancels a pending continuation", async () => {
 	try {
 		await startSession(h.handlers, h.ctx, sessionEntriesFor(goal));
 
-		// Simulate a work turn that queues a continuation: turn_start, a bash
-		// tool call, then a non-tool-use assistant message at turn_end.
 		await h.handlers["turn_start"]!({}, h.ctx);
 		await h.handlers["tool_call"]!({ toolName: "bash", args: { command: "ls" } }, h.ctx);
 		await h.handlers["tool_execution_end"]!({}, h.ctx);
 		await h.handlers["turn_end"]!({ message: { role: "assistant", content: [{ type: "text", text: "done" }] } }, h.ctx);
 
-		// The continuation timer is pending (non-idle ctx keeps it scheduled).
-		// A user-driven turn must cancel it before it fires.
 		await h.handlers["before_agent_start"]!({
 			systemPrompt: "base",
 			prompt: "user typed a new instruction",
 			systemPromptOptions: {},
 		}, h.ctx);
 
-		// Wait beyond the idle retry delay; the queued continuation must not fire.
 		await new Promise((resolve) => setTimeout(resolve, 120));
 
 		const checkpoints = h.sentMessages.filter(
@@ -219,16 +194,11 @@ test("golden: user-driven turn cancels a pending continuation", async () => {
 		);
 		assert.equal(checkpoints.length, 0, "user turn must cancel the pending continuation");
 	} finally {
-		// temp dir cleanup is best-effort.
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
-// ── Provider-error guard (danim47c pattern) ─────────────────────────────────
-// A turn/run whose assistant message has stopReason "error" is failed work:
-// it must never queue an auto-continuation, or a provider outage turns into
-// an unbounded retry storm. Normal turns must still queue.
 
-/** Idle ctx: continuation fires immediately instead of rescheduling. */
 function idleCtx(ctx: ExtensionContext): ExtensionContext {
 	return {
 		...ctx,
@@ -244,7 +214,6 @@ async function countCheckpoints(h: ReturnType<typeof createHarness>): Promise<nu
 	).length;
 }
 
-/** Mark this agent run as having done goal work (empty-turn gate). */
 async function declareNextRun(h: ReturnType<typeof createHarness>): Promise<void> {
 	await h.handlers["turn_start"]!({}, h.ctx);
 	await h.handlers["tool_call"]!({ toolName: "bash", args: { command: "ls" } }, h.ctx);
@@ -259,15 +228,12 @@ test("provider-error guard: turn_end with stopReason=error never queues a contin
 	try {
 		await startSession(h.handlers, h.ctx, sessionEntriesFor(goal));
 
-		// Cancel the continuation session_start armed (non-idle ctx keeps it
-		// scheduled) so the turn itself owns the queue decision.
 		await h.handlers["before_agent_start"]!({
 			systemPrompt: "base",
 			prompt: "user typed: continue",
 			systemPromptOptions: {},
 		}, h.ctx);
 
-		// A work turn that ends in a provider error (work tool ran, then error).
 		await h.handlers["turn_start"]!({}, h.ctx);
 		await h.handlers["tool_call"]!({ toolName: "bash", args: { command: "ls" } }, h.ctx);
 		await h.handlers["tool_execution_end"]!({}, h.ctx);
@@ -275,7 +241,7 @@ test("provider-error guard: turn_end with stopReason=error never queues a contin
 
 		assert.equal(await countCheckpoints(h), 0, "error turn must not queue a continuation");
 	} finally {
-		// temp dir cleanup is best-effort.
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -285,7 +251,6 @@ test("ordinary work without a disposition does not queue a continuation", async 
 	try {
 		await startSession(h.handlers, h.ctx, sessionEntriesFor(goal));
 
-		// Cancel the continuation session_start armed (see above).
 		await h.handlers["before_agent_start"]!({
 			systemPrompt: "base",
 			prompt: "user typed: continue",
@@ -299,7 +264,7 @@ test("ordinary work without a disposition does not queue a continuation", async 
 
 		assert.equal(await countCheckpoints(h), 0, "work tools alone must not authorize continuation");
 	} finally {
-		// temp dir cleanup is best-effort.
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -314,7 +279,7 @@ test("provider-error guard: agent_end with an error message never queues a conti
 
 		assert.equal(await countCheckpoints(h), 0, "agent_end with an error message must not queue a continuation");
 	} finally {
-		// temp dir cleanup is best-effort.
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -338,7 +303,7 @@ test("network-error recovery waits for agent_settled before scheduling its backo
 		assert.equal(await countCheckpoints(h), 0, "the first recovery is delayed by the backoff policy");
 		assert.match(h.notifications.at(-1)?.message ?? "", /Retrying the goal in 5s \(recovery 1, unbounded\)/);
 	} finally {
-		// The delayed timer is unref'd and needs no test teardown.
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -365,7 +330,7 @@ test("a successful Pi retry clears the pending network-error recovery", async ()
 		assert.equal(await countCheckpoints(h), 1, "the successful Pi retry uses the normal continuation path");
 		assert.equal(h.notifications.length, 0, "no goal-level recovery is announced after Pi retries successfully");
 	} finally {
-		// No delayed timer should exist after the successful retry.
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -382,7 +347,7 @@ test("successful agent_end waits for agent_settled before queuing a continuation
 		await h.handlers["agent_settled"]!({}, idleCtx(h.ctx));
 		assert.equal(await countCheckpoints(h), 1, "agent_settled queues the continuation without idle polling");
 	} finally {
-		// temp dir cleanup is best-effort.
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -414,5 +379,3 @@ test("empty no-tool runs continue implicitly after agent_settled", async () => {
 		h.core.runtime.clearContinuationState();
 	}
 });
-
-// Explicit decision invalidation and actual SDK run-boundary coverage live in goal-scheduler.test.ts and goal-scheduler-sdk.test.ts.

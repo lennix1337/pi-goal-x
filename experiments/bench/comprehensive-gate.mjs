@@ -1,4 +1,3 @@
-/** Campaign-local evidence gate; run the fresh campaign first, never reuse older campaigns' timings. */
 import fs from 'node:fs';
 import path from 'node:path';
 const dir = path.resolve('specs/2026-09-07-comprehensive-optimization');
@@ -14,7 +13,6 @@ for (const prefix of ['CPU','SDK-CPU']) {
   if(target>1 && prior.p50/after.p50<target) failures.push(`${prefix} speed target ${target}x missed: ${after.id}`);
  }
 }
-// Alternating baseline/candidate/candidate/baseline avoids relying on one thermally biased run.
 const trials=[read('RUNTIME-REPEAT-1-BEFORE'),read('RUNTIME-REPEAT-2-AFTER'),read('RUNTIME-REPEAT-3-AFTER'),read('RUNTIME-REPEAT-4-BEFORE')];
 for(const row of trials[0].rows) {
  const values=trials.map(t=>t.rows.find(r=>r.id===row.id));

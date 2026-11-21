@@ -14,7 +14,6 @@ function runner(dir: string, args: string[] = [], extraEnv: NodeJS.ProcessEnv = 
 	return spawnSync(process.execPath, ["scripts/run-unit-tests.mjs", ...args], { cwd: dir, env, encoding: "utf8", timeout: 30000 });
 }
 
-/** A disposable project: the real runner, one real test file, and a manifest that lists exactly that file. */
 function inDisposableProject(body: (dir: string) => void): void {
 	const dir = mkdtempSync(path.join(tmpdir(), "goal-runner-"));
 	try {

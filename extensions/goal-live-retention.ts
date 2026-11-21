@@ -1,27 +1,7 @@
 import { createHash } from "node:crypto";
 import { asRecord } from "./goal-record.ts";
 
-/**
- * Prefix-stable retention for request-only goal-state tails.
- *
- * The context hook appends live goal state to every provider request without
- * persisting it. When the next request arrives, the completed assistant turn
- * occupies the position where the previous tail sat, so request N is no
- * longer a prefix of request N+1 and implicit prompt caches (OpenAI Responses
- * / Chat Completions, which carry no explicit marker) freeze at the first
- * injection point.
- *
- * This module makes each request a true prefix of the next: previously sent
- * tails are re-inserted verbatim at their recorded anchor (the session length
- * when they were emitted), the whole preceding history is verified unchanged
- * by digest, and only genuinely new tail content is appended. Identical
- * content across repeated requests appends nothing, so tool loops and idle
- * re-requests cost zero growth. A stable-state change, any history rewrite
- * (compaction, resume, session-tree moves, filter changes, middle-message
- * edits), an unsafe insertion point, or overflow all perform one documented
- * full reset instead of silently shifting the prefix or corrupting message
- * structure.
- */
+// external: OpenAI implicit prompt caches require an exact reusable prefix.
 
 export const LIVE_CONTEXT_TYPE = "pi-goal-live-context";
 
@@ -64,7 +44,6 @@ interface RetainedTail {
 interface SessionRetention {
 	tails: RetainedTail[];
 	lastFresh: FreshLiveTails | undefined;
-	/** Digest of every base message at the last apply; any earlier rewrite resets. */
 	baseFingerprints: Array<string | null>;
 }
 
@@ -72,7 +51,6 @@ function freshBlocks(fresh: FreshLiveTails): string[] {
 	return fresh.counters === undefined ? [fresh.state] : [fresh.state, fresh.counters];
 }
 
-/** Full-message digest, or null (never a match) when serialization fails. */
 function fingerprintMessage(message: unknown): string | null {
 	try {
 		const serialized = JSON.stringify(message) ?? "undefined";
@@ -82,14 +60,7 @@ function fingerprintMessage(message: unknown): string | null {
 	}
 }
 
-/**
- * Tool results must stay adjacent to the call they answer, so a retained tail
- * may never be inserted directly before one. Covers the Pi session role
- * (`toolResult`), the provider wire role (`tool`, as seen by marker
- * relocation), and result-bearing content blocks in either vocabulary — the
- * call side needs no guard since inserting before a call keeps the pair
- * adjacent.
- */
+// external: provider tool results must remain adjacent to their corresponding calls.
 function splitsToolBatch(next: unknown): boolean {
 	const record = asRecord(next);
 	const role = record?.role;
@@ -125,8 +96,7 @@ export class LiveTailRetention {
 			this.sessions.delete(sessionKey);
 			return { messages: [...base], transientContents: [] };
 		}
-		// Hash each message once per request. Extensions may reuse and mutate
-		// message objects, so object identity cannot cache a digest across requests.
+		// external: extensions may mutate message objects between requests.
 		const fingerprints = base.map(fingerprintMessage);
 		let session = this.sessions.get(sessionKey);
 		if (!session) {
@@ -142,17 +112,9 @@ export class LiveTailRetention {
 			session!.lastFresh = undefined;
 			session!.baseFingerprints = [];
 		};
-		// A changed state block supersedes every previously sent tail: start
-		// fresh rather than leave a stale objective or a cancelled scheduling
-		// instruction lingering mid-history.
 		if (session.lastFresh !== undefined && (session.lastFresh.state !== fresh.state
 			|| (session.lastFresh.counters !== undefined && fresh.counters === undefined))) reset();
-		// Tails anchored while history was empty would linger at the head once
-		// real history arrives. Reset once so fresh tails anchor at the tail.
 		if (session.tails.length > 0 && session.baseFingerprints.length === 0 && base.length > 0) reset();
-		// Any rewrite earlier than the anchors — middle-message edits, filter
-		// changes, checkpoint normalization — breaks the prefix even when the
-		// trailing message is identical, so verify the whole preceding history.
 		if (session.baseFingerprints.length > base.length) reset();
 		else {
 			for (let i = 0; i < session.baseFingerprints.length; i++) {
@@ -163,8 +125,6 @@ export class LiveTailRetention {
 				}
 			}
 		}
-		// An unsafe anchor invalidates the whole replay. Keeping an earlier
-		// policy while re-appending fresh blocks would duplicate that policy.
 		let valid = 0;
 		while (valid < session.tails.length) {
 			const tail = session.tails[valid]!;
@@ -178,14 +138,9 @@ export class LiveTailRetention {
 		}
 		if (valid < session.tails.length) reset();
 		const blocks = freshBlocks(fresh);
-		// Append only the suffix that differs from the last emitted tails, so
-		// unchanged content across repeats, tool loops, and history advances
-		// adds zero blocks while keeping the prefix literal.
 		const previous = session.lastFresh === undefined ? [] : freshBlocks(session.lastFresh);
 		let shared = 0;
 		while (shared < blocks.length && shared < previous.length && blocks[shared] === previous[shared]) shared++;
-		// Overflow is measured against what this request actually appends: an
-		// unchanged request adds nothing and must never trigger a reset.
 		if (session.tails.length + (blocks.length - shared) > MAX_RETAINED_LIVE_TAILS
 			|| session.tails.filter(tail => tail.kind === "goal-counters").reduce((n, tail) => n + Buffer.byteLength(tail.content), 0)
 				+ (fresh.counters === undefined || shared === blocks.length ? 0 : Buffer.byteLength(fresh.counters)) > MAX_RETAINED_COUNTER_BYTES) {

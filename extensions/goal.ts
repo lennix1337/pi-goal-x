@@ -13,18 +13,12 @@ import { createGoalCore, type GoalCoreDependencies } from "./goal-state.ts";
 import { registerGoalTools } from "./goal-tools.ts";
 import { filterGoalSessionContext, isDelegatedGoalSession } from "./goal-session-safety.ts";
 
-/**
- * pi-goal thin installer. All state lives in the GoalCore (goal-state.ts);
- * the tool surface, command palette, event handlers, and widget/keybindings
- * are registered from their dedicated modules. No goal-file writes, ledger
- * appends, or prompt construction happen here.
- */
+/** Install the goal extension. */
 export default function goalExtension(
 	pi: ExtensionAPI,
 	dependencies: GoalCoreDependencies = {},
 ): void {
 	if (isDelegatedGoalSession()) {
-		// Inherit conversation without inheriting ownership of the parent's goal.
 		pi.on("context", async event => {
 			const messages = filterGoalSessionContext(event.messages, true);
 			return messages === null ? undefined : { messages };
@@ -35,7 +29,6 @@ export default function goalExtension(
 	pi.registerMessageRenderer<GoalAuditEventDetails>(GOAL_AUDIT_ENTRY, renderGoalAuditEvent);
 
 	const core = createGoalCore(pi, dependencies);
-	// Test/debug hook: expose the core for harness introspection (no behavior).
 	(pi as unknown as { _goalCore?: typeof core })._goalCore = core;
 	registerGoalCommands(core);
 	registerGoalTools(core);

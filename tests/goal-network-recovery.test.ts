@@ -1,18 +1,5 @@
 import { saveGoalSettingsFileConfig } from "../extensions/goal-settings.ts";
 import type { GoalCore } from "../extensions/goal-state.ts";
-/**
- * Regression and lifecycle tests for goal-level provider-error recovery.
- *
- * Regression seed (user report): a 503 `server_error` payload of the shape
- *
- *     Error: 503: {"type":"server_error","message":"Error from provider
- *     (Console): Upstream request failed: Endpoint is unavailable."}
- *     Error: Retry failed after 3 attempts: 503: {...}
- *
- * was NOT classified as a network error by isNetworkErrorAssistantMessage
- * (which only matched the literal text "network error"), so Pi's built-in
- * retries exhausted and no goal-level backoff ever engaged.
- */
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -39,14 +26,12 @@ const FIXTURE_GOAL = readFileSync(
 	"utf8",
 );
 
-/** The exact reported failure, as Pi surfaces it in errorMessage. */
 const REPORTED_503_MESSAGE =
 	'503: {"type":"server_error","message":"Error from provider (Console): Upstream request failed: Endpoint is unavailable."}';
 const REPORTED_503_AFTER_RETRIES = `Retry failed after 3 attempts: ${REPORTED_503_MESSAGE}`;
 const REPORTED_HTTP2_PROTOCOL_ERROR =
 	'Post "https://chatgpt.com/backend-api/codex/responses": stream error: stream ID 1; PROTOCOL_ERROR; received from peer';
 
-// ── Harness (mirrors tests/goal-stale-continuation-golden.test.ts) ──────────
 
 interface HandlerMap {
 	[key: string]: (event: any, ctx: ExtensionContext) => Promise<unknown> | unknown;
@@ -150,7 +135,6 @@ async function startSession(handlers: HandlerMap, ctx: ExtensionContext, entries
 	} as unknown as ExtensionContext);
 }
 
-/** Idle ctx: continuation fires immediately instead of rescheduling. */
 function idleCtx(ctx: ExtensionContext): ExtensionContext {
 	return {
 		...ctx,
@@ -173,7 +157,6 @@ async function markGoalWork(h: ReturnType<typeof createHarness>): Promise<void> 
 	assert.equal(h.core.scheduler.declare(h.ctx, { kind: "ready" }).terminate, true);
 }
 
-// ── Classification unit coverage ─────────────────────────────────────────────
 
 test("classification: HTTP/2 stream PROTOCOL_ERROR is transient", () => {
 	assert.equal(
@@ -296,7 +279,6 @@ test("classification: generic provider finish_reason: error is transient", () =>
 	);
 });
 
-// ── Regression through the real agent_end → agent_settled lifecycle ─────────
 
 test("regression: reported 503 payload schedules goal-level recovery after settle", async () => {
 	const { cwd, goal } = fixtureCwd();
@@ -323,7 +305,7 @@ test("regression: reported 503 payload schedules goal-level recovery after settl
 		);
 		assert.equal(await countCheckpoints(h), 0, "the first recovery is delayed by the backoff policy");
 	} finally {
-		// The delayed timer is unref'd and needs no test teardown.
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -352,7 +334,7 @@ test("regression: generic Provider finish_reason: error schedules goal-level rec
 		);
 		assert.equal(await countCheckpoints(h), 0, "the first recovery is delayed by the backoff policy");
 	} finally {
-		// The delayed timer is unref'd and needs no test teardown.
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -385,9 +367,7 @@ test("lifecycle: provider-initiated abort routes into recovery instead of pausin
 });
 
 test("lifecycle: full real event ordering (message_end → turn_end → agent_end → settled) routes provider-side aborts into recovery", async () => {
-	// The auditor-verified gap: message_end and turn_end fire BEFORE agent_end
-	// in real pi runs. All three must agree: without a user abort signal, an
-	// aborted assistant message never pauses the goal and recovery engages.
+	// external: Pi emits message_end and turn_end before agent_end.
 	process.env.PI_GOAL_NETWORK_RECOVERY_MAX_DELAY_MS = "25";
 	const { cwd, goal } = fixtureCwd();
 	saveGoalSettingsFileConfig(cwd, { maxAutonomousRuns: 100 });
@@ -462,11 +442,10 @@ test("lifecycle: genuine user abort still pauses the goal", async () => {
 			"user-initiated pauses never schedule recovery",
 		);
 	} finally {
-		// nothing to clean
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
-// ── Full lifecycle: escalation, plateau, bounded override, reset ────────────
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -497,7 +476,6 @@ test("lifecycle: unbounded recovery keeps retrying past the old 5-attempt cap", 
 				new RegExp(`Retrying the goal in 0s \\(recovery ${attempt}, unbounded\\)`),
 				`cycle ${attempt} must keep scheduling recovery`,
 			);
-			// Let the (25ms) recovery timer fire and clear before the next cycle.
 			await sleep(80);
 		}
 	} finally {
@@ -558,7 +536,6 @@ test("lifecycle: a successful turn resets the recovery counter and clears pendin
 			systemPromptOptions: {},
 		}, h.ctx);
 
-		// Two failed cycles advance the counter.
 		for (const _ of [1, 2]) {
 			await h.handlers["agent_end"]!({
 				messages: [{ role: "assistant", stopReason: "error", errorMessage: REPORTED_503_MESSAGE }],
@@ -567,7 +544,6 @@ test("lifecycle: a successful turn resets the recovery counter and clears pendin
 			await sleep(80);
 		}
 
-		// A successful turn uses the normal continuation path.
 		const checkpointsFromRecoveryTimers = await countCheckpoints(h);
 		const notificationsBeforeSuccess = h.notifications.length;
 		await markGoalWork(h);
@@ -576,7 +552,6 @@ test("lifecycle: a successful turn resets the recovery counter and clears pendin
 		assert.equal(await countCheckpoints(h), checkpointsFromRecoveryTimers + 1, "success queues the normal continuation");
 		assert.equal(h.notifications.length, notificationsBeforeSuccess, "success announces no recovery");
 
-		// The next failure starts over at recovery 1.
 		await h.handlers["agent_end"]!({
 			messages: [{ role: "assistant", stopReason: "error", errorMessage: REPORTED_503_MESSAGE }],
 		}, idleCtx(h.ctx));
@@ -586,13 +561,9 @@ test("lifecycle: a successful turn resets the recovery counter and clears pendin
 		delete process.env.PI_GOAL_NETWORK_RECOVERY_MAX_DELAY_MS;
 	}
 });
-// ── pi 1.0.0 session_compact_failed ─────────────────────────────────────────
 
 test("session_compact_failed warns the user instead of failing silently (pi 1.0.0)", async () => {
-	// pi 1.0.0 added `session_compact_failed`. The extension already charges
-	// progress to the goal at `session_before_compact`, so a failed compaction
-	// must not leave the goal silently uncompacted — that is how a long-running
-	// goal walks into the same context overflow on the next turn.
+	// external: Pi 1.0.0 added session_compact_failed.
 	const { cwd, goal } = fixtureCwd();
 	const h = createHarness(cwd);
 	await startSession(h.handlers, h.ctx, sessionEntriesFor(goal));
@@ -617,7 +588,6 @@ test("session_compact_failed warns the user instead of failing silently (pi 1.0.
 });
 
 test("session_compact_failed stays silent when the user aborted or no goal is focused", async () => {
-	// An abort is a user action, not a fault: warning about it would be noise.
 	const { cwd, goal } = fixtureCwd();
 	const h = createHarness(cwd);
 	await startSession(h.handlers, h.ctx, sessionEntriesFor(goal));

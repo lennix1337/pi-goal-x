@@ -31,8 +31,6 @@ test("pool snapshot lives outside the watched goals dir and records its mtime", 
 	const cwd = tempCwd();
 	try {
 		writeGoal(cwd, "g1");
-		// A cold read writes the snapshot; invalidate the in-memory cache so the
-		// read goes cold again.
 		invalidateGoalPoolCache();
 		const pool = readActiveGoalPool({ cwd });
 		assert.equal(pool.size, 1);
@@ -41,9 +39,6 @@ test("pool snapshot lives outside the watched goals dir and records its mtime", 
 
 		const snapshot = JSON.parse(fs.readFileSync(snapshotPaths(cwd).newPath, "utf8"));
 		const goalsDirStat = fs.lstatSync(snapshotPaths(cwd).goalsDir);
-		// The fast path (2-op cold read: lstat + snapshot read, no readdir
-		// fallback) holds exactly when the recorded dir mtime matches the live
-		// one — and the snapshot's own write no longer perturbs that key.
 		assert.equal(snapshot.dirMtimeMs, goalsDirStat.mtimeMs, "dir mtime key matches after the snapshot write");
 		assert.equal(snapshot.version, 1);
 		assert.equal(snapshot.goals.length, 1);
@@ -57,16 +52,13 @@ test("pool snapshot: a subsequent goal write keeps the fast-path key valid", () 
 	try {
 		writeGoal(cwd, "g1");
 		invalidateGoalPoolCache();
-		readActiveGoalPool({ cwd }); // cold: full scan + snapshot write
-
-		// Another extension write (updatePoolSnapshotSync path).
+		readActiveGoalPool({ cwd });
 		writeGoal(cwd, "g2");
 		const snapshot = JSON.parse(fs.readFileSync(snapshotPaths(cwd).newPath, "utf8"));
 		const goalsDirStat = fs.lstatSync(snapshotPaths(cwd).goalsDir);
 		assert.equal(snapshot.dirMtimeMs, goalsDirStat.mtimeMs, "delta update keeps the mtime key fresh");
 		assert.equal(snapshot.goals.length, 2);
 
-		// Cold read after cache invalidation serves the snapshot (2-op path).
 		invalidateGoalPoolCache();
 		const pool = readActiveGoalPool({ cwd });
 		assert.equal(pool.size, 2);
@@ -79,9 +71,6 @@ test("pool snapshot: legacy in-dir snapshot is served as a one-time fallback", (
 	const cwd = tempCwd();
 	try {
 		writeGoal(cwd, "g1");
-		// Simulate a pre-relocation snapshot: valid content at the legacy path,
-		// consistent with the on-disk filename set (the name check must pass)
-		// and carrying a marker that only snapshot hydration would preserve.
 		const goalsDir = snapshotPaths(cwd).goalsDir;
 		const diskFile = fs.readdirSync(goalsDir).find((n) => n.startsWith("active_goal_"))!;
 		const diskGoal = parseGoalFile(path.join(goalsDir, diskFile))!;

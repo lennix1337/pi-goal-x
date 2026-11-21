@@ -10,13 +10,10 @@ export interface GoalStorageContext {
 	sessionManager?: { getSessionId(): string | undefined };
 }
 
-// Host contexts change between hooks; the session manager owns their lifetime.
 const roots = new WeakMap<object, { id: string | undefined; cwd: string; root: string }>();
 
 export function goalStorageRoot(ctx: GoalStorageContext): string {
 	if (ctx.goalStorageRoot !== undefined) return ctx.goalStorageRoot;
-	// Low-level cwd-only callers retain the original zero-settings-I/O contract.
-	// Host sessions resolve configuration once; detached readers take a snapshot.
 	return ctx.sessionManager ? configuredGoalRoot(ctx) : path.resolve(ctx.cwd, ".pi/goals");
 }
 
@@ -40,7 +37,6 @@ function configuredGoalRoot(ctx: GoalStorageContext): string {
 		fs.mkdirSync(root, { recursive: true });
 		if (fs.lstatSync(root).isSymbolicLink()) throw new Error(`Goal root is a symlink: ${root}`);
 		root = fs.realpathSync(root);
-		// Metadata lives inside an override without perturbing the pool's mtime.
 		const metadata = path.join(root, ".metadata");
 		fs.mkdirSync(metadata, { recursive: true });
 		if (fs.lstatSync(metadata).isSymbolicLink()) throw new Error(`Goal metadata directory is a symlink: ${metadata}`);
@@ -84,7 +80,7 @@ export function ensureGoalStorageDirectory(ctx: GoalStorageContext, logical: str
 		if (verifyDefault && fs.lstatSync(target).isSymbolicLink()) throw new Error(`Goal directory is a symlink: ${target}`);
 		return;
 	}
-	// An external pool removed during a session must not silently reappear.
+	// external: a pool directory may be removed by another process during a session.
 	if (fs.lstatSync(root).isSymbolicLink()) throw new Error(`Goal root is a symlink: ${root}`);
 	let dir = root;
 	for (const part of path.relative(root, target).split(path.sep).filter(Boolean)) {

@@ -1,13 +1,3 @@
-/**
- * Issue #30 reproducer: repeated full checkpoint prompts.
- *
- * Pins the bounded-checkpoint contract for continuation scheduling BEFORE the
- * v2 marker fix lands (fails against the legacy full-prompt builder):
- *
- *   1. A scheduled continuation must persist a tiny structured marker
- *      (≤160 chars), never the objective/task/contract/policy text.
- *   2. The persisted details must omit objective text entirely.
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -48,7 +38,6 @@ async function fireContinuation(goal: GoalRecord): Promise<SentMessage> {
 		isActionable: () => true,
 	});
 	runtime.queueContinuation(idleCtx(), goal, true);
-	// Idle ctx schedules with 0ms delay; wait past the timer.
 	await new Promise((resolve) => setTimeout(resolve, 30));
 	assert.equal(sent.length, 1, "exactly one follow-up must be delivered");
 	return sent[0]!;

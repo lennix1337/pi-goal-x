@@ -1,24 +1,5 @@
 #!/usr/bin/env node
-/**
- * pi-goal-x-recover — offline repair for session files affected by issue #30.
- *
- * Before the v2 bounded-checkpoint fix, every auto-continue turn persisted a
- * full continuation prompt (~6.4K chars) as a custom_message entry. This tool
- * rewrites ONLY those legacy checkpoint entries to the tiny v2 marker form:
- *
- *   - line count unchanged; entry ids/parentIds unchanged;
- *   - header and non-goal lines byte-identical (malformed lines preserved);
- *   - only checkpoint `content` and `details` change;
- *   - idempotent; dry-run default.
- *
- * SAFETY: never run against a live Pi session. Close Pi first. --apply is
- * refused without --confirm-pi-closed. A timestamped backup is created before
- * replacement, which itself is an atomic same-directory rename.
- *
- * Usage:
- *   pi-goal-x-recover --session <session.jsonl>                    # dry-run
- *   pi-goal-x-recover --session <session.jsonl> --apply --confirm-pi-closed
- */
+// external: close Pi before applying repairs to avoid concurrent session writes.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -45,7 +26,6 @@ function asRecord(value) {
 	return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
-/** Extract goalId from a checkpoint entry's details or content (v2 + legacy forms). */
 function checkpointGoalId(entry) {
 	const raw = asRecord(entry);
 	if (!raw) return null;
@@ -76,9 +56,7 @@ function graphIdentity(entry) {
 
 function splitPreservingFinalNewline(text) {
 	const lines = text.split("\n");
-	// split() drops knowledge of a trailing newline; re-add an empty final
-	// segment so join("\n") reproduces the input byte count exactly.
-	if (text.endsWith("\n")) return lines; // last element is "" already
+	if (text.endsWith("\n")) return lines;
 	return lines;
 }
 
@@ -104,14 +82,14 @@ export function transformSessionLines(originalText) {
 			entry = JSON.parse(rawLine);
 		} catch {
 			malformed += 1;
-			outputLines.push(rawLine); // never discard unrelated malformed data
+			outputLines.push(rawLine);
 			continue;
 		}
 
 		originalGraph.push(graphIdentity(entry));
 
 		if (!isGoalCheckpointCustomMessage(entry)) {
-			outputLines.push(rawLine); // byte-identical for untouched entries
+			outputLines.push(rawLine);
 			outputGraph.push(graphIdentity(entry));
 			continue;
 		}
@@ -164,7 +142,6 @@ function recoverSession(inputPath, apply) {
 	const { outputLines, originalGraph, outputGraph, changed, savedChars, malformed } =
 		transformSessionLines(original);
 
-	// ── invariants before any write ──────────────────────────────────────
 	if (JSON.stringify(outputGraph) !== JSON.stringify(originalGraph)) {
 		throw new Error("graph identity mismatch: ids/parentIds would change — aborting");
 	}
@@ -180,7 +157,6 @@ function recoverSession(inputPath, apply) {
 			throw new Error(`non-goal line ${i + 1} would change — aborting`);
 		}
 	}
-	// Every non-header parentId must reference some id in the file.
 	const ids = new Set(outputGraph.map((g) => g.id).filter(Boolean));
 	for (const g of outputGraph) {
 		if (g.parentId != null && !ids.has(g.parentId)) {
@@ -215,17 +191,16 @@ function recoverSession(inputPath, apply) {
 		fs.renameSync(temp, absolute);
 	} catch (error) {
 		if (fd !== undefined) {
-			try { fs.closeSync(fd); } catch { /* best effort */ }
+			try { fs.closeSync(fd); } catch { /* external: ESLint requires a comment for intentionally empty blocks. */ }
 		}
-		try { fs.unlinkSync(temp); } catch { /* best effort */ }
+		try { fs.unlinkSync(temp); } catch { /* external: ESLint requires a comment for intentionally empty blocks. */ }
 		throw error;
 	}
 
 	try {
 		fs.fsyncSync(fs.openSync(path.dirname(absolute), "r"));
-	} catch { /* directory fsync is platform-dependent; best effort */ }
+	} catch { /* external: directory fsync is not supported on every platform. */ }
 
-	// Post-write validation by re-reading.
 	const reread = fs.readFileSync(absolute, "utf8");
 	const rereadLines = reread.split("\n");
 	if (rereadLines.length !== outputLines.length) throw new Error("post-write validation failed: line count changed");
@@ -237,7 +212,6 @@ function recoverSession(inputPath, apply) {
 	console.log(`Backup: ${backup}`);
 }
 
-// ── CLI parsing ────────────────────────────────────────────────────────────
 
 function main(argv) {
 	let session = null;

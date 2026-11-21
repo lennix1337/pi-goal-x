@@ -1,8 +1,3 @@
-/**
- * `npm run verify` runs the context gate, so its verdict must depend only on
- * the checked-out code: not on another gate running at the same time, nor on
- * the session or machine that starts it.
- */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -15,7 +10,6 @@ const root = fileURLToPath(new URL("../../", import.meta.url));
 
 interface NodeRun { status: number | null; stdout: string; stderr: string }
 
-/** Runs `node <args>` in the project without throwing, so several can run at once and the caller asserts on each outcome. */
 function runNode(args: string[], env: NodeJS.ProcessEnv = process.env): Promise<NodeRun> {
 	return new Promise((resolve, reject) => {
 		const child = spawn(process.execPath, ["--experimental-strip-types", ...args], { cwd: root, env, timeout: 120_000, stdio: ["ignore", "pipe", "pipe"] });
@@ -28,7 +22,6 @@ function runNode(args: string[], env: NodeJS.ProcessEnv = process.env): Promise<
 	});
 }
 
-/** Captures one fixture and prints where it worked and the size breakdown the gate compares with the baseline. */
 const CAPTURE_ONE = [
 	'const { captureOne, CAPTURE_CWD } = await import("./experiments/context/capture-context.mjs");',
 	'const { measureContext } = await import("./experiments/context/measure-context.mjs");',
@@ -52,7 +45,6 @@ test("two simultaneous gates pass, each in its own capture directory", async () 
 test("a capture does not depend on the session, the machine or another capture running at the same time", async () => {
 	const agentDir = mkdtempSync(path.join(tmpdir(), "goal-gate-agent-"));
 	try {
-		// Saved global goal defaults change the request the model sees.
 		writeFileSync(path.join(agentDir, "pi-goal-x-settings.json"), JSON.stringify({ maxAutonomousRuns: 7 }));
 		const plain: NodeJS.ProcessEnv = { ...process.env };
 		for (const name of ["PI_SUBAGENT_CHILD", "PI_SUBAGENT_DEPTH", "PI_GOAL_GLOBAL_SETTINGS_FILE", "PI_CODING_AGENT_DIR"]) delete plain[name];

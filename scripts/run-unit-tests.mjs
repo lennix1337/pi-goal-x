@@ -37,12 +37,6 @@ if (testFiles.length === 0) {
 	throw new Error("No " + suite + " test files were discovered.");
 }
 
-// ---- Self-check / manifest maintenance -------------------------------
-// The manifest pins the EXPECTED discovered entries so drift (a new test
-// file, a deleted one, or a directory change) is caught explicitly instead
-// of silently changing what `npm test` covers. Every run compares it before
-// executing anything: a check that only a separate CI step ran let a local
-// run pass and the CI run fail on the same commit.
 if (wantWriteManifest) {
 	writeFileSync(manifestPath, JSON.stringify({
 		version: 1,
@@ -77,11 +71,8 @@ if (problems.length > 0) {
 }
 console.log("Runner self-check OK: " + unitFiles.length + " unit + " + integrationFiles.length + " integration + " + e2eFiles.length + " e2e entries match " + manifestPath + ".");
 
-// ---- Execution ---------------------------------------------------------
 const startedAt = Date.now();
-// `--test-isolation=none` (single-process suite, shared module state) is only
-// accepted by Node >= 23.4; probe the running binary and omit it on older
-// releases so the same script works across the supported Node range (22.15+).
+// external: Node before 23.4 does not support --test-isolation=none.
 const isolationProbe = spawnSync(process.execPath, ["--test-isolation=none", "--test", "--help"], { stdio: "ignore" });
 const isolationArgs = isolationProbe.status === 0 ? ["--test-isolation=none"] : [];
 const testEnv = { ...process.env };

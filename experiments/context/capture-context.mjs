@@ -1,16 +1,3 @@
-/**
- * Composed-request capture (PR D). Drives the REAL extension handlers over a
- * fixture and returns the complete model-facing request parts:
- *
- *   baseSystem       — the host system prompt before extension injection
- *   extensionSystem  — what before_agent_start appends
- *   messages         — the provider message list AFTER the context hook
- *   tools            — registered goal tools (name + description + schema)
- *
- * Pure in-process function calls over fixture data: no network, no child
- * agent, no live model.
- */
-
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -23,13 +10,8 @@ import { FIXTURES, userMessage, v2CheckpointMessage, assistantMessage } from "./
 import { serializeGoalFile } from "../../extensions/storage/goal-files.ts";
 import { GOAL_LEDGER_FILE } from "../../extensions/goal-ledger.ts";
 
-// One directory per process, removed on exit: with a fixed path, two runs at
-// the same time deleted each other's fixtures.
 export const CAPTURE_CWD = fs.mkdtempSync(path.join(os.tmpdir(), "goal-context-capture-"));
 process.on("exit", () => fs.rmSync(CAPTURE_CWD, { recursive: true, force: true }));
-// The capture depends only on the checked-out code, not on who runs it: a
-// delegated Pi session marks its children and the extension then registers no
-// goal handlers, and goal defaults saved for all projects change the request.
 delete process.env.PI_SUBAGENT_CHILD;
 delete process.env.PI_SUBAGENT_DEPTH;
 process.env.PI_GOAL_GLOBAL_SETTINGS_FILE = path.join(CAPTURE_CWD, "no-global-settings.json");
@@ -38,7 +20,7 @@ const HOST_TOOLS = createCodingTools(CAPTURE_CWD);
 const ALL_HOST_TOOLS = [...HOST_TOOLS, ...createReadOnlyTools(CAPTURE_CWD)];
 export function sdkSystem(definitions, customPrompt) {
  const raw = buildSystemPrompt({ customPrompt, cwd: "/fixture", skills: [], contextFiles: [], selectedTools: definitions.map(t => t.name), toolSnippets: Object.fromEntries(definitions.map(t => [t.name, t.promptSnippet ?? ""])), promptGuidelines: definitions.flatMap(t => t.promptGuidelines ?? []) });
- // SDK installation location is not extension overhead and differs in CI.
+ // external: the SDK installation path differs between environments.
  return raw.replaceAll(fs.realpathSync(new URL("../../node_modules/@earendil-works/pi-coding-agent", import.meta.url)), "/sdk");
 }
 const BASE_SYSTEM = sdkSystem(HOST_TOOLS);
@@ -111,7 +93,6 @@ function createCapture() {
  };
 }
 
-/** Materialize goal files, focus entry, and ledger events for a scenario. */
 function materializeState(scenario) {
 	fs.rmSync(CAPTURE_CWD, { recursive: true, force: true });
 	fs.mkdirSync(path.join(CAPTURE_CWD, ".pi", "goals", "archived"), { recursive: true });
@@ -145,7 +126,6 @@ function materializeState(scenario) {
 	return entries;
 }
 
-/** Deterministic default conversation for active-goal fixtures. */
 function baseConversation(goal) {
 	const messages = [userMessage("Begin working on the goal.")];
 	for (let i = 1; i <= 3; i += 1) {

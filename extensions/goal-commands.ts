@@ -42,10 +42,7 @@ export interface GoalRefreshState {
 	settings: string;
 }
 
-/**
- * Pure diff of a goal-refresh cycle (before invalidation vs after re-read).
- * Unit-testable without the command harness; the command renders the changes.
- */
+/** Compare goal state before and after refresh. */
 export function diffGoalRefreshState(before: GoalRefreshState, after: GoalRefreshState): string[] {
 	const changes: string[] = [];
 	const beforeIds = new Set(before.poolIds);
@@ -76,11 +73,7 @@ import {
 } from "./auditor-selector.ts";
 import type { GoalCore } from "./goal-state.ts";
 
-/**
- * The curated twelve-command palette. /goal and /sisyphus begin guided
- * drafting; -direct commands are the explicit bypass. Every frequent lifecycle action is independently
- * registered so it appears in slash-command tab completion. No aliases.
- */
+/** Registered goal commands. */
 export function registerGoalCommands(core: GoalCore): void {
 	const { pi } = core;
 
@@ -215,9 +208,6 @@ export function registerGoalCommands(core: GoalCore): void {
 			}
 			return;
 		}
-		// Issue #30: surface persisted-checkpoint health for this session file
-		// (read-only). Legacy full checkpoints are repairable offline with the
-		// shipped pi-goal-x-recover CLI; this command never writes.
 		const sessionFile = (ctx.sessionManager as { getSessionFile?: () => string | undefined } | undefined)?.getSessionFile?.();
 		const checkpointHealth = sessionFile ? readSessionCheckpointHealth(sessionFile) : null;
 		const checkpointSection = checkpointHealth && checkpointHealth.total > 0
@@ -230,14 +220,8 @@ export function registerGoalCommands(core: GoalCore): void {
 	}
 
 	async function runGoalRefresh(ctx: ExtensionContext): Promise<void> {
-		// Pre-state snapshots are cache-served (0 fs ops); the re-reads after
-		// invalidation go cold. This is the explicit user-owned path for picking
-		// up external edits — no watchers, no per-turn polling.
 		const beforePool = readActiveGoalPool(ctx);
 		const beforeLedger = readGoalLedger(ctx);
-		// Settings: the before fingerprint is cache-served; the after one is a
-		// cold re-read after invalidation — so an external settings edit shows
-		// up as a fingerprint difference.
 		const beforeSettings = settingsFingerprint(ctx);
 
 		invalidateGoalPoolCache();
@@ -267,7 +251,6 @@ export function registerGoalCommands(core: GoalCore): void {
 		core.updateUI(ctx);
 	}
 
-	/** Stable fingerprint of the effective settings (cache-served before invalidation). */
 	function settingsFingerprint(ctx: ExtensionContext): string {
 		return JSON.stringify(loadGoalSettingsFileConfig(ctx.cwd));
 	}
@@ -293,15 +276,12 @@ export function registerGoalCommands(core: GoalCore): void {
 			activeFilePresent: health && view?.activePath
 				? existsSync(goalStoragePath(ctx, view.activePath))
 				: undefined,
-			// Issue #30: checkpoint growth report (health view only, read-only).
 			checkpointHealth: health
 				? readSessionCheckpointHealth(
 					(ctx.sessionManager as { getSessionFile?: () => string | undefined } | undefined)?.getSessionFile?.() ?? "",
 				)
 				: null,
 			checkpointSessionFile: (ctx.sessionManager as { getSessionFile?: () => string | undefined } | undefined)?.getSessionFile?.(),
-			// §13.2: effective settings with provenance appear only in verbose mode;
-			// the standard mode stays free of settings noise (§13.1).
 			settingsReport: verbose ? [...effectiveSettingsReport(ctx.cwd), `effective goal pool: ${goalStorageRoot(ctx)}`] : [],
 		});
 		ctx.ui.notify(text, "info");
@@ -342,19 +322,11 @@ export function registerGoalCommands(core: GoalCore): void {
 		ctx.ui.notify(result.message, result.ok ? "info" : "warning");
 	}
 
-	/**
-	 * One declarative row table for the settings menu (follow-up Stage 1).
-	 * Rendering and dispatch both derive from SETTING_ROWS so the displayed
-	 * fields and the selectable fields can never drift apart. Rows are grouped
-	 * into sections (Goal behavior / Task tracking / Completion auditor). All
-	 * eight persisted fields are present and operable.
-	 */
 	type SettingRow = {
 		key: keyof GoalSettings | string;
 		label: string;
 		section: "Goal behavior" | "Task tracking" | "Completion auditor" | "Blocker Oracle";
 		kind: "boolean" | "modelSelector" | "thinking" | "positiveInteger";
-		/** Settings path for the mutation (defaults to [key]). */
 		path?: string[];
 	};
 
@@ -374,8 +346,6 @@ export function registerGoalCommands(core: GoalCore): void {
 		{ key: "provider", label: "provider", section: "Completion auditor", kind: "modelSelector" },
 		{ key: "model", label: "model", section: "Completion auditor", kind: "modelSelector" },
 		{ key: "thinkingLevel", label: "thinking_level", section: "Completion auditor", kind: "thinking" },
-		// Issue #26: opt-in blocker Oracle. Disabled by default; provider/model
-		// must BOTH be set explicitly — the executor model is never used silently.
 		{ key: "oracleEnabled", label: "oracle enabled", section: "Blocker Oracle", kind: "boolean", path: ["oracle", "enabled"] },
 		{ key: "oracleProviderModel", label: "oracle provider/model", section: "Blocker Oracle", kind: "modelSelector", path: ["oracle"] },
 		{ key: "oracleThinkingLevel", label: "oracle thinking_level", section: "Blocker Oracle", kind: "thinking", path: ["oracle", "thinkingLevel"] },
@@ -402,7 +372,6 @@ export function registerGoalCommands(core: GoalCore): void {
 
 	async function handleSettingsMenu(ctx: ExtensionContext): Promise<void> {
 		if (!ctx.hasUI) {
-			// Headless: read-only report of both layer paths.
 			ctx.ui.notify(
 				`Settings — project file: ${goalSettingsPath(ctx.cwd)}\nGlobal file: ${goalGlobalSettingsPath()}`,
 				"info",
@@ -410,19 +379,11 @@ export function registerGoalCommands(core: GoalCore): void {
 			return;
 		}
 
-		/**
-		 * After any mutation: reinstall the fixed three/five tool profile when
-		 * the effective disableTasks value changed since the last install, and
-		 * refresh the UI. This is the central settings side-effect hook — no
-		 * ad hoc per-row refresh code.
-		 */
 		const applyEffectiveSettings = (): void => {
 			const tasksEnabledNow = !loadGoalSettings(ctx.cwd).disableTasks;
 			if (tasksEnabledNow !== core.tasksEnabled) {
 				core.installGoalToolProfile(tasksEnabledNow);
 			}
-			// PR #29: settings changes must be visible immediately — the banner
-			// hide/restore happens through this coalesced UI refresh.
 			core.updateUI(ctx);
 		};
 
@@ -476,7 +437,6 @@ export function registerGoalCommands(core: GoalCore): void {
 					else source = "(default)";
 					const hasLocalOverride = valueAtPath(localLayer, rowPath) !== undefined;
 					if (hasLocalOverride && provenance?.source === scope) source = `(${scope} override)`;
-					// Nested rows render their leaf value directly.
 					const displayValue = row.path
 						? String(valueAtPath(snapshot.value, rowPath) ?? "(default)")
 						: settingsValue(snapshot.value, row.key);
@@ -485,7 +445,7 @@ export function registerGoalCommands(core: GoalCore): void {
 				options.push("Done");
 				const selected = await ctx.ui.select("Goal settings", options);
 				if (!selected || selected === "Done") break;
-				if (selected.startsWith("───")) continue; // headers are not rows
+				if (selected.startsWith("───")) continue;
 				const trimmed = selected.trim();
 				if (trimmed.startsWith("Scope:")) {
 					scope = scope === "project" ? "global" : "project";
@@ -501,8 +461,6 @@ export function registerGoalCommands(core: GoalCore): void {
 					ctx.ui.notify(`${row.label} is read-only: overridden by the ${envVarForRow2} env var.`, "warning");
 					continue;
 				}
-				// Per-row settings path (flat keys default to [key]; nested Blocker
-				// Oracle rows carry explicit paths).
 				const rowPath = row.path ?? [String(row.key)];
 				const pathKeyStr = rowPath.join(".");
 				const localValueAtPath = (() => {
@@ -551,14 +509,11 @@ export function registerGoalCommands(core: GoalCore): void {
 					}
 					const input = await ctx.ui.input(`Set ${row.label}`, String(snapshot.provenance.get(pathKeyStr)?.value ?? min));
 					if (input === undefined) continue;
-					// Full-string decimal validation: rejects 1.5, 1x, negatives,
-					// infinity, and unsafe integers alike.
 					const value = input.trim();
 					if (!/^[0-9]+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < min) {
 						ctx.ui.notify(`${row.label} must be an integer >= ${min} (e.g. ${min}, ${min + 1}, ${min + 2})`, "warning");
 						continue;
 					}
-					// Oracle attempt cap is bounded at 3 by the settings parser.
 					if (row.path?.[0] === "oracle" && Number(value) > 3) {
 						ctx.ui.notify(`${row.label} must be an integer between 1 and 3`, "warning");
 						continue;
@@ -585,9 +540,6 @@ export function registerGoalCommands(core: GoalCore): void {
 					continue;
 				}
 
-				// modelSelector rows (provider, model): searchable model picker with
-				// explicit inherit/default handling. Auditor rows apply provider+model
-				// at the flat paths; the Oracle row writes oracle.provider/oracle.model.
 				const oraclePair = row.path?.[0] === "oracle";
 				const pairPrefix = oraclePair ? ["oracle"] : [];
 				const configuredBase = oraclePair
@@ -643,11 +595,8 @@ export function registerGoalCommands(core: GoalCore): void {
 			ctx.ui.notify(clearGoalCommandMessage({ archived: false }), "warning");
 			return;
 		}
-		// Snapshot the selected goal id and focus revision before asking.
 		const target = core.state.goal;
 		const focusToken = core.focusedOperationToken(target.id);
-		// Headless behavior is explicit: guidance without mutation. Clearing
-		// requires an interactive confirmation (follow-up Stage 2).
 		if (!ctx.hasUI) {
 			ctx.ui.notify(`Run /goal-clear in an interactive session to confirm clearing: ${oneLineSummary(target)}`, "warning");
 			return;
@@ -657,9 +606,6 @@ export function registerGoalCommands(core: GoalCore): void {
 			ctx.ui.notify("Goal clear cancelled.", "info");
 			return;
 		}
-		// Reconcile and validate the same focus token after confirmation, then
-		// archive. Cancellation above changes no file, focus entry, ledger
-		// entry, or runtime state.
 		core.reconcileFocusedGoalFromDisk(ctx);
 		if (!core.isFocusedOperationCurrent(focusToken) || !core.state.goal || core.state.goal.id !== target.id) {
 			ctx.ui.notify("Goal changed while confirming; nothing was cleared.", "warning");
@@ -704,7 +650,6 @@ export function registerGoalCommands(core: GoalCore): void {
 		await startGoalDrafting(core, ctx, "tweak", trimmed, currentGoal);
 	}
 
-	// /goal and /sisyphus are the guided default. -direct commands are the explicit bypass.
 	pi.registerCommand("goal", {
 		description: "Draft a regular goal with clarification, task planning, and confirmation.",
 		handler: async (rawArgs, ctx) => {

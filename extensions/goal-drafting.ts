@@ -44,7 +44,6 @@ export interface ActiveGoalDraft {
 	targetGoalId?: string;
 	startedAt: string;
 	auditorEnabled: boolean;
-	/** E5: formatted questionnaire Q&A to echo in the created-goal report. */
 	questionnaireEcho?: string;
 }
 
@@ -64,7 +63,6 @@ export function clearGoalDrafting(core: GoalCore, ctx: ExtensionContext): void {
 	if (!activeDrafts.has(core)) return;
 	const existing = activeDrafts.get(core)!;
 	activeDrafts.delete(core);
-	// Tombstone the durable entry: the last entry wins on rehydration.
 	draftSessionEntry(core, { version: 1, mode: existing.mode, seed: existing.originalTopic, targetGoalId: existing.targetGoalId, startedAt: existing.startedAt, auditorEnabled: existing.auditorEnabled, clearedAt: nowIso() });
 	core.installGoalToolProfile(core.tasksEnabled);
 	void ctx;
@@ -76,8 +74,6 @@ export function clearGoalDrafting(core: GoalCore, ctx: ExtensionContext): void {
  * target still matches the focused goal; stale tweak drafts are tombstoned.
  */
 export function rehydrateDraft(core: GoalCore, ctx: ExtensionContext): void {
-	// Validate any live memory draft against the reloaded world first: a tweak
-	// draft whose target is no longer focused is stale and must not survive.
 	if (activeDraft(core)) {
 		const live = activeDraft(core)!;
 		if (live.mode === "tweak") {
@@ -103,15 +99,12 @@ export function rehydrateDraft(core: GoalCore, ctx: ExtensionContext): void {
 		session = null;
 	}
 	if (!session || session.version !== DRAFT_ENTRY_VERSION || session.clearedAt) {
-		// No durable draft: make sure a previous drafting profile is not left
-		// installed (e.g. after a stale entry or an interrupted session).
 		core.installGoalToolProfile(core.tasksEnabled);
 		return;
 	}
 	if (session.mode === "tweak") {
 		core.reconcileFocusedGoalFromDisk(ctx);
 		if (!core.state.goal || core.state.goal.id !== session.targetGoalId) {
-			// The tweak target is gone or no longer focused — the draft is stale.
 			draftSessionEntry(core, { ...session, clearedAt: nowIso() });
 			ctx.ui.notify("The goal tweak draft is stale (its target goal changed); it was discarded.", "warning");
 			core.installGoalToolProfile(core.tasksEnabled);
@@ -139,11 +132,10 @@ async function awaitDraftChoice(core: GoalCore, ctx: ExtensionContext, label: st
 export async function startGoalDrafting(core: GoalCore, ctx: ExtensionContext, mode: GoalDraftMode, topic: string, targetGoal?: GoalRecord): Promise<void> {
 	const trimmed = topic.trim();
 	const label = mode === "sisyphus" ? "Sisyphus draft" : mode === "tweak" ? "Goal tweak draft" : "Goal draft";
-	// A second draft must never silently discard the first.
 	if (activeDraft(core)) {
 		const choice = ctx.hasUI
 			? await awaitDraftChoice(core, ctx, label)
-			: "replace"; // headless: explicit new intent wins, but not silently (notified)
+			: "replace";
 		if (choice === "resume") {
 			ctx.ui.notify("A draft is already active; resuming it. Use /goal-cancel to discard it.", "info");
 			return;
@@ -156,11 +148,6 @@ export async function startGoalDrafting(core: GoalCore, ctx: ExtensionContext, m
 		clearGoalDrafting(core, ctx);
 	}
 	const startedAt = nowIso();
-	// §tweak-persist: a tweak confirmation defaults to the target goal's
-	// persisted per-goal auditor setting (skipAuditor); the global `auditor
-	// disabled` setting is only the fallback when the goal has no per-goal
-	// value. Confirming a tweak must never silently re-enable or disable the
-	// auditor the user chose when the goal was created.
 	const auditorEnabled = mode === "tweak"
 		? !(targetGoal?.skipAuditor ?? loadGoalSettings(ctx.cwd).disabled)
 		: !loadGoalSettings(ctx.cwd).disabled;
@@ -199,26 +186,14 @@ export function proposalText(draft: ActiveGoalDraft, objective: string, autoCont
 	const base = draft.mode === "tweak" && current
 		? buildTweakConfirmationText({ currentObjective: current.objective, newObjective: objective, changeSummary: draft.originalTopic || "Goal revised through guided drafting.", sisyphus: current.sisyphus, tasks: taskList?.tasks })
 		: buildDraftConfirmationText({ focus: draft.mode === "sisyphus" ? "sisyphus" : "goal", originalTopic: draft.originalTopic, objective, autoContinue });
-	// The task list is always shown exactly once in a proposal: explicitly
-	// proposed tasks, or (new drafts) tasks derived from the RAW objective, or
-	// (tweaks) the current goal's list when it is retained unchanged. Deriving
-	// from the boxed base text would never match: formatPrefixedLines prefixes
-	// every objective line with "│   " so checklist/ordered markers are hidden.
 	let tasksText = "";
 	if (draft.mode === "tweak") {
-		// buildTweakConfirmationText already renders explicit tasks exactly once
-		// inside its ┌─ TASKS ─┐ box; never append a second render. When no
-		// explicit list is proposed the current list is retained on apply
-		// (taskResult.value ?? goal.taskList), so preview it for confirmation.
 		if (!taskList && current?.taskList && current.taskList.tasks.length > 0) {
 			tasksText = "\n\nCurrent task list (retained unchanged):\n" + renderConfirmationTasks(current.taskList.tasks, 0).join("\n");
 		}
 	} else if (taskList && taskList.tasks.length > 0) {
 		tasksText = "\n\nTasks proposed for confirmation:\n" + renderConfirmationTasks(taskList.tasks, 0).join("\n");
 	} else {
-		// §single-task-set: the derived preview must derive from the SAME
-		// objective text the apply path persists (extracted — the Verification
-		// contract line removed), so shown == persisted.
 		const derived = deriveTasksFromObjective(extractVerificationContract(objective).objective);
 		if (derived && derived.length > 0) {
 			tasksText = "\n\nTasks derived from the objective (confirm or ask the agent to adjust):\n" + renderConfirmationTasks(derived, 0).join("\n");
@@ -237,7 +212,6 @@ function flatTaskSchema() {
 	}), { description: "Flat parent-linked task tree to confirm with the goal." });
 }
 
-/** An actual drafting failure. Cancellation, decline, refinement and focus loss are not failures and keep plain results. */
 function draftingFailure(core: GoalCore, text: string) {
 	return { content: [{ type: "text" as const, text }], details: goalDetails(core.state.goal), isError: true as const };
 }
@@ -295,7 +269,7 @@ export function registerDraftingTools(core: GoalCore): void {
 				const result = await runGoalQuestionnaire(ctx, questions);
 				if (!result.cancelled) {
 					const active = activeDraft(core);
-					if (active) active.questionnaireEcho = formatQuestionnaireAnswers(result); // E5
+					if (active) active.questionnaireEcho = formatQuestionnaireAnswers(result);
 				}
 				if (result.unavailable === true) return draftingFailure(core, `${DIALOG_UNAVAILABLE_HINT} Ask the questions in chat instead.`);
 				return { content: [{ type: "text", text: result.cancelled ? "The user cancelled the questionnaire. Continue drafting conversationally." : formatQuestionnaireAnswers(result) }], details: goalDetails(core.state.goal) };
@@ -376,9 +350,6 @@ export function registerDraftingTools(core: GoalCore): void {
 			}
 			const settings = loadGoalSettings(ctx.cwd);
 			const extracted = settings.disableContracts ? { objective, verificationContract: undefined } : extractVerificationContract(objective);
-			// §14: the durable proposal summary is part of the transcript for
-			// EVERY outcome (confirm / continue refining / cancel), so the user
-			// can review the proposal after the dialog closes.
 			const summary = budgetSummary + "\n" + runsSummary + "\n\n" + buildProposalSummary({
 				objective: extracted.objective,
 				taskList: taskResult.value,
@@ -394,8 +365,6 @@ export function registerDraftingTools(core: GoalCore): void {
 				return draftingFailure(core, `${summary}\n\n${DIALOG_UNAVAILABLE_HINT} The goal was NOT created and drafting remains active; do not retry the dialog until the host supports it or the user explicitly restarts with PI_GOAL_AUTO_CONFIRM=1.`);
 			}
 			if (confirmation.decision !== "confirm") {
-				// Continue refining: preserve the user's auditor choice for the
-				// next proposal (memory and the durable session entry).
 				if (confirmation.auditorEnabled !== draft.auditorEnabled) {
 					const next = { ...draft, auditorEnabled: confirmation.auditorEnabled };
 					activeDrafts.set(core, next);
@@ -404,12 +373,8 @@ export function registerDraftingTools(core: GoalCore): void {
 				return { content: [{ type: "text", text: `${summary}\n\nGoal draft refinement requested. The goal was not changed; ask what the user wants revised before proposing again.` }], details: goalDetails(core.state.goal) };
 			}
 			const skipAuditor = confirmation.auditorEnabled === false;
-			// §14: capture the questionnaire answers BEFORE clearing draft state so
-			// the confirmed-goal report can include them reliably (E5).
 			const qaEcho = draft.questionnaireEcho;
 			if (draft.mode !== "tweak") {
-				// F2: if the confirmation carried no task plan but the objective has
-				// structure, bootstrap the derived tree so the goal starts trackable.
 				const effectiveTaskList: GoalTaskList | undefined = taskResult.value ?? (() => {
 					const derived = deriveTasksFromObjective(extracted.objective);
 					return derived && derived.length > 0 ? { tasks: derived, blockCompletion: false, proposedAt: nowIso() } : undefined;
@@ -434,21 +399,10 @@ export function registerDraftingTools(core: GoalCore): void {
 			const finalFlushError = core.goalService.flushForAudit(ctx);
 			core.reconcileFocusedGoalFromDisk(ctx);
 			const changedDuringConfirmation = "Goal tweak was not applied: the goal changed during confirmation. Review and propose again.";
-			// Focus loss is a cancellation (nothing applied, not an error); a flush failure or a concurrent revision is a failure.
 			const flushFailed = finalFlushError || core.goalService.isTurnBuffered();
 			if (!flushFailed && !core.isFocusedOperationCurrent(token)) return {content: [{type: "text", text: changedDuringConfirmation}], details: goalDetails(core.state.goal)};
 			if (flushFailed || core.state.goal?.revision !== proposalRevision || core.state.goal?.status === "complete") return draftingFailure(core, changedDuringConfirmation);
 			const now = nowIso();
-			// §7.5 merge: a goal tweak must never change the status of steps that
-			// persist across the tweak. The proposed list merges into the goal's
-			// existing tree by id (same semantics as set_goal_tasks): surviving ids
-			// keep status/evidence/completedAt/skippedAt/skipReason, new ids start
-			// pending, removed ids drop. currentTaskId survives only while its task
-			// is still pending in the merged tree.
-			// §tweak-resume: a confirmed tweak is a deliberate revision of a
-			// stalled goal — set when the goal actually transitions out of
-			// paused/blocked so the post-apply glue can resume accounting,
-			// continuation, and the ledger event.
 			let resumed = false;
 			const result = core.goalService.apply(ctx, {
 				reconcile: false, focusToken: token, refreshFromDisk: true,
@@ -461,10 +415,6 @@ export function registerDraftingTools(core: GoalCore): void {
 					const currentTaskId = mergedTaskList && goal.currentTaskId && !currentTaskIdIsPending(mergedTaskList.tasks, goal.currentTaskId)
 						? undefined
 						: goal.currentTaskId;
-					// §tweak-resume: resume a paused/blocked goal (mirror the
-					// /goal-resume transition: status active + pause metadata
-					// cleared). A budget-limited goal needs an explicit budget
-					// change that clears the resource gate; preserve scheduler limits.
 					const exhausted = budgetReached({...goal, tokenBudget: proposedBudget});
 					const wantsResume = goal.status === "paused" || goal.status === "blocked" || (goal.status === "budget_limited" && params.token_budget !== undefined && !exhausted);
 					const scheduler = goal.scheduler;
@@ -496,7 +446,6 @@ export function registerDraftingTools(core: GoalCore): void {
 				try {
 					core.goalService.appendEvents(ctx, [{ type: "goal_resumed", goalId: result.goal.id, reason: "tweak", at: nowIso() }]);
 				} catch {
-					// Ledger append failure should not crash the tweak.
 				}
 			}
 			core.clearContinuationState();
@@ -505,8 +454,6 @@ export function registerDraftingTools(core: GoalCore): void {
 			core.updateUI(ctx);
 			let schedulingNote = "";
 			if (resumed) {
-				// Resume glue mirrors replaceGoal: restart accounting and queue
-				// the auto-continuation so the revived goal keeps going.
 				core.beginAccounting();
 				const scheduling = core.scheduler.declare(ctx, {kind: "ready"});
 				if (!scheduling.terminate) schedulingNote = "\n" + scheduling.content.filter(item => item.type === "text").map(item => item.text).join("\n");
@@ -516,22 +463,10 @@ export function registerDraftingTools(core: GoalCore): void {
 			return { content: [{ type: "text", text: `${summary}\n\nGoal tweak confirmed and applied.\n${formatGoalBudget(result.goal.tokenBudget)}${schedulingNote}${result.goal.status === "budget_limited" ? "\nConsumed tokens already meet this budget; the goal remains budget-limited." : result.goal.status === "paused" ? "\nGoal remains paused. Use /goal-resume to continue when scheduling permits." : ""}` }], details: goalDetails(result.goal), terminate: true };
 		},
 		renderCall(args, theme) {
-			// §proposal-presentation: the tool-call display lands in the terminal
-			// buffer the moment the tool call starts — BEFORE the confirmation
-			// dialog opens — so it is the scrollable "complete presentation" of
-			// the goal. It must show the full objective contract AND every task
-			// line; the dialog frame alone cannot (its churn-guard bound keeps
-			// it within the terminal height). The user can scroll up and read
-			// everything while the dialog is open ("the user can just scroll").
+			// external: Pi displays a tool call before its confirmation dialog opens.
 			const objective = String(args?.objective ?? "");
 			let text = theme.fg("toolTitle", "propose_goal_draft ") + theme.fg("muted", objective);
 			const flatTasks = Array.isArray(args?.tasks) ? (args.tasks as FlatTaskInput[]) : [];
-			// §single-task-set: a proposal shows exactly ONE task set — the set
-			// that will actually be persisted. Explicit tasks are that set; a
-			// tweak without explicit tasks retains the current list (mirror
-			// proposalText — never a derived-from-objective phantom); a new
-			// draft without explicit tasks shows the F2-derived preview derived
-			// from the SAME objective text the apply path persists (extracted).
 			let taskBlock: { header: string; lines: string[] } | null = null;
 			if (flatTasks.length > 0) {
 				taskBlock = { header: "Tasks proposed for confirmation:", lines: flatTasks.map((t) => `[ ] ${t.id}: ${t.title}`) };

@@ -1,18 +1,8 @@
-/**
- * Issue #30 — checkpoint health diagnostics for existing session files.
- *
- * Read-only inspection of a session JSONL's persisted continuation
- * checkpoints. Pre-fix sessions accumulated one FULL continuation prompt per
- * auto-continue turn (~6.4K chars each); v2 checkpoints are bounded markers.
- * The report quantifies what an offline repair with pi-goal-x-recover would
- * save. This module never writes anything.
- */
 
 import * as fs from "node:fs";
 import { GOAL_EVENT_ENTRY } from "./goal-format.ts";
 import { asRecord } from "./goal-record.ts";
 
-/** Exact shape written by checkpointTriggerPrompt() (v2 markers only). */
 const V2_MARKER_PATTERN =
 	/^<pi_goal_continuation\s+goal_id="[^"]+"\s+kind="checkpoint"\s+v="2"\s*\/>$/;
 
@@ -91,10 +81,9 @@ export function readSessionCheckpointHealth(sessionFile: string): CheckpointHeal
 		return null;
 	}
  const health = emptyHealth();
- // Parse and discard one entry at a time; do not retain the whole session object graph.
  for (const rawLine of raw.split("\n")) {
   const line = rawLine.trim();
-  if (line) try { accumulateCheckpointHealth(health, JSON.parse(line)); } catch { /* tolerate malformed lines */ }
+  if (line) try { accumulateCheckpointHealth(health, JSON.parse(line)); } catch { }
  }
  return health;
 }

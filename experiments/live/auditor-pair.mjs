@@ -1,4 +1,3 @@
-/** Opt-in, artifact-graded auditor comparison carrying the ORIGINAL campaign allowance forward. */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

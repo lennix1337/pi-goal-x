@@ -1,4 +1,3 @@
-/** Offline retention cost/space gate: no provider requests or agent runs. */
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import { LiveTailRetention } from '../../extensions/goal-live-retention.ts';
@@ -22,7 +21,6 @@ for (const shape of ['text', 'tool-output', 'image']) for (const bytes of [64 * 
   if(i>=5) {serialize.push(plain);retained.push(elapsed);}
  }
  const baselineMs=median(serialize), retentionMs=median(retained);
- // Existing project's absolute 10ms allowance protects the noise floor.
  assert.ok(retentionMs<=Math.max(baselineMs*1.5,baselineMs+10), `retention CPU regression: ${bytes} bytes, ${retentionMs}ms`);
  rows.push({shape,historyBytes:bytes,serializationMedianMs:+baselineMs.toFixed(3),retentionMedianMs:+retentionMs.toFixed(3)});
 }

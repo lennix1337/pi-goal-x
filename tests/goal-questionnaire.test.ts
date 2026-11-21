@@ -77,9 +77,6 @@ test("headless question sufficiency blocks vague-topic default fabrication", () 
 	}), true);
 });
 
-// Realistic repro content from the reported bug: the agent asked "via uv too?"
-// while the goal panel + chat frame (19 lines) left only 10 dialog rows on a
-// 24-row terminal; the option labels wrap over multiple lines.
 const REPRO_QUESTION_TEXT = "via uv too?";
 const REPRO_OPTION_LABELS = [
 	"Dev toolchain only (recommended): pyproject.toml with [tool.uv] package=false, [dependency-groups] dev (pytest, pytest-benchmark), pytest config moved in; committed uv.lock; `uv sync` + `uv run pytest benchmarks/`; requirements-dev.txt and pytest.ini removed; runtime/zipapp/battery stay stdlib-only and uv-free",
@@ -88,11 +85,6 @@ const REPRO_OPTION_LABELS = [
 	"Write your own answer...",
 ];
 
-/**
- * Open a single-question goal_question dialog against a TUI that exposes
- * terminal.rows and previousLines (pi's regular-renderer frame cache), so the
- * terminal-height churn guard actually engages, and return the rendered lines.
- */
 function renderGoalQuestionDialog(args: { rows: number; baseFrameLines: number }, width = 100): string[] {
 	const ctx = createMockExtensionContext();
 	void runGoalQuestionnaire(ctx, [{
@@ -114,19 +106,11 @@ function renderGoalQuestionDialog(args: { rows: number; baseFrameLines: number }
 }
 
 test("regression: agent question stays readable when the goal panel leaves little room (rows=24, baseFrame=19)", () => {
-	// Reported repro: a goal_question dialog opened while the pi-goal-x goal
-	// panel + chat frame consumed 19 rows of a 24-row terminal. The churn guard
-	// bounds the dialog to 10 lines and tail-slices it — which dropped the top
-	// border AND the question text, leaving only option fragments + footer.
 	const lines = renderGoalQuestionDialog({ rows: 24, baseFrameLines: 19 });
 	assert.ok(lines.length <= 10, "dialog stays within the terminal-height bound");
 	assert.match(lines[0]!, /^─+$/, "top border must be visible");
 	assert.ok(lines.some((l) => l.includes(REPRO_QUESTION_TEXT)), "question text must be visible");
 	assert.ok(lines.some((l) => l.includes("Dev toolchain only")), "recommended first option must be visible");
-	// §options-scroll: when content is clipped the reserved bottom edge is the
-	// scroll indicator ("… +N more · PgUp/PgDn scroll") — the border is
-	// reachable by scrolling to the end. The indicator, not a silent slice,
-	// tells the user the remaining options exist.
 	const last = lines[lines.length - 1]!;
 	assert.ok(
 		/^─+$/.test(last) || last.includes("more · PgUp/PgDn scroll"),
@@ -134,11 +118,6 @@ test("regression: agent question stays readable when the goal panel leaves littl
 	);
 });
 
-// Proposal confirmation repro: the goal confirmation dialog (showProposalDialog)
-// renders the full draft — objective box + "Tasks proposed for confirmation:" +
-// task lines + auditor line — as question context. The draft text is built with
-// the real production helpers (buildDraftConfirmationText + renderConfirmationTasks)
-// exactly as proposalText() does for a new draft.
 const PROPOSAL_TOPIC = "Goal draft is not presenting tasks";
 const PROPOSAL_OBJECTIVE = [
 	"=== Goal ===",
@@ -149,9 +128,6 @@ const PROPOSAL_OBJECTIVE = [
 	"Verification contract: npm run check (0 errors); npm test (0 failures).",
 	"If blocked: stop and ask the user.",
 ].join("\n");
-// Two tasks: at rows=24/baseFrame=19 the churn guard allows exactly 10 dialog
-// lines — head (2) + tasks header + every task line + options + footer + border
-// must all stay in-frame; a longer list still relies on scrollback completeness.
 const PROPOSAL_TASKS: GoalTask[] = [
 	{ id: "task-1", title: "Add the failing render-level regression test", status: "pending" },
 	{ id: "task-2", title: "Add the failing flow-level regression test", status: "pending" },
@@ -171,10 +147,6 @@ function buildProposalConfirmationContext(tasks: readonly GoalTask[], auditorEna
 	return base + tasksText + auditorLine;
 }
 
-/**
- * Open the goal confirmation dialog (showProposalDialog shape: single confirm
- * question with the full draft as context) and return the rendered lines.
- */
 function renderProposalDialog(args: { rows: number; baseFrameLines: number }, width = 100): string[] {
 	const ctx = createMockExtensionContext();
 	void runGoalQuestionnaire(ctx, [{
@@ -198,15 +170,6 @@ function renderProposalDialog(args: { rows: number; baseFrameLines: number }, wi
 }
 
 test("regression: the goal confirmation dialog presents the tasks and the auditor toggle (rows=24, baseFrame=19)", () => {
-	// Reported repro: the goal draft was not presenting tasks. The proposal
-	// confirmation dialog renders the full draft (objective box + "Tasks
-	// proposed for confirmation:" + task lines) as context; the churn guard
-	// bounds the dialog to 10 lines and the tail-keep slice dropped the entire
-	// tasks section — the user was asked to confirm without ever seeing the plan.
-	// The auditor toggle line must stay in frame too: it is the only in-dialog
-	// status feedback for the auditor on/off state (the proposal text line is
-	// not interactive). Task lines beyond the bound remain in the scrollback
-	// presentation.
 	const lines = renderProposalDialog({ rows: 24, baseFrameLines: 19 });
 	assert.ok(lines.length <= 10, "dialog stays within the terminal-height bound");
 	assert.match(lines[0]!, /^─+$/, "top border must be visible");
@@ -227,25 +190,18 @@ test("regression: the goal confirmation dialog presents the tasks and the audito
 
 test("fitDialogLines keeps the protected head and never exceeds the bound", () => {
 	const lines = ["─", "Q", "", "ctx1", "ctx2", "", "1. A", "2. B", "", "footer", "─"];
-	// Under the limit: unchanged.
 	assert.deepEqual(fitDialogLines(lines, 20, 3), lines);
-	// Tiny bound: the head alone fits (question stays visible).
 	assert.deepEqual(fitDialogLines(["─", "Q", "", "1. A", "footer", "─"], 2, 2), ["─", "Q"]);
 });
 
 test("fitDialogLines tail-keeps context-heavy dialogs so options/footer/border stay", () => {
 	const lines = ["─", "Confirm", "", "ctx1", "ctx2", "", "1. A", "2. B", "", "footer", "─"];
-	// Context dialog (options at the end): head + tail, middle context sliced —
-	// the actionable options, footer, and bottom border remain visible.
 	assert.deepEqual(fitDialogLines(lines, 6, 3), ["─", "Confirm", "", "", "footer", "─"]);
 	assert.deepEqual(fitDialogLines(lines, 8, 3), ["─", "Confirm", "", "1. A", "2. B", "", "footer", "─"]);
 });
 
 test("fitDialogLines viewport: full content stays reachable, nothing truncated or dropped", () => {
 	const lines = ["─", "Q", "", "1. first", "2. second", "3. third", "", "footer", "─"];
-	// Bound 6: content window 5 + reserved bottom edge. The top options stay
-	// visible (recommended/first option never hidden) and the clipped rest is
-	// advertised with a scroll hint instead of being silently dropped.
 	const scroll: DialogScrollState = { scrollTop: 0, needsFollow: false, optionRanges: [], followIndex: 0 };
 	assert.deepEqual(fitDialogLines(lines, 6, 3, null, scroll), [
 		"─",
@@ -255,7 +211,6 @@ test("fitDialogLines viewport: full content stays reachable, nothing truncated o
 		"2. second",
 		"… +3 more · PgUp/PgDn scroll",
 	]);
-	// Scroll position is clamped to the content end.
 	scroll.scrollTop = 99;
 	assert.deepEqual(fitDialogLines(lines, 6, 3, null, scroll), [
 		"▲ 3 more",
@@ -265,8 +220,6 @@ test("fitDialogLines viewport: full content stays reachable, nothing truncated o
 		"footer",
 		"─",
 	]);
-	// Every content line is reachable across the scroll range: the union of
-	// viewports over all scroll positions covers the full dialog.
 	const full = new Set(lines);
 	const seen = new Set<string>();
 	for (let s = 0; s <= lines.length; s++) {
@@ -280,13 +233,11 @@ test("fitDialogLines viewport: full content stays reachable, nothing truncated o
 test("fitDialogLines viewport: selection auto-follow nudges the window into view", () => {
 	const lines = ["─", "Q", "", "1. first", "2. second", "3. third", "", "footer", "─"];
 	const ranges: Array<[number, number]> = [[3, 3], [4, 4], [5, 5]];
-	// Selection below the window: follow nudges scrollTop so it is visible.
 	const scroll: DialogScrollState = { scrollTop: 0, needsFollow: true, optionRanges: ranges, followIndex: 2 };
 	const out = fitDialogLines(lines, 4, 3, null, scroll);
 	assert.equal(scroll.scrollTop, 3, "window nudged to reveal the selected option");
 	assert.ok(out.some((l) => l.includes("3. third")), "selected option visible");
 	assert.equal(scroll.needsFollow, false, "follow flag consumed");
-	// Selection already visible: no nudge.
 	const ranges2: Array<[number, number]> = [[1, 1], [3, 3], [5, 5]];
 	const scroll2: DialogScrollState = { scrollTop: 0, needsFollow: true, optionRanges: ranges2, followIndex: 0 };
 	fitDialogLines(lines, 4, 3, null, scroll2);
@@ -295,26 +246,19 @@ test("fitDialogLines viewport: selection auto-follow nudges the window into view
 
 test("fitDialogLines viewport: ▲ indicator and never-exceeds-bound across the scroll range", () => {
 	const lines = ["─", "Q", "", "1. first", "2. second", "3. third", "", "footer", "─"];
-	// Scrolled down: the top content row gives way to a themed ▲ indicator.
 	const scrolled: DialogScrollState = { scrollTop: 4, needsFollow: false, optionRanges: [], followIndex: 0 };
 	const out = fitDialogLines(lines, 5, 2, null, scrolled);
 	assert.ok(out[0]!.startsWith("▲ 4 more"), "▲ indicator at the top when scrolled down");
 	assert.ok(out.length <= 5);
-	// Churn-guard invariant: never exceeds the bound at ANY scroll position or
-	// degenerate budget (the head itself may fill the bound).
 	for (const bound of [1, 2, 3, 4, 5, 8]) {
 		for (let s = 0; s <= lines.length + 2; s++) {
 			const sc: DialogScrollState = { scrollTop: s, needsFollow: false, optionRanges: [], followIndex: 0 };
 			assert.ok(fitDialogLines(lines, bound, Math.min(2, bound), null, sc).length <= bound, `bound ${bound} at scroll ${s}`);
 		}
 	}
-	// Tail-keep (no scroll state) keeps its own bound guarantee.
 	assert.ok(fitDialogLines(["─", "Q", "", "ctx", "", "1. A", "", "footer", "─"], 4, 2).length <= 4);
 });
 
-// Proposal-confirmation synthetic render (goal confirmation dialog shape):
-// head (border + question), objective-box context, tasks section, auditor
-// line, then the options/footer/border tail.
 const PROPOSAL_UNIT_LINES = [
 	"─",
 	" Confirm Goal Draft",
@@ -343,8 +287,6 @@ test("fitDialogLines proposal mode: content that fits renders byte-identical", (
 });
 
 test("fitDialogLines proposal mode: head + tasks + options/footer/border kept within budget", () => {
-	// Budget 12: head (2) + tasks header + all 3 task lines + the whole tail.
-	// The objective-box middle and the auditor line are sacrificed in-frame.
 	assert.deepEqual(
 		fitDialogLines(PROPOSAL_UNIT_LINES, 12, 2, PROPOSAL_UNIT_SEGMENTS),
 		[
@@ -365,9 +307,6 @@ test("fitDialogLines proposal mode: head + tasks + options/footer/border kept wi
 });
 
 test("fitDialogLines proposal mode: strips blank spacing, then drops task lines from the end", () => {
-	// Budget 10: head + tasks header + first 2 task lines + options/footer/
-	// border (the blank between options and footer is stripped; task-3 drops
-	// only after that, and stays readable in the scrollback presentation).
 	const fitted = fitDialogLines(PROPOSAL_UNIT_LINES, 10, 2, PROPOSAL_UNIT_SEGMENTS);
 	assert.deepEqual(fitted, [
 		"─",
@@ -385,24 +324,19 @@ test("fitDialogLines proposal mode: strips blank spacing, then drops task lines 
 });
 
 test("fitDialogLines proposal mode: never exceeds the bound even at degenerate budgets", () => {
-	// Budget 6: head + tail kept from its end (border/footer first).
 	const tight = fitDialogLines(PROPOSAL_UNIT_LINES, 6, 2, PROPOSAL_UNIT_SEGMENTS);
 	assert.ok(tight.length <= 6);
 	assert.match(tight[tight.length - 1]!, /^─+$/, "bottom border must be visible");
 	assert.ok(tight.some((l) => l.includes("Enter select")), "footer hint must be visible");
-	// Budget 3: head + bottom border only, still within the bound.
 	const tiny = fitDialogLines(PROPOSAL_UNIT_LINES, 3, 2, PROPOSAL_UNIT_SEGMENTS);
 	assert.equal(tiny.length, 3);
 	assert.match(tiny[tiny.length - 1]!, /^─+$/, "bottom border must be visible");
-	// Budget 1: the head itself fills the bound.
 	assert.equal(fitDialogLines(PROPOSAL_UNIT_LINES, 1, 2, PROPOSAL_UNIT_SEGMENTS).length, 1);
 });
 
 test("findProposalPresentationSegments locates the tasks section and options tail", () => {
 	assert.deepEqual(findProposalPresentationSegments(PROPOSAL_UNIT_LINES, 13), PROPOSAL_UNIT_SEGMENTS);
-	// A plain agent question (no tasks marker) is not a proposal confirmation.
 	assert.equal(findProposalPresentationSegments(["─", "Q", "", "1. A", "footer", "─"], 3), null);
-	// Degenerate tail index is rejected.
 	assert.equal(findProposalPresentationSegments(PROPOSAL_UNIT_LINES, -1), null);
 });
 
@@ -418,14 +352,10 @@ test("proposal confirmation helpers keep headless and cancel semantics stable", 
 	assert.match(proposalDialogFailureMessage(new Error("boom")), /drafting remains active/);
 });
 
-// ── Auditor-restore regressions (specs/2026-08-08-tweak-status-persistence) ─
-// The real TUI renders every dialog line with ANSI SGR sequences (theme.fg);
-// the mock theme emits none, so regressions in ANSI-aware scanning only show
-// up with styled lines.
+// external: Pi TUI themes emit ANSI styling that the mock theme omits.
 
 const ANSI_STYLE = (s: string) => `\x1b[32m${s}\x1b[0m`;
 
-/** Open the proposal confirmation dialog against an ANSI-emitting theme. */
 function openProposalDialogComponent(args: { rows: number; baseFrameLines: number }, width = 100) {
 	const ctx = createMockExtensionContext();
 	void runGoalQuestionnaire(ctx, [{
@@ -456,11 +386,6 @@ function openProposalDialogComponent(args: { rows: number; baseFrameLines: numbe
 }
 
 test("findProposalPresentationSegments is ANSI-aware: styled task lines extend the tasks section", () => {
-	// Reported repro: the tasksEnd scan ran the plain-text regex against
-	// ANSI-styled lines, broke on the first task line, and collapsed the tasks
-	// section to its header — every task line was sliced out of the bounded
-	// dialog. Styled lines must extend the section, and tailStart must pull
-	// back to the auditor toggle line so the fit keeps it.
 	const lines = [
 		ANSI_STYLE("─"),
 		ANSI_STYLE(" Confirm Goal Draft"),
@@ -488,9 +413,6 @@ test("findProposalPresentationSegments is ANSI-aware: styled task lines extend t
 });
 
 test("findProposalPresentationSegments keeps the box-drawn TASKS section of a tweak confirmation complete", () => {
-	// buildTweakConfirmationText renders explicit tasks inside a ┌─ TASKS ─┐
-	// box; the section must include the header, every styled task line, and the
-	// box bottom border so the bounded dialog never shows an empty box.
 	const lines = [
 		ANSI_STYLE("─"),
 		ANSI_STYLE(" Confirm Goal Draft"),
@@ -514,10 +436,6 @@ test("findProposalPresentationSegments keeps the box-drawn TASKS section of a tw
 });
 
 test("fitDialogLines proposal mode: the auditor toggle line is never sacrificed at tight budgets", () => {
-	// Budget 10 with 2 task lines: head + tasks header + one task line + the
-	// auditor toggle line + options/footer/border — the auditor line must
-	// survive and a task line gives way (it stays in the scrollback
-	// presentation).
 	const lines = [
 		"─",
 		" Confirm Goal Draft",
@@ -545,10 +463,6 @@ test("fitDialogLines proposal mode: the auditor toggle line is never sacrificed 
 });
 
 test("regression: the bounded proposal dialog keeps task lines and the auditor toggle with real-TUI ANSI styling", () => {
-	// Reported repro (rows=24, baseFrame=19): with real ANSI-styled lines the
-	// segment scan broke and the 10-line dialog showed the tasks header with
-	// zero task lines and no auditor status. Both must be visible under ANSI
-	// styling within the bound.
 	const component = openProposalDialogComponent({ rows: 24, baseFrameLines: 19 });
 	const plain = component.render(100).map((l) => l.replace(/\x1b\[[0-9;]*m/g, "")); // eslint-disable-line no-control-regex -- ANSI SGR matching
 	assert.ok(plain.length <= 10, "dialog stays within the bound");
@@ -566,10 +480,6 @@ test("pressing 'a' toggles the auditor status with visible feedback in the bound
 	assert.ok(!after.includes("● Auditor enabled"), "status flipped off");
 });
 
-// §options-scroll flow tests — the reported bug (bounded questionnaire hides
-// options) fixed by in-dialog viewport scrolling. All tests drive the real
-// component (render + handleInput) with an ANSI-emitting theme so the mock-
-// theme blind spot is exercised.
 
 const PAGE_DOWN = "\x1b[6~";
 const PAGE_UP = "\x1b[5~";
@@ -581,7 +491,6 @@ const TAB_KEY = "\t";
 const ENTER_KEY = "\r";
 const ESC_KEY = "\x1b";
 
-/** Open a questionnaire against an ANSI-emitting theme with real TUI dims. */
 function openQuestionnaireComponent(
 	args: {
 		rows: number;
@@ -620,20 +529,14 @@ function openQuestionnaireComponent(
 	return {
 		render: component.render.bind(component),
 		handleInput: component.handleInput!.bind(component),
-		/** Set/clear the dialog focus flag exactly as the pi TUI does. */
 		set focused(v: boolean) { component.focused = v; },
 		get focused(): boolean { return component.focused; },
-		/** setShowHardwareCursor call log (mock TUI records every call). */
 		hardwareCursorCalls: () => [...state.setShowHardwareCursorCalls],
-		/** Raw (unstripped) render lines, for CURSOR_MARKER inspection. */
 		rawRender: (w = 100) => component.render(w),
 	};
 }
 
 test("bounded agent question: every option is in the initial frame; question stays, scroll indicator gone", () => {
-	// The reported repro shape: a long question + several options at a tight
-	// bound. Options always render in full — the scroll viewport only remains
-	// as a last resort for option blocks that alone exceed the terminal.
 	const strip = (l: string) => l.replace(/\x1b\[[0-9;]*m/g, ""); // eslint-disable-line no-control-regex -- ANSI SGR matching
 	const component = openQuestionnaireComponent({
 		rows: 24,
@@ -683,7 +586,6 @@ test("multi-question tabs: every option of each tab is in the initial frame", ()
 			},
 		],
 	});
-	// Question 1: all three options + the custom row in the first view.
 	const q1 = component.render(100).join("\n");
 	assert.ok(q1.includes("Scope option A"), "question 1 option A in the initial frame");
 	assert.ok(q1.includes("Scope option B"), "question 1 option B in the initial frame");
@@ -691,7 +593,6 @@ test("multi-question tabs: every option of each tab is in the initial frame", ()
 	assert.ok(q1.includes("Write your own answer"), "custom row in the initial frame");
 	assert.ok(!q1.includes("PgUp/PgDn"), "no scroll affordance on question 1");
 
-	// Switch to question 2: fresh tab, all options visible.
 	component.handleInput!(TAB_KEY);
 	const q2 = component.render(100).join("\n");
 	assert.ok(q2.includes("Second question, also long."), "question 2 opens from the top");
@@ -765,7 +666,6 @@ test("selection stays visible with all options in frame: ↓ moves the marker, n
 		assert.ok(initial.includes(label), `${label} in the initial frame`);
 	}
 	assert.ok(!initial.includes("PgUp/PgDn"), "no scroll affordance");
-	// ↓ walks the selection; the marker moves but every option stays on screen.
 	component.handleInput!(ARROW_DOWN);
 	component.handleInput!(ARROW_DOWN);
 	component.handleInput!(ARROW_DOWN);
@@ -790,7 +690,6 @@ test("input mode keeps the editor visible when bounded (tail-keep unchanged)", (
 			],
 		}],
 	});
-	// Enter on the custom option enters input mode.
 	component.handleInput!(ARROW_DOWN);
 	component.handleInput!(ARROW_DOWN);
 	component.handleInput!(ENTER_KEY);
@@ -800,10 +699,7 @@ test("input mode keeps the editor visible when bounded (tail-keep unchanged)", (
 	assert.ok(component.render(100).length <= 10, "input-mode dialog stays within the bound");
 });
 
-// ── Custom-answer input acceptance (specs/2026-08-09-questionnaire-custom-answers-and-options) ─
-// The dialog must anchor the answer editor for text input: Focusable
-// propagation (CURSOR_MARKER emitted by the Editor when focused) and the
-// hardware cursor on while typing, off otherwise (pi docs/tui.md).
+// external: Pi Editor emits CURSOR_MARKER when focused and needs the hardware cursor for typing.
 
 const CURSOR_MARKER = "\u001B_pi:c\u0007";
 
@@ -817,26 +713,21 @@ test("input mode: Editor emits CURSOR_MARKER and hardware cursor is on while typ
 			options: ["Alpha", "Beta", "Gamma"],
 		}],
 	});
-	// pi TUI sets focused=true when the custom dialog gains focus.
 	component.focused = true;
-	// Select-mode: cursor stays off even though the dialog is focused.
 	assert.ok(component.hardwareCursorCalls().every((v) => v === false), "hardware cursor off in select mode");
 	component.handleInput!(ARROW_DOWN);
 	component.handleInput!(ARROW_DOWN);
 	component.handleInput!(ARROW_DOWN);
-	component.handleInput!(ENTER_KEY); // "Write your own answer..."
+	component.handleInput!(ENTER_KEY);
 	const calls = component.hardwareCursorCalls();
 	assert.equal(calls[calls.length - 1], true, "hardware cursor enabled on entering input mode");
 	const markerLines = component.rawRender(100).filter((l) => l.includes(CURSOR_MARKER));
 	assert.equal(markerLines.length, 1, "Editor emits CURSOR_MARKER at the cursor position when focused");
-	// ASCII typing lands in the editor.
 	for (const ch of "hello") component.handleInput!(ch);
 	const strip = (l: string) => l.replace(/\x1b\[[0-9;]*m/g, ""); // eslint-disable-line no-control-regex -- ANSI SGR matching
 	assert.ok(component.render(100).map(strip).join("\n").includes("hello"), "typed text lands in the editor");
-	// IME-style composed text (e.g. CJK) also lands once focus is anchored.
 	for (const ch of "我的答案") component.handleInput!(ch);
 	assert.ok(component.render(100).map(strip).join("\n").includes("我的答案"), "composed text lands in the editor");
-	// Esc leaves input mode and releases the cursor.
 	component.handleInput!(ESC_KEY);
 	const afterEsc = component.hardwareCursorCalls();
 	assert.equal(afterEsc[afterEsc.length - 1], false, "hardware cursor off after leaving input mode");
@@ -855,20 +746,16 @@ test("custom answer flows to the summary as (wrote) and Enter submits it", () =>
 	component.focused = true;
 	component.handleInput!(ARROW_DOWN);
 	component.handleInput!(ARROW_DOWN);
-	component.handleInput!(ENTER_KEY); // "Write your own answer..." on q1
+	component.handleInput!(ENTER_KEY);
 	for (const ch of "my custom answer") component.handleInput!(ch);
-	component.handleInput!(ENTER_KEY); // submit the custom answer → q2
-	component.handleInput!(TAB_KEY); // to the submit summary tab
+	component.handleInput!(ENTER_KEY);
+	component.handleInput!(TAB_KEY);
 	const view = component.render(100).map(strip).join("\n");
 	assert.ok(view.includes("Ready to submit"), "submit summary shown");
 	assert.ok(view.includes("(wrote) my custom answer"), "custom answer recorded as (wrote) in the summary");
 });
 
-// ── Hosts with a UI that cannot render TUI components ───────────────────
-// A host embedding pi behind a non-terminal UI installs a real UI context, so
-// `ctx.hasUI` is true, while `ui.custom` stays the SDK's headless default
-// (`async () => undefined`). Every drafting tool used to crash there with
-// "Cannot read properties of undefined (reading 'cancelled')".
+// external: Pi hosts can expose UI while custom components remain headless.
 
 function nonTerminalUiContext() {
 	return { hasUI: true, cwd: "/test", ui: { custom: async () => undefined } } as unknown as Parameters<typeof runGoalQuestionnaire>[0];
@@ -879,8 +766,7 @@ test("runGoalQuestionnaire reports an unavailable dialog instead of dereferencin
 	assert.deepEqual(result, { questions: [], answers: [], cancelled: true, unavailable: true });
 });
 
-// A host with a non-terminal UI implements the same confirm/select/input
-// contract; only `custom` is terminal-only. Drafting degrades onto those.
+// external: Pi custom components require a terminal; confirm/select/input can work without one.
 
 function browserLikeUiContext(script: { picks?: (string | undefined)[]; typed?: string }) {
 	const picks = [...(script.picks ?? [])];
@@ -903,8 +789,6 @@ test("drafting degrades onto select/input where only ui.custom is missing", asyn
 	assert.equal(result.cancelled, false);
 	assert.equal(result.unavailable, undefined);
 	assert.deepEqual(result.answers, [{ id: "scope", question: "Scope?", answer: "B", wasCustom: false }]);
-	// Context is part of the question the host shows, not decoration dropped on
-	// the way: a proposal is unreadable without it.
 	assert.match(prompts[0] ?? "", /Scope\?[\s\S]*Pick one/);
 });
 
@@ -919,7 +803,6 @@ test("a free-text question falls back to input, and a dismissed dialog cancels",
 	assert.deepEqual(typed.answers, [{ id: "notes", question: "Notes?", answer: "my own words", wasCustom: true }]);
 	const dismissed = await runGoalQuestionnaire(browserLikeUiContext({ picks: [undefined] }).ctx, [{ id: "scope", question: "Scope?", options: ["A"] }]);
 	assert.equal(dismissed.cancelled, true);
-	// Partial answers must not be presented as a finished questionnaire.
 	assert.deepEqual(dismissed.answers, []);
 });
 
@@ -931,9 +814,6 @@ test("showProposalDialog survives a host whose ui.custom resolves to undefined",
 test("a dialog the host never rendered is not reported as a user decision", async () => {
 	const cancelledByUser = proposalDecisionFromQuestionnaireResult({ cancelled: true, answer: undefined });
 	assert.equal(cancelledByUser, "continue");
-	// Same decision, different cause: only `unavailable` distinguishes "the user
-	// pressed escape" from "no dialog was ever shown", which is what lets the
-	// drafting tools explain themselves instead of claiming a cancellation.
 	const result = await runGoalQuestionnaire(nonTerminalUiContext(), [{ id: "q", question: "Scope?", options: [] }]);
 	assert.equal(result.unavailable, true);
 	assert.match(DIALOG_UNAVAILABLE_HINT, /PI_GOAL_AUTO_CONFIRM=1/);

@@ -1,11 +1,3 @@
-/**
- * Issue #30 — offline session recovery CLI (scripts/recover-session-checkpoints.mjs).
- *
- * Acceptance criteria under test: dry-run writes nothing; apply creates a
- * backup before replacement; ids/parentIds/line-count/header preserved;
- * non-goal and malformed lines byte-identical; idempotent; symlinks refused;
- * --apply without --confirm-pi-closed fails.
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -50,7 +42,6 @@ function makeSessionFixture(): Fixture {
 		lines.push(JSON.stringify(entry({ id, parentId: parent === "root" ? null : parent, content: legacyContent, details: { kind: "checkpoint", goalId: "g1", objective: "the whole objective" } })));
 		parent = id;
 	}
-	// Non-goal entries that must stay byte-identical.
 	lines.push(JSON.stringify({ type: "custom", id: "cust-1", parentId: parent, timestamp: "2026-08-23T00:00:01.000Z", customType: "pi-goal-focus", data: { focusedGoalId: "g1" } }));
 	lines.push("{broken json line");
 	writeFileSync(file, lines.join("\n") + "\n");
@@ -93,7 +84,6 @@ describe("pi-goal-x-recover", () => {
 		const backupText = readFileSync(path.join(fx.dir, backups[0]!), "utf8");
 		const originalRaw = originalLines.join("\n");
 		assert.ok(originalRaw.length > 0);
-		// Backup preserves the pre-repair content.
 		assert.match(backupText, /GOAL CHECKPOINT goalId=g1/);
 
 		let checkpoints = 0;
@@ -101,7 +91,6 @@ describe("pi-goal-x-recover", () => {
 			const after = afterLines[i]!;
 			const beforeLine = originalLines[i]!;
 			if (!after.trim()) continue;
-			// Malformed lines: byte comparison only.
 			let parsedAfter;
 			let parsedBefore;
 			try {
@@ -116,14 +105,11 @@ describe("pi-goal-x-recover", () => {
 				continue;
 			}
 			checkpoints += 1;
-			// Graph identity preserved.
 			assert.equal(parsedAfter.id, parsedBefore.id);
 			assert.equal(parsedAfter.parentId, parsedBefore.parentId);
-			// Content is now the bounded v2 marker.
 			assert.equal(parsedAfter.content, '<pi_goal_continuation goal_id="g1" kind="checkpoint" v="2"/>');
 			assert.equal(parsedAfter.details.version, 2);
 			assert.equal(parsedAfter.details.objective, undefined, "objective stripped from details");
-			// Idempotency: a second dry-run reports zero further changes.
 		}
 		assert.equal(checkpoints, 5);
 

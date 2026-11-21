@@ -1,16 +1,3 @@
-// Root-cause evidence (spec 2026-08-11-stable-widget-height): measure the
-// goal widget's NATURAL (unbounded) rendered height across goal-state
-// mutations and show how the terminal-cap rendering (min(natural, cap))
-// changes over time — the buffer line-count churn that makes the terminal
-// jump to the bottom and defeats scroll-up.
-//
-// Usage:
-//   node widget-height-variability.mjs [--compact] [--rows N]
-//
-// Pure renderer calls only (renderExpandedDashboard / renderCompactDashboard
-// / renderAuditorWidgetLines); no TUI. Each "state" is a goal mutation that
-// happens naturally while a goal runs: activity-feed growth, current-task
-// contract/evidence appearing, verification text, budget, task growth.
 
 import { renderExpandedDashboard, renderCompactDashboard } from "../../extensions/widgets/goal-dashboard-renderer.ts";
 import { renderAuditorWidgetLines } from "../../extensions/widgets/goal-widget.ts";
@@ -44,7 +31,6 @@ const baseGoal = {
 	tokenBudget: undefined,
 };
 
-// A realistic progression of goal states while a goal runs.
 function states() {
 	const goal = structuredClone(baseGoal);
 	const events = [];
@@ -125,7 +111,6 @@ console.log("");
 console.log(`natural-height span across states: expanded ${Math.min(...rows.map((r) => r.expanded))}..${Math.max(...rows.map((r) => r.expanded))}, compact ${Math.min(...rows.map((r) => r.compact))}..${Math.max(...rows.map((r) => r.compact))}`);
 console.log(`rendered-height changes across states (expanded): ${changed} of ${rows.length} transitions change the buffer line count`);
 
-// Audit dashboard: height while the audit animation runs.
 const auditStates = [
 	{ label: "audit: just started", phase: "running", elapsedMs: 0, checks: 0, tool: false, output: 0 },
 	{ label: "audit: tool executing, output 1", phase: "tool_executing", elapsedMs: 8000, checks: 2, tool: true, output: 1 },

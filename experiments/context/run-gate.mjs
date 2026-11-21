@@ -1,15 +1,3 @@
-/**
- * context:gate — CI-safe invariants over the composed-request baseline (PR D).
- *
- * Re-measures every fixture IN PROCESS and requires:
- *   1. deterministic equality with experiments/context/baseline-main.json;
- *   2. tool schemas present in every breakdown;
- *   3. every semantic field classified (counts object complete);
- *   4. provider-visible checkpoint markers individually bounded and stable;
- *   5. every registered fixture ID covered by the baseline.
- * No network, no child agents, no live model.
- */
-
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
@@ -49,7 +37,6 @@ for (const fixtureId of expectedFixtureIds) {
 	const semantic = semanticCounts({ ...captured, goal: scenario.goal });
 	checked += 1;
 
-	// 1. deterministic equality
 	const baseRow = baselineById.get(fixtureId);
 	if (!baseRow) continue;
 	if (JSON.stringify(baseRow.breakdown) !== JSON.stringify(breakdown)) {
@@ -59,10 +46,8 @@ for (const fixtureId of expectedFixtureIds) {
 		failures.push(`${fixtureId}: semantic counts drifted from committed baseline`);
 	}
 
-	// 2. tool schemas included
 	if (!(breakdown.toolSchemaChars > 0)) failures.push(`${fixtureId}: no tool schema bytes measured`);
 
-	// 3. semantic fields classified
 	for (const key of ["objective", "verificationContract", "currentTask", "lifecyclePolicyThirdBlocker", "independentAuditor", "neverEditObjective"]) {
 		if (!(key in semantic)) failures.push(`${fixtureId}: semantic field ${key} not classified`);
 	}
@@ -73,7 +58,6 @@ for (const fixtureId of expectedFixtureIds) {
  if (["completion-audit", "audit-rejection-and-rework", "oracle-consultation"].includes(fixtureId) && !(breakdown.childRequestChars > 0)) failures.push(`${fixtureId}: child request not captured`);
  if (fixtureId === "post-compaction-turn" && !serializedRequestText(captured).includes("POST-COMPACTION RESYNC")) failures.push(`${fixtureId}: compaction hook was not exercised`);
 
-	// 4. Retain bounded markers in place: deleting old ones breaks prefix caching.
 	for (const message of captured.messages ?? []) {
 		if (message.customType === "pi-goal-event" && (typeof message.content !== "string" || message.content.length > 160 || !message.content.endsWith('v="2"/>'))) {
 			failures.push(`${fixtureId}: checkpoint is not a bounded v2 trigger`);
@@ -87,15 +71,9 @@ for (const fixtureId of expectedFixtureIds) {
 	if (active && !liveState[1]?.content?.startsWith("Goal snapshot:")) failures.push(`${fixtureId}: counters snapshot missing`);
 	const liveText = liveState[0]?.content ?? "";
 
-	// Required single-source markers on active-goal fixtures whose turn was
-	// actually dispatched with an active block (a stale-checkpoint trigger
-	// correctly aborts and injects GOAL STALE instead).
 	const hasActiveBlock = /\[PI GOAL ACTIVE goalId=/.test(liveText);
 	if (scenario.goal?.status === "active" && hasActiveBlock) {
 		if (semantic.goalActiveMarker !== 1) failures.push(`${fixtureId}: [PI GOAL ACTIVE] block count ${semantic.goalActiveMarker} != 1`);
-		// Long objectives are truncated to MAX_OBJECTIVE_BLOCK_CHARS — only the
-		// head can appear. Fixtures use unique (non-periodic) text so a 300-char
-		// head is an unambiguous needle.
 		const fullObjective = scenario.goal.objective ?? "";
 		const objectiveNeedle = fullObjective.slice(0, 300);
 		const objectiveOccurrences = objectiveNeedle

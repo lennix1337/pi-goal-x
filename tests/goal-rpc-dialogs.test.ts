@@ -8,9 +8,7 @@ function host(picks: (number | undefined)[] = [], inputs: (string | undefined)[]
 	const ctx = {
 		hasUI: true, mode: "rpc", cwd: "/test",
 		ui: {
-			// Default stub: a host that advertises `custom` but yields no result (its
-			// TUI cannot render the component), so the questionnaire degrades to
-			// per-question dialogs. Tests needing a capable/throwing host override it.
+			// external: a host can advertise custom UI without being able to render it.
 			custom: (async () => undefined) as unknown as ExtensionContext["ui"]["custom"],
 			setWorkingVisible: () => {},
 			notify: () => {},
@@ -28,7 +26,7 @@ function host(picks: (number | undefined)[] = [], inputs: (string | undefined)[]
 const question = { id: "scope", question: "Scope?", context: "All the details", options: ["A", "B"], recommended: 1 };
 
 test("rpc hosts that DO render TUI components get the rich dialog (no per-question dialogs)", async () => {
-	const h = host([9]); // would pick option 9 in a per-question dialog — must never be reached
+	const h = host([9]);
 	let sawRichRender = false;
 	h.ctx.ui.custom = (async (factory: unknown) => {
 		const tui = {
@@ -69,7 +67,6 @@ type RichComponent = {
 	focused?: boolean;
 };
 
-/** Mount the rich questionnaire with a capable fake TUI and hand back the component. */
 function mountRichDialog(h: ReturnType<typeof host>, tui: unknown = {
 	getShowHardwareCursor: () => true,
 	setShowHardwareCursor: () => {},

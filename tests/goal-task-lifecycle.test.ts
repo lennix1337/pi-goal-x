@@ -1,8 +1,3 @@
-/**
- * Current-task lifecycle tests (plan §19.2, §19.8): update_goal_task
- * start/complete/skip focus semantics, currentTaskId persistence and
- * normalization (legacy + stale ids), and task-list replacement rules (§7.5).
- */
 
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,7 +12,6 @@ import { createGoal, goalFocusDetails, normalizeGoalRecord, type GoalRecord, typ
 import { parseGoalFile, serializeGoalFile, writeActiveGoalFile } from "../extensions/storage/goal-files.ts";
 import { goalLedgerPath } from "../extensions/goal-ledger.ts";
 
-// ── Tool execution harness (mirrors goal-task-tools.test.ts) ────────────────
 
 function createHarness(cwd: string, sessionEntries: unknown[]) {
 	const handlers = new Map<string, Function>();
@@ -116,7 +110,6 @@ function pendingTasks(): Array<Record<string, unknown>> {
 	];
 }
 
-// ── §19.2 update_goal_task lifecycle ────────────────────────────────────────
 
 test("start sets the persisted currentTaskId and appends task_started", async () => {
 	const f = fixtureWithTasks(pendingTasks());
@@ -126,7 +119,6 @@ test("start sets the persisted currentTaskId and appends task_started", async ()
 		const text = result.content?.[0]?.text ?? "";
 		assert.ok(text.includes("Started t2"), `start message, got: ${text}`);
 		assert.equal(result.terminate, undefined, "start does not terminate the turn");
-		// Memory + disk both carry the focus.
 		const goal = activeGoal(f.cwd);
 		assert.equal(goal?.currentTaskId, "t2");
 		const events = ledgerEvents(f.cwd);
@@ -222,10 +214,8 @@ test("start validation rejects missing, terminal, and ineligible tasks", async (
 	const f = fixtureWithTasks(pendingTasks());
 	try {
 		const h = await startSession(f.cwd, f.sessionEntries);
-		// Missing task.
 		const missing = await callTool(h, "update_goal_task", "start-9", { task_id: "ghost", status: "start" });
 		assert.ok((missing.content?.[0]?.text ?? "").includes("not found"));
-		// Complete the task first, then starting it must fail.
 		await callTool(h, "update_goal_task", "complete-3", { task_id: "t1", status: "complete", evidence: "done" });
 		const terminal = await callTool(h, "update_goal_task", "start-10", { task_id: "t1", status: "start" });
 		assert.ok((terminal.content?.[0]?.text ?? "").includes("only pending tasks can be started"));
@@ -272,14 +262,12 @@ test("start honors disableTasks settings", async () => {
 	}
 });
 
-// ── §7.5 task-list replacement rules ────────────────────────────────────────
 
 test("set_goal_tasks preserves currentTaskId when the id remains pending", async () => {
 	const f = fixtureWithTasks(pendingTasks());
 	try {
 		const h = await startSession(f.cwd, f.sessionEntries);
 		await callTool(h, "update_goal_task", "start-14", { task_id: "t2", status: "start" });
-		// Restructure: keep t2 (with a new title), drop t3, add t4.
 		const result = await callTool(h, "set_goal_tasks", "set-1", {
 			tasks: [
 				{ id: "t1", title: "Task one" },
@@ -301,20 +289,16 @@ test("set_goal_tasks clears currentTaskId when the id is removed or terminal", a
 	try {
 		const h = await startSession(f.cwd, f.sessionEntries);
 		await callTool(h, "update_goal_task", "start-15", { task_id: "t3", status: "start" });
-		// Remove t3 entirely.
 		await callTool(h, "set_goal_tasks", "set-2", {
 			tasks: [{ id: "t1", title: "Task one" }, { id: "t2", title: "Task two" }],
 		});
 		let goal = activeGoal(f.cwd);
 		assert.equal(goal?.currentTaskId, undefined, "removed id clears focus");
-		// Restructure with t2 completed: focus on t2, then restructure keeping t2 complete.
 		await callTool(h, "set_goal_tasks", "set-3", {
 			tasks: [{ id: "t1", title: "Task one" }, { id: "t2", title: "Task two" }, { id: "t5", title: "Task five" }],
 		});
 		await callTool(h, "update_goal_task", "start-16", { task_id: "t5", status: "start" });
 		await callTool(h, "update_goal_task", "complete-4", { task_id: "t5", status: "complete", evidence: "done" });
-		// Re-set the same list (t5 now complete in the existing tree): merge keeps
-		// the completion, so the previously-current id is no longer pending.
 		await callTool(h, "set_goal_tasks", "set-4", {
 			tasks: [{ id: "t1", title: "Task one" }, { id: "t2", title: "Task two" }, { id: "t5", title: "Task five" }],
 		});
@@ -340,7 +324,6 @@ test("mergeTasksWithExisting preserves status, evidence, and timestamps", () => 
 	assert.equal(merged[1]?.status, "pending");
 });
 
-// ── §19.8 persistence and migration ─────────────────────────────────────────
 
 test("legacy goal files load without currentTaskId and preserve task state", () => {
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-legacy-"));
@@ -354,7 +337,6 @@ test("legacy goal files load without currentTaskId and preserve task state", () 
 		};
 		goal.verificationContract = "Run the suite.";
 		goal.usage = { tokensUsed: 4200, activeSeconds: 300 };
-		// No currentTaskId anywhere: a historical file.
 		const written = writeActiveGoalFile({ cwd }, goal);
 		const parsed = parseGoalFile(path.join(cwd, written.activePath!));
 		assert.ok(parsed);
@@ -388,11 +370,9 @@ test("stale currentTaskId is cleared during normalization", () => {
 	const base = createGoal({ objective: "Stale goal", autoContinue: true, sisyphus: false }, Date.UTC(2026, 7, 5, 9, 0, 0));
 	base.taskList = { tasks: [{ id: "a", title: "A" }, { id: "b", title: "B" }] as any, blockCompletion: false, proposedAt: new Date().toISOString() };
 
-	// Removed id.
 	const removed = normalizeGoalRecord({ ...base, currentTaskId: "ghost" } as unknown);
 	assert.equal(removed?.currentTaskId, undefined, "removed id is cleared");
 
-	// Completed id.
 	const completeTask = normalizeGoalRecord({
 		...base,
 		taskList: { ...base.taskList, tasks: [{ id: "a", title: "A", status: "complete" }, { id: "b", title: "B" }] },
@@ -400,7 +380,6 @@ test("stale currentTaskId is cleared during normalization", () => {
 	} as unknown);
 	assert.equal(completeTask?.currentTaskId, undefined, "complete id is cleared");
 
-	// Skipped id.
 	const skippedTask = normalizeGoalRecord({
 		...base,
 		taskList: { ...base.taskList, tasks: [{ id: "a", title: "A", status: "skipped" }, { id: "b", title: "B" }] },
@@ -408,7 +387,6 @@ test("stale currentTaskId is cleared during normalization", () => {
 	} as unknown);
 	assert.equal(skippedTask?.currentTaskId, undefined, "skipped id is cleared");
 
-	// Nested pending id.
 	const nested = normalizeGoalRecord({
 		...base,
 		taskList: {
@@ -419,11 +397,9 @@ test("stale currentTaskId is cleared during normalization", () => {
 	} as unknown);
 	assert.equal(nested?.currentTaskId, "p.1", "nested pending id is accepted");
 
-	// Pending id.
 	const valid = normalizeGoalRecord({ ...base, currentTaskId: "a" } as unknown);
 	assert.equal(valid?.currentTaskId, "a", "pending id is accepted");
 
-	// No task list.
 	const noTasks = normalizeGoalRecord({ ...base, taskList: undefined, currentTaskId: "a" } as unknown);
 	assert.equal(noTasks?.currentTaskId, undefined, "no task list means no focus");
 });
@@ -431,7 +407,6 @@ test("stale currentTaskId is cleared during normalization", () => {
 test("normalization never rewrites legacy files", () => {
 	const f = fixtureWithTasks([{ id: "a", title: "A" }, { id: "b", title: "B" }]);
 	try {
-		// Plant a stale focus in the file (simulates an externally-edited record).
 		const file = activeFile(f.cwd);
 		const raw = readFileSync(file, "utf8");
 		const parsed = parseGoalFile(file);
@@ -439,7 +414,6 @@ test("normalization never rewrites legacy files", () => {
 		parsed.currentTaskId = "ghost";
 		const goal = normalizeGoalRecord(JSON.parse(JSON.stringify(parsed)));
 		assert.equal(goal?.currentTaskId, undefined);
-		// Reading must not modify the file.
 		parseGoalFile(file);
 		parseGoalFile(file);
 		assert.equal(readFileSync(file, "utf8"), raw, "parse/normalize never rewrites the file");
@@ -453,11 +427,10 @@ test("focus survives restart (reload from disk) and session refocus", async () =
 	try {
 		const h = await startSession(f.cwd, f.sessionEntries);
 		await callTool(h, "update_goal_task", "start-17", { task_id: "t3", status: "start" });
-		// Simulate a restart: a fresh harness with the same session entries.
 		const h2 = await startSession(f.cwd, f.sessionEntries);
 		const g = activeGoal(f.cwd);
 		assert.equal(g?.currentTaskId, "t3", "focus restored after restart");
-		const h3 = h2; // refocus path uses the same focus entry
+		const h3 = h2;
 		assert.ok(h3.handlers.has("session_start"));
 	} finally {
 		f.cleanup();

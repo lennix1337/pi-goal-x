@@ -1,7 +1,3 @@
-/**
- * Race worker: performs a sequence of locked settings mutations on ONE key of
- * the shared global file. Used by tests/goal-settings-race.test.ts.
- */
 
 import { workerData } from "node:worker_threads";
 import { mutateSettingsLayer } from "../extensions/goal-settings.ts";

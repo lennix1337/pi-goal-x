@@ -1,13 +1,3 @@
-/**
- * Shared benchmark helpers: fixtures, measurement, baseline rows, and the
- * agent-free integration harness (mirrors tests/integration/extension.test.ts
- * but with an fs-op counter + latency injection from the B8 guard layer).
- *
- * All benches import extension modules directly (node --experimental-strip-types)
- * with the bench adapter hooks installed, so the pi packages are the test
- * stubs (no live agents, createAgentSession throws) and node:fs is the
- * counting/latency wrapper.
- */
 
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,7 +17,6 @@ import { createGoalCore } from "../../extensions/goal-state.ts";
 
 export { beginFsCount, endFsCount, setLatency, withLatency, sleepMs };
 
-// ── fixtures --------------------------------------------------------------
 
 export function makeFixtureCwd(prefix = "goal-bench-") {
 	const cwd = mkdtempSync(path.join(tmpdir(), prefix));
@@ -78,7 +67,6 @@ export function makeLedger(cwd, n) {
 	return events;
 }
 
-// ── measurement -----------------------------------------------------------
 
 export function percentile(sorted, p) {
 	if (sorted.length === 0) return NaN;
@@ -114,7 +102,6 @@ export function estimateTokens(text) {
 	return Math.ceil(text.length / 4);
 }
 
-// ── baseline rows ---------------------------------------------------------
 
 export class Baseline {
 	constructor() {
@@ -138,7 +125,6 @@ export class Baseline {
 	}
 }
 
-// ── agent-free integration harness (B7/B5) --------------------------------
 
 export function createHarness(options = {}) {
 	const handlers = new Map();

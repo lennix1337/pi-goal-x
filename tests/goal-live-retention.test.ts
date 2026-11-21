@@ -97,7 +97,6 @@ test("a retained tail never splits a tool-call batch when history diverges", () 
 	const result = (id: string): any => ({ role: "toolResult", toolCallId: id, toolName: "read", content: [{ type: "text", text: "OK" }], timestamp: 3, isError: false });
 	const fresh = { state: "S", counters: "V" };
 	retention.apply("s", [user, call(["a"]), result("a")], fresh);
-	// A different branch with the same shape must not inherit the old anchor.
 	const out = retention.apply("s", [user, call(["b", "c"]), result("b"), result("c")], fresh).messages;
 	const roles = out.map((m: any) => m.role);
 	const firstResult = roles.indexOf("toolResult");
@@ -122,7 +121,6 @@ for (const editInPlace of [false, true]) {
 		retention.apply("s", base, { state: "S", counters: "V1" });
 		base.push(msg("assistant", "reply", 3));
 		retention.apply("s", base, { state: "S", counters: "V2" });
-		// Keep both anchor messages identical. Only earlier history changes.
 		if (editInPlace) early.content[0]!.text = "edited";
 		else base[0] = { ...early, content: [{ type: "text", text: "edited" }] };
 		const next = retention.apply("s", base, { state: "S", counters: "V3" });
@@ -140,8 +138,6 @@ for (const resultShape of ["toolResult", "tool", "tool_result"] as const) {
 		const result = (id: string) => ({ role: "toolResult", toolCallId: id, toolName: "read", timestamp: 3, content: [{ type: "text", text: "OK" }], isError: false });
 		const base = [msg("user", "Inspect", 1), call, result("a")];
 		retention.apply("s", base, { state: "S", counters: "V1" });
-		// No prior message changes: only the insertion-point guard can stop a
-		// replay between these results when a filtered batch is extended.
 		const extra = resultShape === "tool_result"
 			? { role: "user", content: [{ type: "tool_result", tool_use_id: "b", content: "OK" }], timestamp: 4 }
 			: { ...result("b"), role: resultShape };

@@ -1,23 +1,3 @@
-/**
- * Live pi 1.0.0 goal-lifecycle check.
- *
- * The test suite stubs the two SDK entry points that matter most here:
- * `createAgentSession` and `createExtensionRuntime` are never executed for real
- * (see tests/stubs/pi-coding-agent.ts and the injected `createSession` in
- * tests/goal-auditor.test.ts). This script closes that gap by driving a REAL
- * `pi --mode rpc` process with the extension loaded, backed by a local fake
- * OpenAI-completions provider, and walking one goal through
- *
- *     /goal  ->  propose_goal_draft  ->  Confirm dialog  ->  execution
- *             ->  update_goal(complete)  ->  independent audit  ->  archived
- *
- * It asserts the lifecycle milestones from the observed RPC event stream and
- * exits non-zero if any are missing.
- *
- * Usage:  node --experimental-strip-types scripts/live-session-check.mjs
- * Env:    LIFECYCLE_TIMEOUT_MS (default 120000)
- */
-
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -35,9 +15,6 @@ if (version.status !== 0) {
 const HOST_VERSION = version.stdout.trim();
 console.log(`[live] host pi: ${HOST_VERSION}`);
 
-// ── Fake provider ───────────────────────────────────────────────────────────
-// Decides each scripted reply from the request itself, so the same logic serves
-// the drafting phase, the execution phase, and the isolated auditor session.
 const seen = { drafting: 0, execution: 0, audit: 0 };
 const providerRequests = [];
 
@@ -103,7 +80,6 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const port = server.address().port;
 
-// ── Isolated agent dir + project ────────────────────────────────────────────
 const work = mkdtempSync(path.join(tmpdir(), "goal-live-lifecycle-"));
 const agentDir = path.join(work, "agent");
 const projectDir = path.join(work, "project");
@@ -127,7 +103,6 @@ writeFileSync(path.join(agentDir, "models.json"), JSON.stringify({
 	},
 }));
 
-// ── Drive the live session ──────────────────────────────────────────────────
 const child = spawn("pi", ["--mode", "rpc", "-e", EXT_PATH, "-ne", "--no-session"], {
 	cwd: projectDir,
 	env: { ...process.env, PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1" },
@@ -207,10 +182,8 @@ await new Promise((r) => setTimeout(r, 1500));
 child.kill("SIGKILL");
 server.close();
 
-// The audit only counts as observed if it really went through the SDK path.
 milestones.auditRan = seen.audit > 0;
 
-// ── On-disk evidence ────────────────────────────────────────────────────────
 const goalDir = path.join(projectDir, ".pi", "goals");
 const activeFiles = readdirSync(goalDir).filter((f) => f.endsWith(".json") || f.endsWith(".md"));
 let archived = [];
@@ -230,8 +203,6 @@ for (const file of readdirSync(goalDir)) {
 }
 
 const ledgerTypes = [...ledger.matchAll(/"type"\s*:\s*"([a-z_]+)"/g)].map((m) => m[1]);
-// Completion is proven by the terminal ledger events, not by the goal file
-// remaining active: a completed goal is archived and leaves no active record.
 milestones.completed =
 	ledgerTypes.includes("goal_completed") ||
 	ledgerTypes.includes("goal_archived") ||

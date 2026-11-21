@@ -35,7 +35,6 @@ export const COMPLETE_STATUS = "complete";
  */
 export const GOAL_PROGRESS_TOOL_SET = new Set<string>(GOAL_PROGRESS_TOOL_NAMES);
 
-// ---------- summaries ----------
 
 export function usageLines(goal: GoalRecord): string[] {
 	return [
@@ -58,7 +57,6 @@ export function detailedSummary(goal: GoalRecord | null): string {
 	if (goal.taskList) {
 		const taskSummary = buildTaskSummary(goal.taskList);
 		lines.push(`Tasks: ${taskSummary}`);
-		// Find first pending task at any depth (BFS)
 		const queue = [...(goal.taskList.tasks ?? [])];
 		let firstPending: { id: string; title: string } | undefined;
 		while (queue.length > 0 && !firstPending) {
@@ -84,7 +82,6 @@ export function oneLineSummary(goal: GoalRecord | null): string {
 	return `${statusLabel(goal)}${tail} - ${truncateText(goal.objective)}`;
 }
 
-// ---------- entry / render helpers ----------
 
 export function goalDetails(goal: GoalRecord | null, resultDetail?: string): GoalStateEntry {
 	return { version: 3, goal: goal ? cloneGoal(goal) : null, ...(resultDetail ? { resultDetail } : {}) };
@@ -95,8 +92,6 @@ export function renderGoalResult(result: { details?: unknown; content: Array<{ t
 	const firstText = first?.text ?? "";
 	const details = result.details as GoalStateEntry | undefined;
 	if (details && typeof details === "object" && "resultDetail" in details && details.resultDetail && options?.expanded) {
-		// E7: the collapsed heading stays byte-identical; the full reason is one
-		// keystroke away in the expanded tool-result detail view.
 		return new Text(`${firstText}\n${details.resultDetail}`, 0, 0);
 	}
 	if (!details || typeof details !== "object" || !("goal" in details)) {
@@ -117,8 +112,6 @@ export function renderGoalResult(result: { details?: unknown; content: Array<{ t
 
 export function normalizeGoalEventDetails(value: unknown): GoalEventDetails {
 	const raw = asRecord(value);
-	// "checkpoint" is the only kind writers emit today; "stale" remains a
-	// legacy read for historical checkpoint entries.
 	const kind: GoalEventKind = raw?.kind === "stale" ? "stale" : "checkpoint";
 	const goalId = typeof raw?.goalId === "string" ? raw.goalId : "unknown";
 	const focus: GoalMode | undefined = raw?.focus === "sisyphus" ? "sisyphus" : raw?.focus === "goal" ? "goal" : undefined;
@@ -177,20 +170,12 @@ export function renderGoalAuditEvent(message: { content?: unknown; details?: Goa
 	);
 }
 
-/**
- * Issue #30 v2 markers are self-closing and carry an explicit version:
- * `<pi_goal_continuation goal_id="..." kind="checkpoint" v="2"/>`.
- */
 function matchV2SelfClosingContinuation(text: string): string | null {
 	const match = text.match(/^<pi_goal_continuation\s+goal_id="([^"]+)"[^>]*v="2"\s*\/?>/);
 	return match?.[1] ?? null;
 }
 
 function matchLegacyContinuation(text: string): string | null {
-	// Phase 5 C1: structured outer marker `<pi_goal_continuation goal_id="..." kind="...">`.
-	// Borrowed from pi-codex-goal. More robust than bare bracket text because
-	// the angle brackets + attributes are nearly impossible for users to type
-	// by accident, and the structure is grep-able / parse-able by external tooling.
 	const xmlMatch = text.match(/^<pi_goal_continuation\s+goal_id="([^"]+)"/);
 	if (xmlMatch) return xmlMatch[1] ?? null;
 	return null;
@@ -227,15 +212,7 @@ export function isErrorAssistantMessage(message: unknown): boolean {
 	return raw?.role === "assistant" && raw.stopReason === "error";
 }
 
-/**
- * Transient provider failures are safe for goal-level recovery backoff:
- * Pi-declared network errors plus HTTP 429/5xx-style outages surfaced by
- * providers (429 rate limits, 503 server_error, HTTP/2 PROTOCOL_ERROR,
- * "Endpoint is unavailable", overloaded, gateway failures) and dropped connections
- * (Anthropic SDK "Connection error.", undici stream "terminated"). Deliberately excludes auth and
- * malformed-request failures (and quota/billing text), which retrying
- * cannot fix.
- */
+// external: provider quota, billing, authentication, and malformed-request failures are not transient.
 const TRANSIENT_PROVIDER_ERROR_RE = new RegExp(
 	[
 		"\\bnetwork[_\\s-]?error\\b",
@@ -258,7 +235,6 @@ const TRANSIENT_PROVIDER_ERROR_RE = new RegExp(
 	"i",
 );
 
-/** Quota/billing exhaustion is deterministic; retrying cannot fix it. */
 const NON_TRANSIENT_PROVIDER_ERROR_RE = new RegExp(
 	[
 		"\\binsufficient[_\\s]?quota\\b",
@@ -278,7 +254,6 @@ export function isNetworkErrorAssistantMessage(message: unknown): boolean {
 	const details = [raw?.rawStopReason, raw?.errorMessage]
 		.filter((value): value is string => typeof value === "string")
 		.join(" ");
-	// Quota/billing exhaustion is deterministic and must never be retried.
 	if (NON_TRANSIENT_PROVIDER_ERROR_RE.test(details)) return false;
 	return TRANSIENT_PROVIDER_ERROR_RE.test(details);
 }
@@ -326,10 +301,7 @@ export function isMeaningfulProgressToolCall(toolName: string, args: unknown): b
 	return true;
 }
 
-/**
- * E1: per-goal history block (last audit verdict + recent lifecycle events)
- * surfaced by get_goal and /goal-status; the ledger already records it.
- */
+/** Render audit and lifecycle history for a goal. */
 export function buildGoalHistoryBlock(goal: GoalRecord | null, ledgerEvents: GoalLedgerEvent[]): string {
 	if (!goal) return "";
 	const lines: string[] = [];
@@ -347,10 +319,7 @@ export function buildGoalHistoryBlock(goal: GoalRecord | null, ledgerEvents: Goa
 	return lines.join("\n");
 }
 
-/**
- * F1: task-detail block mirroring the widget — counts, next pending with
- * contracts, recent completions with evidence. Used by get_goal.
- */
+/** Render task counts, pending contracts and completion evidence. */
 export function buildGoalTaskDetailBlock(goal: GoalRecord): string {
 	if (!goal.taskList || goal.taskList.tasks.length === 0) return "";
 	const { total, complete, skipped } = countTaskSubtree(goal.taskList.tasks);

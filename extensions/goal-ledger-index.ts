@@ -27,7 +27,6 @@ export function indexLedgerEvent(index: Map<string, GoalLedgerIndex>, event: Goa
  if (event.type === "completion_requested") goal.completion = event;
  if (isActivityEvent(event) && (!goal.lastActivityEvent || !sameActivityEvent(event, goal.lastActivityEvent))) {
   goal.lastActivityEvent = event;
-  // Stable insertion after equal timestamps matches Array.sort's tie order.
   const last = goal.activity[goal.activity.length - 1];
   if (!last || event.at >= last.at) goal.activity.push(event);
   else {

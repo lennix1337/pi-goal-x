@@ -1,6 +1,3 @@
-/**
- * Issue #30 — checkpoint health diagnostics (extensions/goal-session-health.ts).
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -55,7 +52,6 @@ describe("inspectCheckpointHealth", () => {
 	});
 
 	it("requires both marker shape and version 2 for v2 classification", () => {
-		// Right shape but missing details.version → treated as legacy.
 		const health = inspectCheckpointHealth([
 			entry({ content: checkpointTriggerPrompt("g1"), details: { kind: "checkpoint", goalId: "g1" } }),
 		]);

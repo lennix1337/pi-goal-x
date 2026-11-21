@@ -1,12 +1,3 @@
-/**
- * /goal-status text builder (plan §13).
- *
- * Renders the SAME shared dashboard model as the above-editor widget: the
- * standard mode composes a static compact-dashboard box, the current-task
- * details block, recent activity, and the last audit result; verbose mode adds
- * the full diagnostic detail (§13.2). Pure module — no TUI imports, no ctx —
- * so the exact text is unit-testable and can never drift from the widget.
- */
 
 import { truncateText } from "./goal-core.ts";
 import type { GoalLedgerEvent, GoalLedgerEvent as LedgerEvent } from "./goal-ledger.ts";
@@ -50,19 +41,7 @@ export interface GoalStatusTextOptions {
 	width?: number;
 }
 
-/**
- * Build the /goal-status text.
- *
- * Standard (§13.1): static compact-dashboard rendering + current-task details
- * + recent activity + last audit result when available. The terminology and
- * hierarchy match the expanded dashboard (§13.3); no effective settings by
- * default.
- *
- * Verbose (§13.2): goal id, revision, full objective, complete task tree with
- * full evidence and contracts, recent ledger history, effective settings and
- * provenance, token budget detail, pause/blocker detail, paths, and the last
- * audit report.
- */
+/** Build concise or verbose goal status text. */
 export function buildGoalStatusText(options: GoalStatusTextOptions): string {
 	const width = options.width ?? GOAL_STATUS_WIDTH;
 	if (options.health) return buildHealthStatus(options, width);
@@ -106,11 +85,6 @@ interface HealthCheck {
 	severity: "ok" | "warn" | "error";
 }
 
-/**
- * Render a concise, read-only integrity report. This deliberately checks
- * storage/runtime coherence only; it does not infer that the work itself is
- * complete from task counts or contracts.
- */
 function buildHealthStatus(options: GoalStatusTextOptions, width: number): string {
 	const goal = options.goal;
 	if (!goal) {
@@ -217,7 +191,6 @@ function visibleLen(value: string): number {
 	return value.length;
 }
 
-// ── Verbose (§13.2) ─────────────────────────────────────────────────────────
 
 function buildVerboseStatus(goal: GoalRecord, model: ReturnType<typeof deriveGoalDashboardModel>, events: GoalLedgerEvent[], settingsReport: string[], _width: number): string {
 	const lines: string[] = [];
@@ -294,5 +267,4 @@ function renderTaskTreeVerbose(tasks: GoalTask[], depth = 0, currentTaskId?: str
 	return lines;
 }
 
-// Re-export for consumers that want the same event type.
 export type { LedgerEvent };

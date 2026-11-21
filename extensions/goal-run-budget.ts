@@ -9,7 +9,6 @@ export function effectiveRunLimit(goal: Pick<GoalRecord, "maxAutonomousRuns"> | 
 
 export function newGoalRunLimit(requested: number | null | undefined, configured?: number): number | null | undefined {
 	if (requested !== undefined) return requested;
-	// Preserve settings inheritance when an operator already configured a limit.
 	return configured === undefined ? DEFAULT_GOAL_RUNS : undefined;
 }
 

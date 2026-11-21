@@ -4,7 +4,6 @@ import test from "node:test";
 import { buildGoalRunningNotification } from "../extensions/widgets/goal-notifications.ts";
 import { createMockExtensionContext } from "./tui-test-utils.ts";
 
-// ── buildGoalRunningNotification unit tests ────────────────────────────
 
 test("buildGoalRunningNotification shows Goal mode with auto-continue on", () => {
 	const result = buildGoalRunningNotification({
@@ -42,7 +41,6 @@ test("buildGoalRunningNotification handles very long objective title", () => {
 		sisyphus: true,
 		autoContinue: false,
 	});
-	// Title should be truncated to ~92 chars
 	const titleLine = result.split("\n")[1];
 	assert.ok(titleLine!.length < 120, "Long objective title is truncated");
 });
@@ -75,18 +73,15 @@ test("buildGoalRunningNotification handles multiline objective gracefully", () =
 		sisyphus: false,
 		autoContinue: true,
 	});
-	// The displayObjectiveTitle should extract the first line or Objective line
 	assert.match(result, /├─ ⟡/);
 });
 
-// ── TUI path: notification through ctx.ui.notify ───────────────────────
 
 test("notification works through ctx.ui.notify with mocked TUI", async () => {
 	const ctx = createMockExtensionContext();
 	let lastNotifyMessage: string | undefined;
 	let lastNotifyType: string | undefined;
 
-	// Override notify to capture calls
 	ctx.ui.notify = (message: string, type?: string) => {
 		lastNotifyMessage = message;
 		lastNotifyType = type;

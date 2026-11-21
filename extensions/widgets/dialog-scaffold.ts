@@ -1,10 +1,3 @@
-/**
- * Shared bordered-dialog scaffold (P1-11): the line/horiz/inner-width helpers
- * were copy-pasted across the escape dialog, the task-list confirmation
- * dialog, and the task-list overlay. Collapsed here with byte-identical
- * output; the renderers above these helpers keep their own headers, options,
- * and footers.
- */
 
 import { visibleWidth } from "@earendil-works/pi-tui";
 

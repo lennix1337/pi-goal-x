@@ -10,11 +10,7 @@ import { modelBudgetLine, contextUsageLine, type GoalContextUsage } from "../goa
 /** Hard cap for the complete injected prompt fragment (TECH Stage 6). */
 export const MAX_PROMPT_FRAGMENT_CHARS = 10_000;
 
-/**
- * Issue #30: a persisted continuation checkpoint is a tiny trigger record, not
- * a full prompt. The authoritative goal state is injected at the request tail by
- * the context hook; the persisted marker only needs to carry the goal id.
- */
+/** Maximum length of a persisted continuation checkpoint marker. */
 export const CHECKPOINT_TRIGGER_MAX_CHARS = 160;
 
 function escapeXmlAttribute(value: string): string {
@@ -50,27 +46,19 @@ function assertBounded(content: string): void {
 /** Cap on the objective block inside prompts (escaping + truncation). */
 export const MAX_OBJECTIVE_BLOCK_CHARS = 1_500;
 
-/** Cap on pending tasks rendered inline in the prompt (P1-4 trim). */
 const MAX_PENDING_RENDERED = 3;
 
-/**
- * PR E prompt profile: compact-v2 (default) removes duplicate renderings;
- * legacy-v1 is the emergency A/B fallback for one minor release. It restores
- * ONLY pre-optimization active-prompt wording — never full checkpoint
- * persistence (issue #30 stays fixed in both profiles).
- */
+/** Select the active-prompt profile without changing checkpoint persistence. */
 export function promptProfile(env: NodeJS.ProcessEnv = process.env): "compact-v2" | "legacy-v1" {
 	return env.PI_GOAL_PROMPT_PROFILE === "legacy-v1" ? "legacy-v1" : "compact-v2";
 }
 
-/** Render only PENDING nodes (depth-aware); completed/skipped collapse to counts. */
 function renderPendingTasks(tasks: GoalTask[], indent: number, rendered: { count: number; stop: boolean; skipId?: string }): string[] {
 	if (rendered.stop) return [];
 	const prefix = "  ".repeat(indent);
 	const lines: string[] = [];
 	for (const task of tasks) {
 		if (task.status !== "pending") {
-			// Completed/skipped: not rendered; their pending descendants still are.
 			if (task.subtasks && task.subtasks.length > 0) {
 				lines.push(...renderPendingTasks(task.subtasks, indent, rendered));
 			}
@@ -95,12 +83,7 @@ function renderPendingTasks(tasks: GoalTask[], indent: number, rendered: { count
 	return lines;
 }
 
-/**
- * Bounded, trimmed task-list block (P1-4): pending tasks first with depth-aware
- * indentation and contract snippets; completed/skipped are collapsed to the
- * header counts. Previously the ENTIRE tree (up to 50 tasks + subtrees) was
- * injected into every continuation prompt — most of it already-completed work.
- */
+/** Render pending tasks with bounded contract snippets and completion counts. */
 export function taskListBlock(goal: GoalRecord, settings?: GoalSettings): string {
 	if (settings?.disableTasks) return "";
 	if (!goal.taskList || goal.taskList.tasks.length === 0) return "";
@@ -110,9 +93,6 @@ export function taskListBlock(goal: GoalRecord, settings?: GoalSettings): string
  const pending = pendingTasks.length;
 	const lines: string[] = [];
 	lines.push(`[TASK LIST — ${complete}/${total} tasks complete${skipped > 0 ? ` (${skipped} skipped)` : ""}]`);
-	// §8.1: surface the persisted execution focus (current task), with its
-	// verification contract when present, so the next continuation prompt
-	// carries the contract of the task the agent is working on.
 	if (goal.currentTaskId) {
 		const current = index.byId.get(goal.currentTaskId);
 		if (current) {
@@ -122,8 +102,6 @@ export function taskListBlock(goal: GoalRecord, settings?: GoalSettings): string
 	}
 	const legacy = promptProfile() === "legacy-v1";
 	if (legacy) {
-		// legacy-v1: pre-PR-E wording (current task also appears as a generic
-		// pending item; UI shortcut hint included).
 		const rendered = { count: 0, stop: false };
 		lines.push(...renderPendingTasks(goal.taskList.tasks, 0, rendered));
 		const hiddenPending = Math.max(0, (pending ?? 0) - rendered.count - (goal.currentTaskId && pendingTasks?.some(t => t.id === goal.currentTaskId) ? 1 : 0));
@@ -131,13 +109,10 @@ export function taskListBlock(goal: GoalRecord, settings?: GoalSettings): string
 			lines.push(`  (+${hiddenPending} more pending — expand the dashboard with Ctrl+Shift+T)`);
 		}
 	} else {
-		// compact-v2: the current task appears ONCE (in the Current line above);
-		// visible pending items exclude it.
 		const rendered = { count: 0, stop: false, skipId: goal.currentTaskId };
 		lines.push(...renderPendingTasks(goal.taskList.tasks, 0, rendered));
 		const hiddenPending = Math.max(0, (pending ?? 0) - rendered.count - (goal.currentTaskId && pendingTasks?.some(t => t.id === goal.currentTaskId) ? 1 : 0));
 		if (hiddenPending > 0 && rendered.count === 0) {
-			// Nothing visible at all: point at the next actionable task instead.
 			const next = pendingTasks?.find((t) => t.id !== goal.currentTaskId);
 			if (next) lines.push(`  Next pending: ${next.id} — ${next.title}`);
 		}
@@ -151,7 +126,6 @@ export function taskListBlock(goal: GoalRecord, settings?: GoalSettings): string
 	return lines.join("\n");
 }
 
-/** Bounded verification-contract block. */
 function excerpt(text: string, cap: number, section: "objective" | "tasks"): string {
  const safe = promptSafeObjective(text);
  return safe.length <= cap ? safe : `${safe.slice(0, cap)}… [more: get_goal(section="${section}")]`;
@@ -183,7 +157,6 @@ export function sisyphusDisciplineBlock(goal: GoalRecord): string {
 	].join("\n");
 }
 
-/** Shared outcome/blocker policy for active goals (bounded). */
 function lifecyclePolicyBlock(autonomous: boolean, strict: boolean): string {
  return [
   "[OUTCOMES]",
@@ -200,11 +173,6 @@ function lifecyclePolicyBlock(autonomous: boolean, strict: boolean): string {
 }
 
 export function goalPromptParts(goal: GoalRecord, settings?: GoalSettings, contextUsage?: GoalContextUsage): { state: string; counters: string } {
-	// The policy block changes only when the goal itself changes; the counters
-	// change nearly every turn. Splitting them lets request-only injection retain
-	// each at its own rate so consecutive provider requests stay prefix-stable.
-	// Scheduling instructions ride with the policy block: they are cleared by
-	// omission, so a retained copy would keep issuing a cancelled order.
 	const fixed = buildGoalPrompt(goal, settings);
 	const { runs, instructions } = schedulerSummaryParts(goal.scheduler, effectiveRunLimit(goal, settings?.maxAutonomousRuns), settings?.showAutonomousRuns);
 	const limits = `Limits: lifetime tokens=${goal.tokenBudget ?? "none"}; runs=${effectiveRunLimit(goal, settings?.maxAutonomousRuns) ?? "unlimited"}.`;
@@ -219,8 +187,6 @@ export function goalPrompt(goal: GoalRecord, settings?: GoalSettings): string {
 }
 
 function buildGoalPrompt(goal: GoalRecord, settings?: GoalSettings): string {
- // Stable policy comes first; changing counters are appended by goalPrompt.
- // Bound individual data fields so essential rules can never be sliced off.
  return [
   `[PI GOAL ACTIVE goalId=${goal.id}]`,
   lifecyclePolicyBlock(effectiveRunLimit(goal, settings?.maxAutonomousRuns) !== 0, settings?.strictExecutionContract === true || !!goal.scheduler?.wait), sisyphusDisciplineBlock(goal),
@@ -245,15 +211,6 @@ export function objectiveEditedPrompt(goal: GoalRecord): string {
 }
 
 
-/**
- * Deprecated compatibility wrapper (issue #30). The full continuation prompt
- * was the defect: every auto-continue turn persisted the whole objective/task/
- * contract/policy block as a custom session message, growing sessions by
- * ~6.4K chars per turn. The authoritative state is now injected at the request tail
- * by the context hook; the persisted follow-up is only a tiny trigger.
- *
- * Kept for one minor release so external call sites migrate explicitly.
- */
 /** @deprecated Use checkpointTriggerPrompt — full continuation prompts must not be persisted. */
 export function continuationPrompt(goal: GoalRecord, _settings?: GoalSettings): string {
 	return checkpointTriggerPrompt(goal.id);

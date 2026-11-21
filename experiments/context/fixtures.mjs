@@ -1,10 +1,3 @@
-/**
- * Deterministic fixtures for the model-context accounting harness (PR D).
- *
- * Every fixture produces a complete scenario: goal record(s), ledger events,
- * the trigger prompt, and the raw pre-hook message list. Fixed timestamps,
- * fixed ids — no Date.now() enters captured output.
- */
 
 import { createGoal, safeIdPart } from "../../extensions/goal-record.ts";
 
@@ -14,7 +7,6 @@ function iso(offsetSeconds) {
 	return new Date(T0 + offsetSeconds * 1000).toISOString();
 }
 
-/** Deterministic goal: fixed id derived from a seed. */
 function stableGoal(seed, config) {
 	const goal = createGoal(config, T0);
 	goal.id = `ctx-${safeIdPart(seed)}`;
@@ -85,8 +77,6 @@ export const FIXTURES = {
 		trigger: "continue",
 	}),
 	"long-objective": () => ({
-		// Unique numbered clauses: realistic long objective without periodic
-		// substrings (which make occurrence-counting ambiguous).
 		goal: stableGoal("long-objective", { objective: `${Array.from({ length: 120 }, (_, i) => `Requirement paragraph ${i}: satisfy specific acceptance clause ${i}.`).join(" ")} End of requirements.`, autoContinue: true, sisyphus: false }),
 		trigger: "continue",
 	}),
@@ -119,7 +109,6 @@ export const FIXTURES = {
  "get-goal-default-and-verbose": () => getGoalFixture(),
 };
 
-// ── scenario helpers ───────────────────────────────────────────────────────
 
 function budgetGoal(seed, budget, used) {
 	const goal = stableGoal(seed, { objective: `Stay within a ${budget}-token budget.`, autoContinue: true, sisyphus: false });
@@ -218,7 +207,6 @@ function getGoalFixture() {
 	return { goal, trigger: "continue" };
 }
 
-// ── message constructors ───────────────────────────────────────────────────
 
 export function userMessage(text) {
 	return { role: "user", content: [{ type: "text", text }] };

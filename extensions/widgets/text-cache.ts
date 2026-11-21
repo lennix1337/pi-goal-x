@@ -1,7 +1,6 @@
 import { truncateToWidth as sdkTruncate, wrapTextWithAnsi as sdkWrap } from "@earendil-works/pi-tui";
 
-// Cache pure SDK text transforms, keyed by complete ANSI content and layout arguments.
-// Theme changes naturally miss. visibleWidth already has a cache in the supported SDK.
+// external: the supported SDK already caches visibleWidth.
 const cache = new Map<string, {value: string | string[]; chars: number}>();
 let retainedChars = 0;
 function memo<T extends string | string[]>(key: string, build: () => T): T {
@@ -25,6 +24,5 @@ export function truncateToWidth(text: string, width: number, ellipsis = "...", p
 }
 
 export function wrapTextWithAnsi(text: string, width: number): string[] {
-	// Callers may edit the returned rows; cached rows stay privately owned.
 	return memo(`w:${width}:${text}`, () => sdkWrap(text, width)).slice();
 }

@@ -1,18 +1,3 @@
-/**
- * Benchmark adapter hooks (B8 agent-exclusion harness).
- *
- * Mirrors scripts/test-adapter-hooks.mjs but additionally redirects Node
- * builtins (node:fs, node:child_process, node:net, node:http, node:https)
- * to the B8 wrapper modules so every benchmark run is:
- *   - deterministic: sync fs ops counted, optional injected latency,
- *   - agent-free: the pi packages are the same stubs as the test suite
- *     (createAgentSession throws), and
- *   - offline: any network or (unauthorized) child-process call throws.
- *
- * Run benches with:
- *   node --import experiments/bench/bench-adapter-hooks.mjs \
- *        --experimental-strip-types experiments/bench/run-bench.mjs
- */
 
 import * as nodeModule from "node:module";
 

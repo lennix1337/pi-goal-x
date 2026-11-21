@@ -14,8 +14,6 @@ const detailCache: Array<{inputs: readonly unknown[]; result: DetailSource}> = [
 let detailCacheChars = 0;
 
 function compiledSource(goal: GoalRecord, query: GoalDetailQuery, events: readonly GoalLedgerEvent[], revision?: object): DetailSource | undefined {
- // Objective text and ledger history are memoized (content, or the ledger's generation).
- // Tasks are rendered per read: the task index is no longer cached, so there is no identity to key on.
  const inputs = [goal.id, query.section, query.task_id, ...(query.section === "objective" ? [goal.objective, goal.verificationContract] : [revision])];
  const cacheable = query.section === "objective" || (query.section === "history" && revision !== undefined);
  if (cacheable) for (let i = detailCache.length - 1; i >= 0; i--) {
@@ -33,7 +31,6 @@ function compiledSource(goal: GoalRecord, query: GoalDetailQuery, events: readon
  }
  const key = createHash("sha256").update(JSON.stringify([goal.id, query.section, query.task_id, source])).digest("hex");
  const result = {source, key};
- // Full data remains available even when it exceeds the bounded shared page cache.
  if (cacheable && source.length <= 16_000_000) {
   while (detailCache.length >= 16 || detailCacheChars + source.length > 16_000_000) detailCacheChars -= detailCache.shift()!.result.source.length;
   detailCache.push({inputs, result}); detailCacheChars += source.length;
@@ -51,8 +48,6 @@ export function goalDetailPage(goal: GoalRecord, query: GoalDetailQuery, events:
  }
  const {source, key} = compiled;
  let offset = 0;
- // A plain integer is the character offset the page header shows, read against the current text;
- // it trades the token's staleness check for a position the caller chose.
  if (query.cursor && /^\d{1,9}$/.test(query.cursor)) {
   offset = Number(query.cursor);
   if (offset > source.length) return {ok: false, text: `Cursor ${offset} is past the end: this ${query.section} section has ${source.length} chars.`};

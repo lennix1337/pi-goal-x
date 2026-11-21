@@ -1,4 +1,3 @@
-/** Lifecycle-specific tool profiles preserve host tools and executor guards. */
 
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
@@ -17,7 +16,6 @@ import {
 import { writeActiveGoalFile } from "../extensions/storage/goal-files.ts";
 import type { ToolDefinition, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function createMockCtx(cwd: string, sessionEntries: unknown[]): ExtensionContext {
 	return {
@@ -66,13 +64,11 @@ function testFixture() {
 	return { cwd, goal: written, mockCtx, cleanup };
 }
 
-// Fixed profiles (Stage 2). Lifecycle state never changes these.
 const FIVE_GOAL_TOOLS = ["create_goal", "get_goal", "update_goal", "set_goal_tasks", "update_goal_task"];
 const CORE_GOAL_TOOLS = ["create_goal", "get_goal", "update_goal"];
 const BASE = ["create_goal", "get_goal"];
 const ACTIVE_NO_TASKS = [...CORE_GOAL_TOOLS, "set_goal_tasks"];
 
-// Arbitrary host tool seeds: profile installation must never touch these.
 const HOST_SEED_A = ["read", "bash", "edit", "write"];
 const HOST_SEED_B = ["read", "grep", "find", "ls", "fetch", "custom-ext-tool"];
 
@@ -81,7 +77,6 @@ const REMOVED_TOOLS = [
 	"step_complete", "propose_task_list", "complete_task", "skip_task",
 ];
 
-// ── Test Suite ───────────────────────────────────────────────────────────────
 
 describe("Applicable tool profiles", () => {
 	const registeredTools: ToolDefinition[] = [];
@@ -117,7 +112,6 @@ describe("Applicable tool profiles", () => {
 			assert.equal(activeToolNames.includes(removed), false,
 				`removed tool "${removed}" must never be advertised. Active: ${JSON.stringify(activeToolNames)}`);
 		}
-		// Exactly the expected goal tools: no extras, no missing.
 		const goalTools = activeToolNames.filter((t) => [...FIVE_GOAL_TOOLS, "goal_question", "goal_questionnaire", "propose_goal_draft", ...REMOVED_TOOLS].includes(t));
 		assert.equal(goalTools.length, expected.length,
 			`goal profile must be exactly [${expected.join(", ")}], got: ${JSON.stringify(goalTools)}`);
@@ -135,7 +129,6 @@ describe("Applicable tool profiles", () => {
 		await ss({ reason: "start" }, createMockCtx(cwd, entries));
 	}
 
-	// ── Fixed profile across every lifecycle state ─────────────────────────
 	it("active goal without tasks advertises four operations and host tools are untouched", async () => {
 		const f = testFixture();
 		try {
@@ -156,7 +149,6 @@ describe("Applicable tool profiles", () => {
 			activeToolNames = [...HOST_SEED_A];
 			apiCalls = [];
 			await runSession(cwd, []);
-			// No goal: creation and inspection remain available.
 			expectGoalProfile(BASE);
 			expectHostUntouched(HOST_SEED_A);
 		} finally {
@@ -186,7 +178,6 @@ describe("Applicable tool profiles", () => {
 				activeToolNames = [...HOST_SEED_A];
 				apiCalls = [];
 				await runSession(f.cwd, entries);
-				// A blocked goal keeps update_goal: the agent resumes it once the blocker is resolved (CHANGELOG, blocked prompt).
 				expectGoalProfile(status === "paused" ? ACTIVE_NO_TASKS : status === "budget_limited" || status === "blocked" ? CORE_GOAL_TOOLS : BASE);
 				expectHostUntouched(HOST_SEED_A);
 			} finally {
@@ -223,7 +214,6 @@ describe("Applicable tool profiles", () => {
 		}
 	});
 
-	// ── Transitions never change the profile ───────────────────────────────
 	it("turn_start / before_agent_start / turn_end cycles leave profile and host unchanged", async () => {
 		const f = testFixture();
 		try {
@@ -259,7 +249,6 @@ describe("Applicable tool profiles", () => {
 			const bas = lifecycleHandlers.get("before_agent_start")!;
 			await bas({ systemPrompt: "", prompt: "start", systemPromptOptions: {} }, f.mockCtx);
 
-			// update_goal(blocked) transitions active -> blocked; task tools go, update_goal stays so the agent can resume.
 			const update = registeredTools.find((t) => t.name === "update_goal");
 			assert.ok(update);
 			const result = await (update.execute as Function)("update-b", { status: "blocked", reason: "test blocker" }, new AbortController().signal, undefined, f.mockCtx);
@@ -271,11 +260,9 @@ describe("Applicable tool profiles", () => {
 		}
 	});
 
-	// ── Invalid lifecycle calls: state-aware rejection, not tool removal ───
 	it("update_goal(blocked) from a paused goal is rejected with a state-aware message while tools stay", async () => {
 		const f = testFixture();
 		try {
-			// Pause the goal on disk, then reload the session.
 			const paused = createGoal({
 				objective: "Paused goal",
 				autoContinue: false,
@@ -299,7 +286,6 @@ describe("Applicable tool profiles", () => {
 			const text = result.content?.[0]?.text ?? "";
 			assert.ok(text.includes("applies only to an active goal"),
 				`blocked from paused must be a state-aware failure, got: ${text.slice(0, 100)}`);
-			// The paused profile retains outcome and task-planning tools after rejection.
 			expectGoalProfile(ACTIVE_NO_TASKS);
 			expectHostUntouched(HOST_SEED_A);
 		} finally {
@@ -307,7 +293,6 @@ describe("Applicable tool profiles", () => {
 		}
 	});
 
-	// ── Registration invariants ────────────────────────────────────────────
 	it("execution and transient drafting tools are registered with execute handlers", () => {
 		for (const name of FIVE_GOAL_TOOLS) {
 			const tool = registeredTools.find((t) => t.name === name);
@@ -336,7 +321,6 @@ describe("Applicable tool profiles", () => {
 		assert.ok(tool, "update_goal tool must be registered");
 	});
 
-	// ── update_goal_task execution keeps the profile fixed ────────────────
 	it("update_goal_task executes and the five-tool profile stays fixed", async () => {
 		const f = testFixture();
 		try {
@@ -383,7 +367,6 @@ describe("Applicable tool profiles", () => {
 			assert.ok(text1.includes("t1 complete") || text1.includes("1/2"),
 				`update_goal_task should report t1 complete. Got: ${text1}`);
 
-			// After executing update_goal_task, the profile and host set are unchanged.
 			expectGoalProfile(FIVE_GOAL_TOOLS);
 			expectHostUntouched(HOST_SEED_A);
 		} finally {
@@ -391,7 +374,6 @@ describe("Applicable tool profiles", () => {
 		}
 	});
 
-	// ── Host compatibility: arbitrary host tool seeds survive every event ──
 	it("arbitrary host tool sets survive session, turn, and tool events untouched", async () => {
 		const f = testFixture();
 		try {

@@ -1,28 +1,3 @@
-/**
- * Layered global goal settings (clean rewrite of PR #27).
- *
- * Resolution order (per leaf):
- *
- *     environment > project layer > global layer > defaults
- *
- * Files:
- *
- *     global:  ${PI_CODING_AGENT_DIR:-~/.pi/agent}/pi-goal-x-settings.json
- *     project: <cwd>/.pi/pi-goal-x-settings.json
- *
- * Overrides: PI_GOAL_GLOBAL_SETTINGS_FILE, PI_GOAL_SETTINGS_FILE, and the
- * per-setting PI_GOAL_* variables.
- *
- * Two distinct types (never one interface for both): GoalSettingsLayer is the
- * SPARSE file content (booleans tri-state, 0 meaningful); GoalSettings is the
- * RESOLVED runtime value with concrete defaults. Layer files are parsed into
- * diagnostics rather than rejected wholesale — unknown keys are reported, and
- * every valid known key still applies.
- *
- * Mutations go through mutateSettingsLayer(): fresh re-read under a filesystem
- * path lock, structured-clone apply, atomic same-dir temp+rename write with
- * mode preservation — concurrent processes never lose each other's keys.
- */
 
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
@@ -33,7 +8,6 @@ import { formatConfiguredRunAllowance } from "./goal-run-budget.ts";
 
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
-// ── sparse keybinding layers ────────────────────────────────────────────────
 
 export interface GoalDashboardKeybindings {
 	toggleExpand: KeyId;
@@ -89,7 +63,6 @@ export function formatGoalKeybinding(key: string): string {
 	}[part.toLowerCase()] ?? part.toUpperCase())).join("+");
 }
 
-// ── resolved settings (runtime shape) ───────────────────────────────────────
 
 export interface GoalSettingsResolvedShape {
 	disableTasks?: boolean;
@@ -100,9 +73,9 @@ export interface GoalSettingsResolvedShape {
 	thinkingLevel?: ThinkingLevel;
 	disabled?: boolean;
 	autoSelectSingleGoal?: boolean;
-	/** E3: load the project's own skills/extensions into auditor sessions (off by default = isolation). */
+	/** Load project skills and extensions in auditor sessions; defaults to false. */
 	auditorProjectResources?: boolean;
-	/** F5: stall detector timeout in minutes (0 = off). */
+	/** Stall detector timeout in minutes; zero disables it. */
 	stallTimeoutMinutes?: number;
 	/** Optional extension-run limit per creation/resume; zero disables; absent gives new goals the default (30) while earlier goals without an override inherit the configured allowance (unlimited if none). */
 	maxAutonomousRuns?: number;
@@ -119,9 +92,8 @@ export interface GoalSettingsResolvedShape {
 	 * /goal-tweak).
 	 */
 	objectiveMaxChars?: number;
-	/** Keyboard shortcuts for the compact task list and dashboard expansion. */
 	keybindings?: GoalKeybindings;
-	/** PR #29: suppress the unfocused goal widget + status hint (default false). */
+	/** Suppress the unfocused goal widget and status hint; defaults to false. */
 	hideUnfocusedBanner?: boolean;
 	/** Issue #72: suppress the model-facing [PI GOAL UNFOCUSED] prompt (default false). */
 	hideUnfocusedPrompt?: boolean;
@@ -135,13 +107,8 @@ export interface GoalSettingsResolvedShape {
 	networkRecovery?: GoalNetworkRecoverySettingsLayer;
 }
 
-// Resolved Oracle settings are attached to the resolved runtime shape below
-// (see ResolvedGoalOracleSettings).
 
-/**
- * Issue #26: sparse per-leaf Oracle settings. Every leaf inherits
- * independently (project > global > default); enabled defaults false.
- */
+/** Sparse Oracle settings; each leaf inherits independently and enabled defaults to false. */
 export interface GoalOracleSettingsLayer {
 	enabled?: boolean;
 	provider?: string;
@@ -201,7 +168,6 @@ export const PI_GOAL_GLOBAL_SETTINGS_FILE_ENV = "PI_GOAL_GLOBAL_SETTINGS_FILE";
 
 const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
 
-// ── pure path resolution ────────────────────────────────────────────────────
 
 function asNonEmptyString(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -240,7 +206,6 @@ export function goalSettingsPath(cwd: string, env: NodeJS.ProcessEnv = process.e
 	return path.join(cwd, ".pi", "pi-goal-x-settings.json");
 }
 
-// ── diagnostics ─────────────────────────────────────────────────────────────
 
 export type SettingsScope = "global" | "project";
 
@@ -268,10 +233,8 @@ export interface SettingsLayerRead {
 	fingerprint: string;
 }
 
-// ── zero-op cache ───────────────────────────────────────────────────────────
 
 interface SettingsFileCacheEntry {
-	/** Missing/malformed file: cached so repeated loads are zero-op too. */
 	missing?: boolean;
 	read?: SettingsLayerRead;
 }
@@ -292,7 +255,6 @@ function invalidateSettingsCachePath(target: string): void {
 	resolvedSettingsCache.length = 0;
 }
 
-// ── leaf parsers (diagnostic-producing, never throwing) ─────────────────────
 
 function asBool(value: unknown): boolean | undefined {
 	if (value === true || value === "true") return true;
@@ -309,7 +271,6 @@ function asPositiveInt(value: unknown): number | undefined {
 	return undefined;
 }
 
-/** Positive-integer-or-zero parser (for settings where 0 = off / no limit). */
 function asNonNegativeInt(value: unknown): number | undefined {
 	if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
 	if (typeof value === "string") {
@@ -580,10 +541,8 @@ export function parseGoalSettings(raw: unknown): GoalSettings {
 	return layer as GoalSettings;
 }
 
-// ── layer reads (cache-served, zero-op steady state) ───────────────────────
 
 function fingerprintOf(text: string): string {
-	// Cheap stable fingerprint: length + simple rolling sum (not security).
 	let hash = 2166136261;
 	for (let i = 0; i < text.length; i += 1) {
 		hash ^= text.charCodeAt(i);
@@ -661,7 +620,6 @@ export function loadGoalSettingsFileConfig(cwd: string, env: NodeJS.ProcessEnv =
 	return readSettingsLayer(goalSettingsPath(cwd, env), "project").layer as GoalSettings;
 }
 
-// ── resolution with provenance ──────────────────────────────────────────────
 
 export type SettingsSource = "environment" | "project" | "global" | "default";
 
@@ -698,10 +656,6 @@ function pathKey(...parts: Array<string | undefined>): string {
 	return parts.filter((p) => p !== undefined).join(".");
 }
 
-/**
- * Resolve both layers + env into one snapshot with per-leaf provenance.
- * Nested keybindings resolve leaf-by-leaf from the SPARSE layers.
- */
 const resolutionEnvKeys = ["PI_GOAL_ROOT", "PI_GOAL_DISABLE_TASKS", "PI_GOAL_DISABLE_CONTRACTS", "PI_GOAL_OBJECTIVE_MAX_CHARS", "PI_GOAL_NETWORK_RECOVERY_MAX_ATTEMPTS", "PI_GOAL_NETWORK_RECOVERY_MAX_DELAY_MS"] as const;
 const resolvedSettingsCache: Array<{global: SettingsLayerRead; project: SettingsLayerRead; environment: Array<string | undefined>; snapshot: SettingsSnapshot}> = [];
 
@@ -793,7 +747,6 @@ function resolvedSettingsSnapshot(cwd: string, env: NodeJS.ProcessEnv): Settings
 		envValue: env.PI_GOAL_ROOT, envVar: "PI_GOAL_ROOT",
 		projectValue: project.layer.goalsRoot, globalValue: global.layer.goalsRoot, defaultValue: undefined,
 	}));
-	// Issue #26: Oracle leaves resolve per leaf like every other setting.
 	const oracleEnabled = track("oracle.enabled", resolveLeaf<boolean>({
 		projectValue: project.layer.oracle?.enabled,
 		globalValue: global.layer.oracle?.enabled,
@@ -948,7 +901,6 @@ export function loadGoalSettings(cwd: string, env: NodeJS.ProcessEnv = process.e
 	return copyResolvedSettings(resolvedSettingsSnapshot(cwd, env).value);
 }
 
-// ── conflict-safe scoped mutation ───────────────────────────────────────────
 
 export type SettingsMutation =
 	| { op: "set"; path: readonly string[]; value: unknown }
@@ -1003,8 +955,7 @@ export function acquirePathLock(
 	const retryMs = opts.retryMs ?? 5;
 	const ttlMs = opts.staleTtlMs ?? 30_000;
 	fs.mkdirSync(path.dirname(lockPath), { recursive: true });
-	// The token identifies this holder: after a stale recovery the file at
-	// lockPath may belong to someone else, and release() must not delete it.
+	// external: a recovered lock path may already belong to another process.
 	const token = randomUUID();
 	const payload = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString(), token });
 	const readLockText = (): string | undefined => {
@@ -1027,7 +978,6 @@ export function acquirePathLock(
 					try {
 						fs.unlinkSync(lockPath);
 					} catch {
-						// Already removed by stale recovery elsewhere.
 					}
 				},
 			};
@@ -1044,19 +994,16 @@ export function acquirePathLock(
 				}
 				const stale = Date.now() - stat.mtimeMs > ttlMs || (typeof pid === "number" && !pidAlive(pid));
 				if (stale) {
-					// Only remove the exact stale file we observed: another writer may
-					// have recovered it and taken the lock since.
+					// external: another process may recover and reacquire a lock after inspection.
 					if (readLockText() !== observedText) continue;
 					try {
 						fs.unlinkSync(lockPath);
 					} catch {
-						// Someone else recovered it first; retry.
 					}
 					continue;
 				}
 			} catch {
-				// Lock vanished between EEXIST and stat (holder released): brief
-				// backoff so we never busy-spin against the next holder.
+				// external: a lock can vanish between EEXIST and stat.
 				sleepMs(retryMs);
 				continue;
 			}
@@ -1073,7 +1020,6 @@ function refuseSymlinkTarget(target: string): void {
 		}
 	} catch (err) {
 		if (err instanceof SettingsMutationError) throw err;
-		// Target does not exist yet — fine.
 	}
 }
 
@@ -1086,7 +1032,6 @@ function atomicWriteJson(target: string, value: unknown, options: { defaultMode:
 	try {
 		mode = fs.statSync(target).mode & 0o777;
 	} catch {
-		// New file: keep default mode.
 	}
 
 	const temp = path.join(parent, `.${path.basename(target)}.${process.pid}.${Date.now()}.tmp`);
@@ -1102,16 +1047,17 @@ function atomicWriteJson(target: string, value: unknown, options: { defaultMode:
 		if (fd !== undefined) {
 			try {
 				fs.closeSync(fd);
-			} catch { /* best effort */ }
+			} catch { }
 		}
 		try {
 			fs.unlinkSync(temp);
-		} catch { /* best effort */ }
+		} catch { }
 		throw error;
 	}
+	// external: directory fsync support varies by platform.
 	try {
 		fs.fsyncSync(fs.openSync(parent, "r"));
-	} catch { /* directory fsync is platform-dependent; best effort */ }
+	} catch { }
 }
 
 function applyPathMutation(layer: GoalSettingsLayer, mutation: SettingsMutation): void {
@@ -1121,14 +1067,12 @@ function applyPathMutation(layer: GoalSettingsLayer, mutation: SettingsMutation)
 		const key = mutation.path[i]!;
 		const next = container[key];
 		if (!next || typeof next !== "object") {
-			if (mutation.op === "unset") return; // nothing to unset
+			if (mutation.op === "unset") return;
 			container[key] = {};
 		}
 		container = container[key] as Record<string, unknown>;
 	}
 	const last = mutation.path[mutation.path.length - 1]!;
-	// thinkingLevel/thinking_level are accepted aliases on read; writes operate
-	// on BOTH spellings so unset clears hand-edited variants too.
 	if (last === "thinkingLevel" || last === "thinking_level") {
 		if (mutation.op === "set") container.thinkingLevel = mutation.value;
 		else {
@@ -1141,7 +1085,6 @@ function applyPathMutation(layer: GoalSettingsLayer, mutation: SettingsMutation)
 	else delete container[last];
 }
 
-/** Canonicalize the persisted spelling of aliased keys before writing. */
 function canonicalizeAliases(layer: Record<string, unknown>): void {
 	if (layer.thinkingLevel !== undefined) {
 		layer.thinking_level = layer.thinkingLevel;
@@ -1198,19 +1141,12 @@ export function mutateSettingsLayer(input: MutateSettingsInput): SettingsSnapsho
 	}
 }
 
-// ── legacy whole-file save (routed through the locked mutation path) ────────
 
-/**
- * Save settings to the PROJECT file. Kept for compatibility; internally uses
- * the conflict-safe locked mutation path (replace semantics via unset+set is
- * not needed here: the whole-object replace happens under the same lock with
- * a fresh re-read, so no cached stale object is ever written).
- */
+/** Replace project settings using a conflict-safe locked mutation. */
 export function saveGoalSettingsFileConfig(cwd: string, settings: GoalSettings): GoalSettings {
 	const target = goalSettingsPath(cwd);
 	const lock = acquirePathLock(`${target}.lock`);
 	try {
-		// Fresh re-read under the lock: never persist a cached whole object.
 		const current = readSettingsLayerFresh(target, "project");
 		if (current.status === "invalid") {
 			throw new SettingsMutationError(`Refusing to overwrite invalid project settings at ${target}`, current.diagnostics);
@@ -1218,8 +1154,6 @@ export function saveGoalSettingsFileConfig(cwd: string, settings: GoalSettings):
 		const clean = buildPersistedLayer(settings);
 		atomicWriteJson(target, clean, { defaultMode: 0o600 });
 		invalidateSettingsCachePath(target);
-		// Return the normalized runtime shape (thinkingLevel), not the
-		// canonical persisted key (thinking_level).
 		const returned = { ...clean };
 		if (typeof returned.thinking_level === "string") {
 			returned.thinkingLevel = returned.thinking_level as ThinkingLevel;
@@ -1231,7 +1165,6 @@ export function saveGoalSettingsFileConfig(cwd: string, settings: GoalSettings):
 	}
 }
 
-/** Canonical persisted form of a resolved/sparse settings object. */
 function buildPersistedLayer(settings: GoalSettings): Record<string, unknown> {
 	const persisted: Record<string, unknown> = {};
 	if (settings.provider) persisted.provider = settings.provider;
@@ -1275,7 +1208,6 @@ function buildPersistedLayer(settings: GoalSettings): Record<string, unknown> {
 	return persisted;
 }
 
-// ── reporting ───────────────────────────────────────────────────────────────
 
 /**
  * E2: which env var (if any) overrides a settings key's effective value.
@@ -1293,10 +1225,7 @@ export function envOverrideFor(key: keyof GoalSettings | "settingsFile", env: No
 	return null;
 }
 
-/**
- * E2: effective-settings report with per-leaf provenance
- * (environment > project > global > default), surfaced by /goal-status.
- */
+/** Render effective settings with per-leaf provenance. */
 export function effectiveSettingsReport(cwd: string, env: NodeJS.ProcessEnv = process.env): string[] {
 	const snapshot = loadSettingsSnapshot(cwd, env);
 	const lines = ["Settings (provenance):"];

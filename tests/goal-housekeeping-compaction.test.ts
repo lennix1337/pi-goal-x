@@ -1,9 +1,3 @@
-/**
- * Compactions that carry `details.housekeeping === true` are memory trims
- * started by a harness, not a context overflow of the goal's conversation.
- * They must still persist the goal, but arm no post-compaction reminder and
- * queue no continuation: nothing was lost that the goal needs to re-read.
- */
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -27,7 +21,6 @@ const FIXTURE_GOAL = readFileSync(
 	"utf8",
 );
 
-// ── Harness (mirrors tests/goal-stale-continuation-golden.test.ts) ──────────
 
 interface HandlerMap {
 	[key: string]: (event: any, ctx: ExtensionContext) => Promise<unknown> | unknown;

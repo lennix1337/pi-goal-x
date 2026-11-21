@@ -1,6 +1,3 @@
-/**
- * F1–F6 feature tests (task 5).
- */
 
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -125,7 +122,7 @@ describe("F3 interactive overlay toggle", () => {
 		const { component } = invokeCustomFactory(mockCtx._customCalls, 0);
 		const cmp = component as unknown as { handleInput?: (d: string) => void };
 		assert.ok(cmp.handleInput, "component has handleInput");
-		cmp.handleInput?.("\r"); // raw Enter data (matchesKey parses escape sequences)
+		cmp.handleInput?.("\r");
 		await new Promise((r) => setTimeout(r, 10));
 		assert.equal(toggled.length, 1);
 		assert.equal(toggled[0], `${goal.id}:t1`);
@@ -138,7 +135,6 @@ describe("F3 interactive overlay toggle", () => {
 			goal.taskList = { tasks: [{ id: "t1", title: "T1", status: "pending" }], blockCompletion: false, proposedAt: "2026-08-05T00:00:00.000Z" };
 			const h = coreHarness(cwd);
 			await h.core.loadState(h.ctx as never);
-			// focus the goal + set the in-memory task list
 			h.core.setFocusedGoalId(goal.id, h.ctx as never, "selected", { recordLedger: false });
 			const goalWithTasks = h.core.state.goal!;
 			goalWithTasks.taskList = { tasks: [{ id: "t1", title: "T1", status: "pending" }], blockCompletion: false, proposedAt: "2026-08-05T00:00:00.000Z" };
@@ -233,8 +229,6 @@ describe("F4 sisyphus ordered-step widget", () => {
 		};
 		const lines = renderGoalWidgetLines(goal, theme, 100, { openGoalCount: 1 });
 		const joined = lines.join("\n");
-		// The unified dashboard derives progress from the task tree (§9.1): the
-		// ordered-step detector stays in prompts; the widget shows task progress.
 		assert.match(joined, /Tasks · ✓1 done · 2 open/);
 		assert.match(joined, /Current  t2 · b/);
 	});
@@ -250,7 +244,6 @@ describe("F5 stall detector", () => {
 			await h.core.loadState(h.ctx as never);
 			h.core.setFocusedGoalId(goal.id, h.ctx as never, "selected", { recordLedger: false });
 
-			// no activity for >1 minute: age Date.now for the check
 			const realNow = Date.now;
 			(Date as unknown as { now: () => number }).now = () => realNow() + 70_000;
 			try {
@@ -262,7 +255,6 @@ describe("F5 stall detector", () => {
 			}
 			assert.ok(h.notifies.some((n) => n.msg.includes("Goal stalled")), "stall notification fired");
 			assert.match(ledgerText(cwd), /goal_stalled/);
-			// second call: one-shot (stallNotified)
 			(Date as unknown as { now: () => number }).now = () => realNow() + 70_000;
 			try {
 				assert.equal(h.core.checkStall(h.ctx as never), "", "stall note fires once");
@@ -297,15 +289,15 @@ describe("F6 token-budget threshold alerts", () => {
 			await h.core.loadState(h.ctx as never);
 			h.core.setFocusedGoalId(goal.id, h.ctx as never, "selected", { recordLedger: false });
 			h.core.beginAccounting();
-			h.core.accountProgress(h.ctx as never, { completedTurnTokens: 60000 }); // 60% → 50% warning
-			h.core.accountProgress(h.ctx as never, { completedTurnTokens: 20000 }); // 80% → 75% warning
-			h.core.accountProgress(h.ctx as never, { completedTurnTokens: 20000 }); // 100% → 90% warning + budget_limited
+			h.core.accountProgress(h.ctx as never, { completedTurnTokens: 60000 });
+			h.core.accountProgress(h.ctx as never, { completedTurnTokens: 20000 });
+			h.core.accountProgress(h.ctx as never, { completedTurnTokens: 20000 });
 			const ledger = ledgerText(cwd);
 			const warnings = (ledger.match(/"type":"goal_budget_warning"/g) ?? []).length;
 			assert.equal(warnings, 3, "one warning per crossed threshold (50/75/90)");
-			assert.match(ledger, /"pct":60/); // first charge crossed 50%
-			assert.match(ledger, /"pct":80/); // second crossed 75%
-			assert.match(ledger, /"pct":100/); // third crossed 90%
+			assert.match(ledger, /"pct":60/);
+			assert.match(ledger, /"pct":80/);
+			assert.match(ledger, /"pct":100/);
 			assert.match(ledger, /goal_budget_limited/);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });

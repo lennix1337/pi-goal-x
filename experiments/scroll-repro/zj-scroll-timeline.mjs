@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// Per-second SCROLL: 0/N indicator + pi full-render (2J/3J) correlation.
 import xtermPkg from "@xterm/headless";
 import fs from "node:fs";
 
@@ -54,7 +53,6 @@ for (const item of timeline) {
 		lastSampleSec = sec;
 		const scr = scrollAt(item.t);
 		const b = emu.buffer.active;
-		// widget status line (2nd row of the widget box or the box area)
 		rows2.push(`${String(sec).padStart(3)}s SCROLL:${scr}${n2 || n3 ? ` [2J=${n2} 3J=${n3}]` : ""}`);
 	}
 }

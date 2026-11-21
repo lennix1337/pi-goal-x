@@ -1,15 +1,3 @@
-/**
- * GoalAccounting — serialized, idempotent token/time accounting.
- *
- * One instance per extension. `begin(goalId)` starts a session for an active
- * goal; `charge()` computes the elapsed seconds since the last charge and the
- * completed-turn tokens, then advances the baseline so repeated calls never
- * double-charge the same wall-clock interval. `liveSeconds()` is a read-only
- * display helper that does not mutate state.
- *
- * Also exposes the token-budget helpers used by the runtime to detect the
- * one-time `budget_limited` transition.
- */
 
 export interface AccountingCharge {
 	tokens: number;
@@ -25,7 +13,6 @@ export class GoalAccounting {
 	private activeGoalId: string | null = null;
 	private lastAccountedAt: number | null = null;
 
-	/** Start accounting for a goal id (or clear when null). */
 	begin(goalId: string | null): void {
 		this.activeGoalId = goalId;
 		this.lastAccountedAt = goalId ? Date.now() : null;
@@ -40,7 +27,6 @@ export class GoalAccounting {
 		return this.activeGoalId;
 	}
 
-	/** True when accounting is active for exactly this goal. */
 	isActiveFor(goalId: string): boolean {
 		return this.activeGoalId === goalId && this.lastAccountedAt !== null;
 	}
@@ -57,7 +43,7 @@ export class GoalAccounting {
 		const elapsedSeconds = last === null
 			? 0
 			: Math.max(0, Math.floor((now - last) / 1000));
-		// A clock that steps back must not move the baseline back: the interval would be charged again.
+		// external: system clocks can move backward.
 		this.lastAccountedAt = last === null ? now : Math.max(last, now);
 		const tokens = Math.max(0, Math.trunc(opts.completedTurnTokens ?? 0));
 		return { tokens, seconds: elapsedSeconds };

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// Dump full screens from a zellij capture at given timestamps.
 import xtermPkg from "@xterm/headless";
 import fs from "node:fs";
 

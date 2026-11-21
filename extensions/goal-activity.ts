@@ -1,18 +1,3 @@
-/**
- * Human-readable activity feed (plan §12).
- *
- * Maps the durable ledger into concise, readable activity items for the
- * unified dashboard, `/goal-status`, and archived records. Pure module: no
- * TUI imports; formatting lives here so every surface reads the same text.
- *
- * Rules (from the plan):
- * - Prefer the task title over the task id.
- * - Include completion evidence only when concise.
- * - Exclude low-value checkpoint noise.
- * - Deduplicate repeated lifecycle events.
- * - Default to the latest three to five useful entries; preserve full history
- *   for verbose status and archived records.
- */
 
 import { truncateText } from "./goal-core.ts";
 import type { GoalLedgerEvent } from "./goal-ledger.ts";
@@ -23,10 +8,6 @@ export interface GoalActivityItem {
 	at: string;
 	kind: GoalActivityKind;
 	text: string;
-	/**
-	 * Display marker category for the dashboard feed: done (✓), current (▸),
-	 * skipped (~), or neutral (·) — the renderer maps these to §5.2 symbols.
-	 */
 	marker?: "done" | "current" | "skipped";
 }
 
@@ -92,7 +73,6 @@ function mapEvent(event: GoalLedgerEvent, taskTitles: ReadonlyMap<string, string
 		case "task_complete": {
 			const title = titleFor(taskTitles, event.taskId);
 			const evidence = event.evidence ? oneLine(event.evidence) : undefined;
-			// Include evidence only when concise; never bloat the feed.
 			const suffix = evidence && evidence.length <= CONCISE_EVIDENCE_MAX ? ` — ${evidence}` : "";
 			return { at: event.at, kind: "task", marker: "done", text: `Completed ${quote(title)}.${suffix}` };
 		}
@@ -124,7 +104,6 @@ function mapEvent(event: GoalLedgerEvent, taskTitles: ReadonlyMap<string, string
 			};
 		case "goal_archived":
 			return { at: event.at, kind: "archive", marker: "done", text: "Archived the completed goal." };
-		// Low-value checkpoint noise / focus churn: excluded from the default feed.
 		case "goal_focused":
 		case "goal_unfocused":
 		case "goal_stalled":
@@ -159,7 +138,6 @@ export function isActivityEvent(event: GoalLedgerEvent): boolean { return activi
 export function sameActivityEvent(left: GoalLedgerEvent, right: GoalLedgerEvent): boolean {
  if (left.type !== right.type) return false;
  if ("taskId" in left && "taskId" in right && left.taskId !== right.taskId) return false;
- // Reasons/evidence use the exact display normalization for true duplicates.
  return activityEventKey(left) === activityEventKey(right);
 }
 
@@ -176,7 +154,6 @@ export function deriveGoalActivity(
 	const { taskTitles, limit = 5 } = options;
 	const items: GoalActivityItem[] = [];
 	if (indexedActivity.has(events)) {
-		// Runtime indexes already deduplicate and sort. Format only the requested tail.
 		for (let i = events.length - 1; i >= 0; i--) {
 			const event = events[i]!;
 			if (!("goalId" in event) || event.goalId !== goalId) continue;
@@ -194,9 +171,6 @@ export function deriveGoalActivity(
 		if (last && last.kind === item.kind && last.text === item.text) continue;
 		items.push(item);
 	}
-	// The ledger is append-ordered, but sort defensively so the feed is
-	// always correctly ordered regardless of input order (stable sort keeps
-	// equal timestamps in input order).
 	items.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
 	return items.slice(-limit);
 }

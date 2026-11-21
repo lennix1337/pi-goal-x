@@ -8,7 +8,6 @@ import { openGoalsFromPool } from "../goal-pool.ts";
 import type { GoalRecord, GoalTask } from "../goal-record.ts";
 import { countAllTasks, countTaskSubtree } from "../goal-task-count.ts";
 
-// ── Structured line entries ──────────────────────────────────────────
 
 type LineEntry =
 	| { type: "separator" }
@@ -17,7 +16,6 @@ type LineEntry =
 	| { type: "task"; goalId: string; taskId: string; status: "pending" | "complete" | "skipped"; prefix: string; title: string }
 	| { type: "empty-message"; text: string };
 
-// ── Public API ───────────────────────────────────────────────────────
 
 /**
  * Show a scrollable modal overlay displaying the current goal's task list.
@@ -34,19 +32,16 @@ export async function showTaskListOverlay(
 
 	await ctx.ui.custom<void>(
 		(tui: TUI, theme: Theme, _keybindings: unknown, done: () => void): Component => {
-			// ── Theme helpers ─────────────────────────────────────────────
 			const accent = (s: string) => theme.fg("accent", s);
 			const dim = (s: string) => theme.fg("dim", s);
 			const success = (s: string) => theme.fg("success", s);
 			const muted = (s: string) => theme.fg("muted", s);
 			const bold = (s: string) => theme.bold(s);
 
-			// ── State ─────────────────────────────────────────────────────
 			let showAllGoals = false;
 			let entries: LineEntry[] = [];
 			let totalOpenGoals = 0;
 			let totalTaskCount = 0;
-			// F3: interactive cursor over task rows; Enter toggles the task.
 			let cursorEntryIndex = -1;
 			let cursorMessage = "";
 
@@ -74,14 +69,12 @@ export async function showTaskListOverlay(
 						entries.push({ type: "separator" });
 					}
 
-					// Goal header
 					const icon = goal.status === "paused" ? "⏸"
 						: goal.sisyphus ? "◆" : "●";
 					const title = displayObjectiveTitle(goal.objective);
 					const label = statusLabel(goal);
 					entries.push({ type: "goal-header", icon, title, status: label });
 
-					// Task summary & task list
 					if (goal.taskList && goal.taskList.tasks.length > 0) {
 						const { total, complete, skipped } = countTaskSubtree(goal.taskList.tasks);
 						const summary = `${complete}/${total} done${skipped > 0 ? ` (${skipped} skipped)` : ""}`;
@@ -99,17 +92,13 @@ export async function showTaskListOverlay(
 					totalOpenGoals++;
 				}
 
-				// F3: reset the cursor to the first task row after a rebuild.
 				cursorEntryIndex = entries.findIndex((e) => e.type === "task");
 				cursorMessage = "";
 			}
 
-			// Build initial entries
 			rebuildEntries();
 
-			// ── Render helpers ────────────────────────────────────────────
 
-			/** Render a single line entry into styled wrapped lines */
 			function renderEntry(entry: LineEntry, innerWidth: number): string[] {
 				switch (entry.type) {
 					case "separator":
@@ -118,8 +107,8 @@ export async function showTaskListOverlay(
 					case "goal-header": {
 						const icon = entry.icon === "⏸" ? muted("⏸") : entry.icon === "◆" ? accent("◆") : accent("●");
 						const status = dim(entry.status);
-						const prefix = `${icon}  ${bold("")}`; // placeholder, we'll build below
-						const rawPrefix = `${entry.icon}  `; // raw width: icon + 2 spaces
+						const prefix = `${icon}  ${bold("")}`;
+						const rawPrefix = `${entry.icon}  `;
 						const prefixWidth = visibleWidth(rawPrefix);
 						const available = innerWidth - prefixWidth;
 						const wrappedTitle = wrapTextWithAnsi(bold(entry.title), Math.max(1, available));
@@ -131,24 +120,18 @@ export async function showTaskListOverlay(
 								lines.push(`   ${" ".repeat(rawPrefix.length - 3)}${segment}`);
 							}
 						});
-						// If title alone fits, status needs to be on same line
-						// But we already handle it above for i=0. The status might overflow.
-						// If status doesn't fit on first line after title, put it on its own line
 						const firstLine = lines[0]!;
 						const allOnFirst = `${icon}  ${entry.title}  ${entry.status}`;
 						if (visibleWidth(firstLine) > innerWidth) {
-							// Status overflowed — put status on a separate dim line
 							lines[0] = `${icon}  ${wrappedTitle[0]}`;
 							if (wrappedTitle.length === 1) {
 								lines.push(`   ${dim(entry.status)}`);
 							} else {
-								// insert status after last wrapped title segment
 								const lastLine = wrappedTitle[wrappedTitle.length - 1];
 								lines[lines.length - 1] = `   ${" ".repeat(rawPrefix.length - 3)}${lastLine}`;
 								lines.push(`   ${dim(entry.status)}`);
 							}
 						}
-						// Re-truncate any over-long lines just in case
 						return lines.map((l) => visibleWidth(l) > innerWidth ? truncateToWidth(l, innerWidth, "…") : l);
 					}
 
@@ -182,12 +165,9 @@ export async function showTaskListOverlay(
 				}
 			}
 
-			// ── Scroll state ──────────────────────────────────────────────
 			let scrollOffset = 0;
 			let lastRenderWidth = 80;
 
-			// The "logical line count" is the number of entries (before wrapping).
-			// We store rendered line count too since wrapped entries expand.
 			let renderedLineCount = 0;
 
 			function computeVisibleHeight(innerWidth: number): number {
@@ -197,7 +177,6 @@ export async function showTaskListOverlay(
 			const wasHardwareCursorShown = tui.getShowHardwareCursor();
 			tui.setShowHardwareCursor(false);
 
-			// ── Component ─────────────────────────────────────────────────
 			const component: Component & { dispose?(): void } = {
 				dispose() {
 					tui.setShowHardwareCursor(wasHardwareCursorShown);
@@ -214,7 +193,6 @@ export async function showTaskListOverlay(
 
 					const line = (content: string): string => borderedLine(accent, innerWidth, content);
 
-					// ── Render all entries into flat text lines ────────────
 					const renderedLines: string[] = [];
 					for (const entry of entries) {
 						const wrapped = renderEntry(entry, innerWidth);
@@ -227,7 +205,6 @@ export async function showTaskListOverlay(
 
 					out.push(accent(`┌${horiz}┐`));
 
-					// Header
 					const viewLabel = showAllGoals
 						? `${totalOpenGoals} ${totalOpenGoals === 1 ? "goal" : "goals"}`
 						: "current goal";
@@ -236,7 +213,6 @@ export async function showTaskListOverlay(
 					out.push(line(p + h));
 					out.push(accent(`├${horiz}┤`));
 
-					// Content with scrolling
 					const visibleHeight = computeVisibleHeight(innerWidth);
 					const maxOffset = Math.max(0, renderedLineCount - visibleHeight);
 					if (scrollOffset > maxOffset) scrollOffset = maxOffset;
@@ -251,8 +227,6 @@ export async function showTaskListOverlay(
 					const end = Math.min(scrollOffset + visibleHeight, renderedLineCount);
 					for (let i = scrollOffset; i < end; i++) {
 						const raw = renderedLines[i]!;
-						// Each rendered line from renderEntry already wraps/truncates,
-						// but double-check for safety
 						const safe = visibleWidth(raw) > innerWidth
 							? truncateToWidth(raw, innerWidth, "…")
 							: raw;
@@ -328,7 +302,6 @@ export async function showTaskListOverlay(
 						tui.requestRender();
 						return;
 					}
-					// Toggle view
 					if (matchesKey(data, "a")) {
 						showAllGoals = !showAllGoals;
 						rebuildEntries();
@@ -379,9 +352,6 @@ export async function showTaskListOverlay(
 	);
 }
 
-// ── Task counting ─────────────────────────────────────────────────────
-
-// ── Tree entry collection ─────────────────────────────────────────────
 
 const STATUS_ICONS = { complete: "✓", skipped: "—", pending: "◌" } as const;
 const BRANCH = "├─";

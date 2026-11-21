@@ -1,8 +1,3 @@
-/**
- * Shadows of node:net / node:http / node:https (B8 enforcement).
- * Any socket/request in a benchmark is a violation: benchmarks never touch
- * the network.
- */
 
 import { createRequire } from "node:module";
 import { recordViolation } from "./guard-state.mjs";
