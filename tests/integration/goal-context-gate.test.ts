@@ -1,8 +1,3 @@
-/**
- * `npm run verify` runs the context gate, so its verdict must depend only on
- * the checked-out code: not on another gate running at the same time, nor on
- * the session or machine that starts it.
- */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -15,7 +10,6 @@ const root = fileURLToPath(new URL("../../", import.meta.url));
 
 interface NodeRun { status: number | null; stdout: string; stderr: string }
 
-/** Runs `node <args>` in the project without throwing, so several can run at once and the caller asserts on each outcome. */
 function runNode(args: string[], env: NodeJS.ProcessEnv = process.env): Promise<NodeRun> {
 	return new Promise((resolve, reject) => {
 		const child = spawn(process.execPath, ["--experimental-strip-types", ...args], { cwd: root, env, timeout: 120_000, stdio: ["ignore", "pipe", "pipe"] });

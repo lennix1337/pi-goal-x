@@ -1,12 +1,3 @@
-/**
- * Handler-level integration suite (Stage 6 of the hardening plan): drives the
- * ACTUAL registered five tools and the GoalService through a mock pi, with an
- * injected auditor fixture — no removed tools, no model-only bypass fields.
- *
- * This replaces the historical tests/e2e/extension.test.ts (complete_goal +
- * confirmBypassAuditor surface) and joins the validation scripts as
- * `npm run test:integration`.
- */
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, appendFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -158,8 +149,7 @@ function ledgerEvents(cwd: string): Array<Record<string, unknown>> {
 
 describe("five-tool handler integration", () => {
 	it("extension loading defers getActiveTools until session_start", async () => {
-		// The fixed profile is installed at session_start; extension loading
-		// itself must not touch the active-tool API (host compatibility).
+		// external: loading the extension must not call the host active-tool API before session_start.
 		let getActiveToolsCalls = 0;
 		const isolatedHandlers = new Map<string, Function>();
 		const isolatedPi = {
@@ -352,8 +342,6 @@ describe("five-tool handler integration", () => {
 			for (const present of ["create_goal", "get_goal", "update_goal"]) {
 				assert.ok(h.tools.has(present), `${present} registered`);
 			}
-			// Captured setActiveTools calls (not just registered names): the
-			// three-core profile is installed and task tools are never active.
 			assert.ok(installedProfileContains(h.activeToolsHistory, [...HOST_TOOLS, ...THREE]),
 				"captured profile includes host + three core tools");
 			assert.ok(installedProfileExcludes(h.activeToolsHistory, ["set_goal_tasks", "update_goal_task"]),
@@ -382,7 +370,7 @@ describe("five-tool handler integration", () => {
 			await start(h);
 			const settingsCmd = h.commands.get("goal-settings");
 			assert.ok(settingsCmd, "goal-settings command registered");
-			await settingsCmd.handler("", h.ctx); // must not throw (regression: recursive saveSettings)
+			await settingsCmd.handler("", h.ctx);
 			const settingsPath = path.join(f.cwd, ".pi", "pi-goal-x-settings.json");
 			const saved = JSON.parse(readFileSync(settingsPath, "utf8"));
 			assert.equal(saved.disabled, true, "menu toggle must persist disabled: true");
@@ -500,8 +488,6 @@ describe("five-tool handler integration", () => {
 		it("edits and clears provider and model text fields", async () => {
 			const f = fixture();
 			try {
-				// Set both via the manual provider/model entry: filter first, then
-				// pick "✎ Enter provider/model manually (advanced)", then type the pair.
 				const selects = [
 					"  provider: (default) (default)", "✎ Enter provider/model manually (advanced)",
 					"  model: claude-sonnet-4 (project override)", "✎ Enter provider/model manually (advanced)",
@@ -518,8 +504,6 @@ describe("five-tool handler integration", () => {
 				const saved = readSettings(f.cwd);
 				assert.equal(saved.provider, "anthropic");
 				assert.equal(saved.model, "claude-sonnet-4");
-				// Clear both by returning to the current-session/default choice from
-				// either row: the default choice deletes provider and model together.
 				const selects2 = ["  provider: anthropic (project override)", "  Current session / default (system default)", "Done"];
 				const inputs2 = [""];
 				const h2 = createHarness({
@@ -646,8 +630,6 @@ describe("five-tool handler integration", () => {
 					`unfocused hint visible before the setting: ${JSON.stringify(h.statusCalls)}`,
 				);
 
-				// Turn the setting on through the menu; the hide must be visible in
-				// captured UI state before the handler resolves.
 				let queue = ["  hideUnfocusedBanner: false (default)", "Set project override to true", "Done"];
 				const h2 = createHarness({
 					cwd: f.cwd, sessionEntries: entries, hasUI: true,
@@ -709,14 +691,10 @@ describe("five-tool handler integration", () => {
 			const prevTasks = process.env.PI_GOAL_DISABLE_TASKS;
 			process.env.PI_GOAL_DISABLE_TASKS = "true";
 			try {
-				// session_start installs the three-tool profile because the env
-				// override forces disableTasks even though the file is absent.
 				const h = createHarness({ cwd: f.cwd, sessionEntries: f.sessionEntries, hasUI: true });
 				await start(h);
 				assert.equal(h.activeToolsHistory.length, 1, "three-tool install at session_start");
 				assert.ok(!h.activeToolsHistory[0]!.includes("set_goal_tasks"), "env override installs the core profile");
-				// The env override makes the disableTasks row read-only: selecting it
-				// warns and never mutates, so no reinstall may happen.
 				const selects = ["  disableTasks: false (environment; read-only)", "Done"];
 				const h2 = createHarness({
 					cwd: f.cwd, sessionEntries: f.sessionEntries, hasUI: true,
@@ -866,7 +844,6 @@ describe("completion transaction hardening (follow-up Stage 3)", () => {
 		const goalsDir = path.join(f.cwd, ".pi", "goals");
 		let restore: (() => void) | undefined;
 		try {
-			// Keep real ledger appends available while refusing only the authoritative replacement.
 			writeFileSync(goalLedgerPath({ cwd: f.cwd }), "", "utf8");
 			const h = createHarness({
 				cwd: f.cwd, sessionEntries: f.sessionEntries,
@@ -874,7 +851,7 @@ describe("completion transaction hardening (follow-up Stage 3)", () => {
 					({ approved: true, disapproved: false, output: "All good\n<approved/>", model: "fixture" }),
 			});
 			await start(h);
-			// Explicit fault injection works on Windows and under privileged POSIX users too.
+			// external: explicit fault injection also works on Windows and for privileged POSIX users.
 			restore = denyAtomicReplacement(t, path.join(goalsDir, activeGoalFiles(f.cwd)[0]!));
 			const update = h.tools.get("update_goal")!;
 			const result = await (update.execute as any)("fail-write-1", { status: "complete" }, new AbortController().signal, undefined, h.ctx);
@@ -883,7 +860,6 @@ describe("completion transaction hardening (follow-up Stage 3)", () => {
 			assert.ok(text.includes("not completed"), "must state the goal was not completed");
 			assert.ok(!text.includes("Goal audit approved"), "no success report when the state mutation failed");
 			assert.notEqual(result.terminate, true, "no termination request on failed completion");
-			// The deferred archival at turn_end must not emit goal_completed.
 			await h.handlers.get("turn_end")?.({ message: { role: "assistant", stopReason: "stop", usage: { input: 0, output: 0 } } }, h.ctx);
 			const events = ledgerEvents(f.cwd);
 			assert.equal(events.some((e) => e.type === "goal_completed"), false, "no goal_completed event");
