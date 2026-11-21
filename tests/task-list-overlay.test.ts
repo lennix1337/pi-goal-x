@@ -1,14 +1,3 @@
-/**
- * Unit tests for the task list overlay component.
- *
- * Tests that the overlay:
- * - Defaults to current goal only
- * - 'a' toggles to all open goals
- * - Renders without crashing under various conditions
- * - Handles text wrapping for long titles
- * - Scrolls correctly (offset changes on up/down)
- * - Keybinding is registered in goal.ts
- */
 import assert from "node:assert";
 import test from "node:test";
 import { readFileSync } from "node:fs";

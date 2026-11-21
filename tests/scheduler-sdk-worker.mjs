@@ -1,4 +1,3 @@
-/** Exercise actual SDK custom-message run boundaries, not the adapter mocks. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';

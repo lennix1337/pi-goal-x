@@ -64,13 +64,11 @@ function testFixture() {
 	return { cwd, goal: written, mockCtx, cleanup };
 }
 
-// Fixed profiles (Stage 2). Lifecycle state never changes these.
 const FIVE_GOAL_TOOLS = ["create_goal", "get_goal", "update_goal", "set_goal_tasks", "update_goal_task"];
 const CORE_GOAL_TOOLS = ["create_goal", "get_goal", "update_goal"];
 const BASE = ["create_goal", "get_goal"];
 const ACTIVE_NO_TASKS = [...CORE_GOAL_TOOLS, "set_goal_tasks"];
 
-// Arbitrary host tool seeds: profile installation must never touch these.
 const HOST_SEED_A = ["read", "bash", "edit", "write"];
 const HOST_SEED_B = ["read", "grep", "find", "ls", "fetch", "custom-ext-tool"];
 
@@ -216,7 +214,6 @@ describe("Applicable tool profiles", () => {
 		}
 	});
 
-	// ── Transitions never change the profile ───────────────────────────────
 	it("turn_start / before_agent_start / turn_end cycles leave profile and host unchanged", async () => {
 		const f = testFixture();
 		try {

@@ -101,8 +101,6 @@ describe("P1-3 per-turn transaction buffer", () => {
 			let auditArgs = null;
 			const h = makeHarness(f.cwd, async (args) => {
 				auditArgs = args;
-				// The auditor (a separate session) reads the goal FILE: it must
-				// already contain the completed task.
 				const disk = goalFileText(f.cwd, f.goal);
 				assert.match(disk, /\[x\] t1: T1/, "auditor sees the flushed task state on disk");
 				return { approved: true, disapproved: false, output: "ok\n<approved/>", model: "fixture" };

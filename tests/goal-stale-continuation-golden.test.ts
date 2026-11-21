@@ -1,18 +1,5 @@
 import { saveGoalSettingsFileConfig } from "../extensions/goal-settings.ts";
 import type { GoalCore } from "../extensions/goal-state.ts";
-/**
- * Stage 0 golden tests: the continuation checkpoint contract.
- *
- * Pins how the extension treats queued/injected continuation checkpoints
- * today (specs/2026-08-03-codex-inspired-goal-interface Stage 0):
- *
- *   1. A checkpoint for a goal that is no longer the focused active goal is
- *      stale: the turn is aborted and `[GOAL STALE goalId=...]` guidance is
- *      injected instead of doing goal work.
- *   2. A checkpoint that matches the focused active goal proceeds normally.
- *   3. A user-driven turn cancels any pending continuation, so a queued
- *      checkpoint is never delivered after the user takes over.
- */
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -192,15 +179,12 @@ test("golden: user-driven turn cancels a pending continuation", async () => {
 		await h.handlers["tool_execution_end"]!({}, h.ctx);
 		await h.handlers["turn_end"]!({ message: { role: "assistant", content: [{ type: "text", text: "done" }] } }, h.ctx);
 
-		// The continuation timer is pending (non-idle ctx keeps it scheduled).
-		// A user-driven turn must cancel it before it fires.
 		await h.handlers["before_agent_start"]!({
 			systemPrompt: "base",
 			prompt: "user typed a new instruction",
 			systemPromptOptions: {},
 		}, h.ctx);
 
-		// Wait beyond the idle retry delay; the queued continuation must not fire.
 		await new Promise((resolve) => setTimeout(resolve, 120));
 
 		const checkpoints = h.sentMessages.filter(
@@ -211,10 +195,6 @@ test("golden: user-driven turn cancels a pending continuation", async () => {
 	}
 });
 
-// ── Provider-error guard (danim47c pattern) ─────────────────────────────────
-// A turn/run whose assistant message has stopReason "error" is failed work:
-// it must never queue an auto-continuation, or a provider outage turns into
-// an unbounded retry storm. Normal turns must still queue.
 
 function idleCtx(ctx: ExtensionContext): ExtensionContext {
 	return {
@@ -251,7 +231,6 @@ test("provider-error guard: turn_end with stopReason=error never queues a contin
 			systemPromptOptions: {},
 		}, h.ctx);
 
-		// A work turn that ends in a provider error (work tool ran, then error).
 		await h.handlers["turn_start"]!({}, h.ctx);
 		await h.handlers["tool_call"]!({ toolName: "bash", args: { command: "ls" } }, h.ctx);
 		await h.handlers["tool_execution_end"]!({}, h.ctx);
@@ -391,5 +370,3 @@ test("empty no-tool runs continue implicitly after agent_settled", async () => {
 		h.core.runtime.clearContinuationState();
 	}
 });
-
-// Explicit decision invalidation and actual SDK run-boundary coverage live in goal-scheduler.test.ts and goal-scheduler-sdk.test.ts.

@@ -1,11 +1,3 @@
-/**
- * Issue #30 — offline session recovery CLI (scripts/recover-session-checkpoints.mjs).
- *
- * Acceptance criteria under test: dry-run writes nothing; apply creates a
- * backup before replacement; ids/parentIds/line-count/header preserved;
- * non-goal and malformed lines byte-identical; idempotent; symlinks refused;
- * --apply without --confirm-pi-closed fails.
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -50,7 +42,6 @@ function makeSessionFixture(): Fixture {
 		lines.push(JSON.stringify(entry({ id, parentId: parent === "root" ? null : parent, content: legacyContent, details: { kind: "checkpoint", goalId: "g1", objective: "the whole objective" } })));
 		parent = id;
 	}
-	// Non-goal entries that must stay byte-identical.
 	lines.push(JSON.stringify({ type: "custom", id: "cust-1", parentId: parent, timestamp: "2026-08-23T00:00:01.000Z", customType: "pi-goal-focus", data: { focusedGoalId: "g1" } }));
 	lines.push("{broken json line");
 	writeFileSync(file, lines.join("\n") + "\n");
@@ -100,7 +91,6 @@ describe("pi-goal-x-recover", () => {
 			const after = afterLines[i]!;
 			const beforeLine = originalLines[i]!;
 			if (!after.trim()) continue;
-			// Malformed lines: byte comparison only.
 			let parsedAfter;
 			let parsedBefore;
 			try {

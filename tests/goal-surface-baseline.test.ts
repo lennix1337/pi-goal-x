@@ -1,16 +1,3 @@
-/**
- * Stage 0 characterization: the exact registered model-tool and slash-command
- * surface of the goal extension as of the codex-inspired-goal-interface
- * baseline (specs/2026-08-03-codex-inspired-goal-interface).
- *
- * This test is the interface contract for the simplification work. It pins:
- *   - the exact tools registered at extension load (registration order);
- *   - the exact slash commands registered at extension load;
- *   - the phase-dependent advertised tool sets from goal-tool-names.ts.
- *
- * Stages 3-6 of TECH.md intentionally change this surface (five tools, ten
- * commands). Each change must update this baseline deliberately.
- */
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -124,8 +111,6 @@ test("baseline: every registered tool name is referenced by goal-tool-names cons
 	const { pi, registeredTools } = createRecordingPi();
 	piGoalExtension(pi as never);
 
-	// Every registered goal tool must be named by goal-tool-names.ts so the
-	// surface stays centralized.
 	const knownNames = new Set<string>([...ALL_REGISTERED_GOAL_TOOLS]);
 	for (const tool of registeredTools) {
 		assert.ok(knownNames.has(tool), `registered tool ${tool} is not named in goal-tool-names.ts`);

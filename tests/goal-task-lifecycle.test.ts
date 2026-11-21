@@ -1,8 +1,3 @@
-/**
- * Current-task lifecycle tests (plan §19.2, §19.8): update_goal_task
- * start/complete/skip focus semantics, currentTaskId persistence and
- * normalization (legacy + stale ids), and task-list replacement rules (§7.5).
- */
 
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -221,7 +216,6 @@ test("start validation rejects missing, terminal, and ineligible tasks", async (
 		const h = await startSession(f.cwd, f.sessionEntries);
 		const missing = await callTool(h, "update_goal_task", "start-9", { task_id: "ghost", status: "start" });
 		assert.ok((missing.content?.[0]?.text ?? "").includes("not found"));
-		// Complete the task first, then starting it must fail.
 		await callTool(h, "update_goal_task", "complete-3", { task_id: "t1", status: "complete", evidence: "done" });
 		const terminal = await callTool(h, "update_goal_task", "start-10", { task_id: "t1", status: "start" });
 		assert.ok((terminal.content?.[0]?.text ?? "").includes("only pending tasks can be started"));
@@ -413,7 +407,6 @@ test("stale currentTaskId is cleared during normalization", () => {
 test("normalization never rewrites legacy files", () => {
 	const f = fixtureWithTasks([{ id: "a", title: "A" }, { id: "b", title: "B" }]);
 	try {
-		// Plant a stale focus in the file (simulates an externally-edited record).
 		const file = activeFile(f.cwd);
 		const raw = readFileSync(file, "utf8");
 		const parsed = parseGoalFile(file);
@@ -421,7 +414,6 @@ test("normalization never rewrites legacy files", () => {
 		parsed.currentTaskId = "ghost";
 		const goal = normalizeGoalRecord(JSON.parse(JSON.stringify(parsed)));
 		assert.equal(goal?.currentTaskId, undefined);
-		// Reading must not modify the file.
 		parseGoalFile(file);
 		parseGoalFile(file);
 		assert.equal(readFileSync(file, "utf8"), raw, "parse/normalize never rewrites the file");

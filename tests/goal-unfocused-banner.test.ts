@@ -1,10 +1,3 @@
-/**
- * PR #29 clean rewrite — layered hideUnfocusedBanner with live refresh.
- *
- * Pins: boolean parsing, global/project layering, live hide/restore before
- * the settings handler resolves, focused dashboard immunity, and the
- * model-facing [PI GOAL UNFOCUSED] safety invariant.
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -150,8 +143,6 @@ describe("model-facing safety invariant (PR #29 §39)", () => {
 		assert.match(prompt, /\[PI GOAL UNFOCUSED\]/);
 		assert.match(prompt, /Do not choose or switch focus autonomously/);
 		assert.match(prompt, /Ask the user to run \/goal-focus/);
-		// The prompt builder takes only the open-goal count — the setting cannot
-		// reach it structurally.
 		assert.equal(unfocusedOpenGoalsPrompt(1), unfocusedOpenGoalsPrompt(1));
 	});
 });

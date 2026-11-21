@@ -27,8 +27,6 @@ test("an unfocused goal registers no widget, only the footer status", async t =>
 	assert.equal(factories.length, 0);
 });
 
-// The full dashboard only exists while the user expanded it, so the stale-context
-// scenario runs with it expanded.
 for (const focused of [true]) test(`deferred widget render survives stale context (focused=${focused})`, async t => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "goal-widget-lifetime-"));
 	t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));

@@ -101,7 +101,6 @@ test("renderAuditorWidgetLines shows the structured audit dashboard (§15.3)", (
 	assert.ok(text.indexOf("Tasks and recorded evidence") < text.indexOf("Workspace inspection"));
 	assert.ok(text.indexOf("Workspace inspection") < text.indexOf("Final decision"));
 	assert.match(lines.at(-1) ?? "", /Esc: stop audit/);
-	// Tool + output details are hidden by default (shown only in expanded/debug).
 	assert.doesNotMatch(text, /tool read/);
 	assert.doesNotMatch(text, /checking file exists/);
 });
@@ -1115,9 +1114,7 @@ test("applyStableHeightBound: chrome change (editor grew) re-evaluates the latch
 	assert.equal(first.length, 11);
 	assert.equal(state.stickyCap, 11);
 
-	// The editor grew (chrome 4 -> 8): the latch re-evaluates to 15 - 8 = 7
-	// so the widget's block plus the chrome never exceeds the terminal (else
-	// pi-tui full-renders on every agent write).
+	// external: pi-tui full-renders if the widget and dock exceed the terminal.
 	const second = applyStableHeightBound(natural14, 15, state, "regime", 8);
 	assert.equal(second.length, 7, "reserve change clears the latch and re-evaluates");
 	assert.equal(state.stickyCap, 7);
@@ -1162,12 +1159,10 @@ test("applyStableHeightBound: fits case latches at the first-render natural and 
 	assert.deepEqual(applyStableHeightBound(natural13, 30, state, "regime"), natural13);
 	assert.equal(state.stickyCap, 13, "fits case latches at the natural height");
 
-	// growth past the committed height: head slice, height never changes
 	const grown = applyStableHeightBound(natural16, 30, state, "regime");
 	assert.equal(grown.length, 13, "growth is head-sliced to the committed height");
 	assert.deepEqual(grown, natural16.slice(0, 13));
 
-	// shrink: blank padding, height never changes
 	const shrunk = applyStableHeightBound(natural10, 30, state, "regime");
 	assert.equal(shrunk.length, 13, "shrink is padded to the committed height");
 	assert.deepEqual(shrunk.slice(0, 10), natural10);
@@ -1271,9 +1266,6 @@ test("GoalWidgetComponent: rendered height is constant across goal-state changes
 		step();
 		heights.push(component.render(100).length);
 	}
-	// the first render latches the height and every later goal-state change
-	// (task completions, feed growth, verification, budget, usage) keeps it
-	// constant — the buffer line count never changes
 	assert.ok(heights.every((h) => h <= cap), `bounded by the cap: ${heights.join(",")}`);
 	assert.equal(new Set(heights).size, 1, `constant across all goal-state changes: ${heights.join(",")}`);
 });
@@ -1325,12 +1317,7 @@ test("GoalWidgetComponent: expanding the terminal reveals more of the widget, co
 });
 
 test("GoalWidgetComponent: measured dock chrome shrinks the widget so the block + chrome fits the terminal", () => {
-	// A fake TUI with the regular-mode child structure:
-	// [document, status, widgetContainer(component), editor, footer].
-	// The widget must size itself so its block + the chrome (status + editor
-	// + footer) never exceeds the terminal — otherwise pi-tui full-renders
-	// (2J+3J wipe) whenever the agent writes and the chrome pushes the chat
-	// append point above the viewport top.
+	// external: pi-tui can erase scrollback when a changed line precedes the viewport.
 	let current: GoalWidgetRecord = { ...goal(), taskList: { tasks: Array.from({ length: 12 }, (_, i) => ({ id: `t${i}`, title: `Task ${i} long title for wrapping`, status: i < 5 ? "complete" : "pending", createdAt: "2026-08-10T00:00:00Z", updatedAt: "2026-08-10T00:00:00Z", completedAt: i < 5 ? "2026-08-10T00:01:00Z" : undefined })), blockCompletion: false, proposedAt: "2026-08-10T00:00:00Z" } };
 	let editorLines: string[] = [""];
 	const tui = {
@@ -1357,10 +1344,6 @@ test("GoalWidgetComponent: measured dock chrome shrinks the widget so the block 
 	const small = component.render(100);
 	assert.equal(small.length, 9, "with a small editor the widget renders its natural height (9 < cap 10)");
 
-	// Tall editor (user's typed message): chrome = status(1) + editor(4:
-	// "❯" + 3 wrapped lines) + footer(2) = 7 -> reserve 8 -> cap = 15 - 8 = 7.
-	// The widget must shrink so the block + chrome (7 + 7 = 14) still fits the
-	// 15-row terminal.
 	editorLines = ["l1", "l2", "l3"];
 	const tall = component.render(100);
 	assert.equal(tall.length, 7, "with a tall editor the widget shrinks to 15 - (7 + 1) = 7 lines");

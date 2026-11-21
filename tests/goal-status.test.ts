@@ -112,7 +112,6 @@ test("standard mode shows the anchored task window — parity with the widget de
 	assert.match(text, /Task number 20[\s\S]*▸ t21  Task number 21/, "the task in progress follows the latest completion");
 	assert.match(text, /… \+7 more tasks/, "pending tasks after the window stay reachable below");
 	assert.doesNotMatch(text, /[✓▸·~] t1\s/, "the earliest task row is not rendered");
-	// Width-safe including the indicator rows.
 	for (const line of text.split("\n")) {
 		assert.ok(visibleWidth(line) <= GOAL_STATUS_WIDTH, `line exceeds ${GOAL_STATUS_WIDTH}: ${JSON.stringify(line.slice(0, 60))}`);
 	}

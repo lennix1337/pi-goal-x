@@ -1,12 +1,3 @@
-/**
- * End-to-end regression coverage for /goal-tweak status persistence
- * (specs/2026-08-08-tweak-status-persistence, R1 / success criterion 3):
- * a completed task's status/evidence/completedAt must survive a task-list
- * tweak through the full draft → confirm → apply → disk → reload flow; a
- * tweak without a task list retains the current list unchanged; nested
- * subtask completion survives; currentTaskId survives only while its task
- * stays pending.
- */
 
 import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -154,7 +145,6 @@ test("e2e: completed task status, evidence, and completedAt survive a task-list 
 		await callTaskTool(h, "update_goal_task", { task_id: "b", status: "start" });
 		assert.equal(diskGoal(cwd).currentTaskId, "b", "currentTaskId set before the tweak");
 
-		// Tweak: same ids + a new task c. The merge must keep a complete.
 		await h.commands.get("goal-tweak")!.handler("Revise the plan", h.ctx);
 		await confirmDialog(h, runProposal(h, proposalParams("Revised objective", {
 			tasks: [
@@ -192,7 +182,6 @@ test("e2e: a tweak without a task list retains the current list unchanged (statu
 		await callTaskTool(h, "update_goal_task", { task_id: "a", status: "complete", evidence: "kept" });
 		await callTaskTool(h, "update_goal_task", { task_id: "b", status: "skipped", reason: "user direction" });
 
-		// Tweak WITHOUT tasks in the proposal: the current list must be retained unchanged.
 		await h.commands.get("goal-tweak")!.handler("Tighten the wording", h.ctx);
 		await confirmDialog(h, runProposal(h, proposalParams("Tightened objective wording")));
 

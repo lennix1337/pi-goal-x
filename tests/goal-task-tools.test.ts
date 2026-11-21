@@ -365,9 +365,6 @@ test("countTasks counts every node including descendants", () => {
 
 
 test("set_goal_tasks preserves an external disk edit made between confirmation and apply", async () => {
-	// Session starts with t1/t2 pending. An external edit marks t2 complete on
-	// disk. set_goal_tasks then replaces the tree (headless auto-confirm). The
-	// disk-fresh merge must preserve the external t2 progress.
 	const f = fixtureWithTasks([{ id: "t1", title: "T1", status: "pending" }, { id: "t2", title: "T2", status: "pending" }]);
 	try {
 		const h = createHarness(f.cwd, f.sessionEntries);

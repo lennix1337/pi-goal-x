@@ -191,7 +191,6 @@ test("addWrappedPipe fix: content exactly at minimum safeWidth=20", () => {
 	}
 });
 
-// ─── truncateToWidth safety net ─────────────────────────────────────────────
 
 test("truncateToWidth safety net at edge case widths", () => {
 	for (let width = 1; width <= 120; width++) {
@@ -262,7 +261,6 @@ test("addWrappedPipe fix: full crash scenario simulation", () => {
 		"│   We need to dissassemble the vendor's implementation live, stepping through, to ensure we implement this in full.",
 	].join(" ");
 
-	// The fixed version never overflows at the exact crash scenario width
 	const fixedLines = fixedAddWrappedPipe(crashContent, safeWidth);
 	for (let i = 0; i < fixedLines.length; i++) {
 		assert.ok(
