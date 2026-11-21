@@ -1,11 +1,3 @@
-/**
- * Semantic occurrence counting over the SERIALIZED composed request (PR D).
- *
- * Every semantic field the goal system must communicate is counted exactly:
- * later optimization PRs must keep required markers present while removing
- * duplicate restatements.
- */
-
 const MARKERS = {
 	objective: null,
 	verificationContract: null,

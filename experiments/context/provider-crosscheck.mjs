@@ -1,4 +1,3 @@
-/** Capture a real SDK provider payload before dispatch; no HTTP request is sent. */
 import assert from 'node:assert/strict';
 import * as piAI from '@earendil-works/pi-ai';
 import {stream as streamResponses} from '../../node_modules/@earendil-works/pi-ai/dist/api/openai-responses.js';
@@ -10,7 +9,7 @@ import goalExtension from '../../extensions/goal.ts';
 import {captureOne,CAPTURE_CWD} from './capture-context.mjs';
 import {FIXTURES} from './fixtures.mjs';
 
-// The SDK renders cwd resolved; on Windows '/tmp/x' becomes 'C:\tmp\x' or 'C:/tmp/x'.
+// external: the SDK resolves cwd using the platform's path syntax.
 const maskCwd=(text,cwd)=>{const resolved=path.resolve(cwd);return text.replaceAll(resolved.replaceAll('\\','/'),'/fixture').replaceAll(resolved,'/fixture').replaceAll(cwd,'/fixture');};
 import {runGoalCompletionAuditor} from '../../extensions/goal-auditor.ts';
 import {runBlockerOracle} from '../../extensions/goal-oracle.ts';
@@ -33,7 +32,6 @@ for(const supportsStrictMode of [undefined,false,true]) {
  }
  const byName=Object.fromEntries(payload.tools.map(tool=>[tool.name,tool]));
  assert.deepEqual(byName.create_goal.parameters.required,['objective']);
- // An explicit null means unlimited; a number must still be a positive whole-token limit.
  const createBudget=byName.create_goal.parameters.properties.token_budget.anyOf;
  assert.ok(createBudget.some(type=>type.type==='integer'&&type.minimum===1));
  assert.ok(createBudget.some(type=>type.type==='null'));

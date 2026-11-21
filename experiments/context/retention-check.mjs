@@ -1,4 +1,3 @@
-/** Offline retention cost/space gate: no provider requests or agent runs. */
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 import { LiveTailRetention } from '../../extensions/goal-live-retention.ts';
