@@ -1,10 +1,3 @@
-/**
- * Unit tests for GoalService — the sole goal mutation boundary.
- *
- * Verifies the ordered pipeline from TECH.md Stage 1:
- *   1. reconcile → 2. expected id / focus revision check → 3. mutate on clone
- *   → 4. active-file write → 5. ledger append → 6. memory commit → 7. effects
- */
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,7 +11,6 @@ import { writeActiveGoalFile, parseGoalFile, serializeGoalFile } from "../extens
 import { goalLedgerPath } from "../extensions/goal-ledger.ts";
 import { acquireGoalLock } from "../extensions/storage/goal-lock.ts";
 
-// ── Fake ref: in-memory pool + focus mirroring the extension's closure state ─
 
 interface HookLog {
 	goalLost: string[];
@@ -147,19 +139,16 @@ describe("GoalService mutation pipeline", () => {
 			assert.ok(result.ok, "apply should succeed");
 			if (!result.ok) return;
 
-			// 4. file write landed
 			const active = activeFiles(f.cwd);
 			assert.equal(active.length, 1, "one active goal file should exist");
 			const parsed = parseGoalFile(path.join(f.cwd, ".pi", "goals", active[0]!));
 			assert.ok(parsed, "written file must parse");
 			assert.ok(parsed.objective.includes("Mutated"), "file must contain the mutated objective");
 
-			// 5. ledger append landed
 			const events = ledgerEvents(f.cwd);
 			assert.equal(events.length, 1, "one ledger event should exist");
 			assert.equal((events[0] as { type: string }).type, "goal_paused");
 
-			// 6. memory commit landed
 			const focused = f.ref.getFocused();
 			assert.ok(focused, "focused goal must exist");
 			assert.ok(focused.objective.includes("Mutated"), "memory goal must reflect the mutation");
@@ -255,7 +244,6 @@ describe("GoalService mutation pipeline", () => {
 		const f = fixture();
 		try {
 			const token = f.ref.focusToken(f.written.id);
-			// Simulate a focus change that bumps the revision.
 			f.ref.assignFocusedGoalId(null);
 			f.ref.assignFocusedGoalId(f.written.id);
 			const result = f.service.apply({ cwd: f.cwd }, {
@@ -290,7 +278,6 @@ describe("GoalService mutation pipeline", () => {
 	it("persist merges the authoritative objective from disk before writing", () => {
 		const f = fixture();
 		try {
-			// Simulate an external user edit of the prompt body.
 			const active = activeFiles(f.cwd);
 			const filePath = path.join(f.cwd, ".pi", "goals", active[0]!);
 			const current = readFileSync(filePath, "utf8");
@@ -350,12 +337,10 @@ describe("GoalService mutation pipeline", () => {
 		}
 	});
 
-// ── Stage 4: ledger failure injection ────────────────────────────────────────
 
 it("ledger append failure after the authoritative write keeps the state transition and emits a diagnostic", async () => {
 	const f = fixture();
 	try {
-		// Make the ledger path unwritable: a directory blocks appendFileSync.
 		mkdirSync(goalLedgerPath({ cwd: f.cwd }), { recursive: true });
 
 		const result = f.service.apply({ cwd: f.cwd }, {
@@ -365,12 +350,10 @@ it("ledger append failure after the authoritative write keeps the state transiti
 		});
 		assert.ok(result.ok, "state write must not be rolled back by a ledger failure");
 		if (!result.ok) return;
-		// The authoritative write landed on disk.
 		const files = activeFiles(f.cwd);
 		assert.equal(files.length, 1, "active file still present");
 		const diskContent = readFileSync(path.join(f.cwd, ".pi", "goals", files[0]!), "utf8");
 		assert.ok(diskContent.includes("updated despite ledger failure"), "mutation persisted despite ledger failure");
-		// The failure is observable through the onDiagnostic hook.
 		assert.ok(f.log.diagnostics.length >= 1, "ledger failure must emit a diagnostic");
 		const diag = f.log.diagnostics[0]!;
 		assert.equal(diag.source, "ledger");
@@ -383,10 +366,8 @@ it("ledger append failure after the authoritative write keeps the state transiti
 });
 
 
-// ── Follow-up Stage 4: cross-process mutation control ───────────────────────
 
 describe("cross-process mutation control (follow-up Stage 4)", () => {
-	/** A second GoalService instance + ref on the SAME cwd (separate session). */
 	function secondWriter(cwd: string) {
 		const active = readdirNames(path.join(cwd, ".pi", "goals")).filter((n) => n.startsWith("active_goal_"))[0]!;
 		const diskGoal = parseGoalFile(path.join(cwd, ".pi", "goals", active))!;
@@ -398,7 +379,6 @@ describe("cross-process mutation control (follow-up Stage 4)", () => {
 		const f = fixture();
 		try {
 			const b = secondWriter(f.cwd);
-			// Both writers are past their first read: each ref holds revision 0.
 			assert.equal(f.ref.getFocused()?.revision ?? 0, 0, "writer A read revision 0");
 			assert.equal(b.ref.getFocused()?.revision ?? 0, 0, "writer B read revision 0");
 
@@ -540,7 +520,6 @@ describe("cross-process mutation control (follow-up Stage 4)", () => {
 			const lockDir = path.join(f.cwd, ".pi", "goals", ".locks");
 			mkdirSync(lockDir, { recursive: true });
 			const lockPath = path.join(lockDir, `${f.written.id}.lock`);
-			// A lock left by a process that no longer exists.
 			writeFileSync(lockPath, JSON.stringify({ pid: 99999999, startedAt: "2020-01-01T00:00:00.000Z" }), "utf8");
 			const lock = acquireGoalLock({ cwd: f.cwd }, f.written.id, { attempts: 3, retryMs: 5 });
 			lock.release();
@@ -560,7 +539,6 @@ describe("cross-process mutation control (follow-up Stage 4)", () => {
 				/Timed out acquiring/,
 			);
 			first.release();
-			// After release the lock is reusable.
 			const again = acquireGoalLock({ cwd: f.cwd }, f.written.id, { attempts: 3 });
 			again.release();
 		} finally {
@@ -573,7 +551,6 @@ describe("cross-process mutation control (follow-up Stage 4)", () => {
 		try {
 			const raw = readFileSync(path.join(f.cwd, ".pi", "goals", activeFiles(f.cwd)[0]!), "utf8");
 			assert.ok(raw.includes('"revision": 0'), "revision persisted in the goal file");
-			// A legacy file without the key normalizes to zero on parse.
 			const legacy = raw.replace('"revision": 0,', "");
 			const legacyPath = path.join(f.cwd, ".pi", "goals", "legacy_goal.md");
 			writeFileSync(legacyPath, legacy, "utf8");
@@ -589,7 +566,6 @@ describe("persist additive usage merge on revision conflict", () => {
 	it("merges only the session usage delta onto the disk record when the revision moved", () => {
 		const f = fixture();
 		try {
-			// Writer A: baseline session usage lands on disk via a normal persist.
 			const a1 = cloneGoal(f.ref.getFocused()!);
 			a1.usage.tokensUsed = 50;
 			a1.usage.activeSeconds = 10;
@@ -598,8 +574,6 @@ describe("persist additive usage merge on revision conflict", () => {
 			assert.ok(first, "first persist must succeed");
 			assert.equal(first.usage.tokensUsed, 50);
 
-			// Writer B (another process): bumps the revision AND the usage and
-			// changes the objective (its authoritative fields).
 			const active = activeFiles(f.cwd);
 			const diskGoal = parseGoalFile(path.join(f.cwd, ".pi", "goals", active[0]!));
 			assert.ok(diskGoal, "fixture goal must parse");
@@ -610,7 +584,6 @@ describe("persist additive usage merge on revision conflict", () => {
 			bDisk.revision = (diskGoal!.revision ?? 0) + 1;
 			writeActiveGoalFile({ cwd: f.cwd }, bDisk);
 
-			// Writer A charges more work since its baseline (50/10).
 			const a2 = cloneGoal(f.ref.getFocused()!);
 			a2.usage.tokensUsed = 80;
 			a2.usage.activeSeconds = 17;
@@ -625,7 +598,6 @@ describe("persist additive usage merge on revision conflict", () => {
 			assert.equal(merged.revision, (diskGoal!.revision ?? 0) + 2, "revision advances past the conflict");
 			assert.ok(merged.objective.includes("Writer B objective"), "authoritative disk objective must be preserved");
 
-			// Disk reflects the merged record.
 			const onDisk = parseGoalFile(path.join(f.cwd, ".pi", "goals", active[0]!));
 			assert.ok(onDisk, "merged goal must parse from disk");
 			assert.equal(onDisk.usage.tokensUsed, 100, "merged usage must be on disk");
@@ -652,7 +624,6 @@ describe("persist additive usage merge on revision conflict", () => {
 			a.usage.activeSeconds = 30;
 			f.ref.setFocused(a);
 
-			// Writer B moved the revision first.
 			const active = activeFiles(f.cwd);
 			const diskGoal = parseGoalFile(path.join(f.cwd, ".pi", "goals", active[0]!));
 			assert.ok(diskGoal, "fixture goal must parse");

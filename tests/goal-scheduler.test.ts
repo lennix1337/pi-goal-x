@@ -361,7 +361,6 @@ test("a run that ended in a provider error (quota) is recovered once after a rel
 	h.core.scheduler.resume(h.ctx); t.mock.timers.tick(1);
 	assert.equal(h.sent.length, 1);
 	h.admit();
-	// The failover extension's own continuation prompt supersedes the claim, then every account refuses.
 	h.core.scheduler.message(h.ctx, { role: "user", content: "Provider failover activated: continue" });
 	h.core.scheduler.settled(h.ctx, false);
 	assert.equal(h.core.state.goal?.status, "active");
@@ -385,14 +384,12 @@ test("quota auto-resume: each exhaustion cycle waits idle, then the failover res
 	h.admit();
 	assert.equal(h.sent.length, 1);
 	for (let cycle = 1; cycle <= 3; cycle++) {
-		// Every account refuses: the goal stays active and idle and schedules nothing while quota is out.
 		h.core.scheduler.message(h.ctx, { role: "user", content: "Provider failover activated: continue" });
 		h.core.scheduler.settled(h.ctx, false);
 		assert.equal(h.core.state.goal?.status, "active", `cycle ${cycle}: quota never pauses the goal`);
 		assert.equal(h.core.state.goal?.scheduler?.phase, "idle");
 		t.mock.timers.tick(3_600_000);
 		assert.equal(h.sent.length, cycle, `cycle ${cycle}: no goal dispatch while quota is out`);
-		// The failover extension resumes the interrupted turn by itself; that run succeeds.
 		h.core.scheduler.begin(h.ctx);
 		h.core.scheduler.settled(h.ctx, true); t.mock.timers.tick(1);
 		assert.equal(h.sent.length, cycle + 1, `cycle ${cycle}: the goal continues once after the resume`);
@@ -619,7 +616,6 @@ test("explicit resume during an execution waits for settlement and dispatches ki
 	assert.equal(h.core.state.goal?.scheduler?.used, 1);
 });
 
-// Default policy deliberately does not infer productivity from tool activity.
 test("implicit executions continue without tools through task completion and wrap-up", async t => {
  const h = await fixture(t, undefined, "owner", undefined, false);
  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
@@ -742,14 +738,11 @@ test("the runs line is omitted when unlimited and controlled by the setting when
 	assert.equal(schedulerSummary(s, undefined), "");
 	assert.equal(schedulerSummary(s, undefined, true), "", "the setting cannot force a line when there is no limit");
 
-	// Finite: reported by default.
 	assert.match(schedulerSummary(s, 20), /Autonomous runs: 4\/20\./);
 	assert.match(schedulerSummary(h.core.state.goal?.scheduler, 20), /Autonomous runs/);
 
-	// Finite with the setting off.
 	assert.equal(schedulerSummary(s, 20, false), "");
 
-	// Zero is a finite allowance, so the disabled suffix still reports.
 	assert.match(schedulerSummary(s, 0), /4\/0 \(automatic continuation disabled\)/);
 	assert.equal(schedulerSummary(s, 0, false), "");
 
@@ -831,7 +824,7 @@ test("prompt cache: normal and custom runs preserve history while refreshing all
  assert.deepEqual(third.slice(0, 3), history);
  assert.match(third.at(-2).content, /Changed objective/);
  assert.match(third.at(-1).content, /Goal snapshot:/);
- h.core.scheduler.begin(h.ctx); // Custom-message run bypassing preflight.
+ h.core.scheduler.begin(h.ctx);
  for (let i = 0; i < 4; i++) {
   history.push({role: "custom", customType: "pi-goal-event", content: "legacy full prompt", details: {goalId: h.core.state.goal!.id, kind: "checkpoint"}, timestamp: i + 4});
   const current = await request();
@@ -855,7 +848,6 @@ test("prompt cache: interleaved sessions keep per-session transient sets", async
 	const history: any[] = [{role: "user", content: "Work on the goal", timestamp: 1}];
 	const ctxB = {...h.ctx, sessionManager: {...h.ctx.sessionManager, getSessionId: () => "owner-B"}} as unknown as ExtensionContext;
 	const first: any[] = (await h.handlers.context!({messages: history}, h.ctx)).messages;
-	// Session B advances the same goal so its transient set differs from A's.
 	h.core.state.goal!.usage.tokensUsed = 12345;
 	h.core.state.goal!.scheduler = {...newGoalScheduler("owner"), used: 7};
 	await h.handlers.context!({messages: history}, ctxB);
@@ -868,8 +860,6 @@ test("prompt cache: interleaved sessions keep per-session transient sets", async
 test("prompt cache: cleared scheduling instructions vanish from retained history", async t => {
 	const h = await fixture(t);
 	const history: any[] = [{role: "user", content: "Work on the goal", timestamp: 1}];
-	// The standing instruction is a saved wait reason. A ready decision no longer
-	// carries text: next actions were removed.
 	h.core.state.goal!.scheduler = {...newGoalScheduler("owner"), phase: "waiting", decision: {kind: "wait"}, wait: {id: "w1", token: "t1", reason: "Publish release v1", deadline: Date.now() + 60_000}};
 	const first: any[] = (await h.handlers.context!({messages: history}, h.ctx)).messages;
 	assert.ok(first.some((m: any) => typeof m.content === "string" && m.content.includes("Publish release v1")), "standing instruction rides the live state");

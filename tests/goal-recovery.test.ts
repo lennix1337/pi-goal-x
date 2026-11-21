@@ -58,15 +58,12 @@ test("recovery report: malformed goal file, bad ledger line, stale lock, and orp
 	const ctx = tempCtx();
 	try {
 		writeGoal(ctx);
-		// Malformed goal file.
 		fs.writeFileSync(path.join(ctx.cwd, GOALS_DIR, "active_goal_bad.md"), "this is not a goal file", "utf8");
-		// Malformed ledger line.
 		fs.appendFileSync(path.join(ctx.cwd, GOALS_DIR, "goal_events.jsonl"), "{{{ not json\n", "utf8");
 		// Stale lock (dead pid + old startedAt).
 		writeStaleLock(ctx, "g1.lock");
-		// Orphaned snapshot entry: a snapshot goal whose file does not exist.
 		writeGoal(ctx);
-		readActiveGoalPool(ctx); // cold read writes the pool snapshot
+		readActiveGoalPool(ctx);
 		const snapshotPath = path.join(ctx.cwd, ".pi", ".goals-pool-snapshot.json");
 		assert.ok(fs.existsSync(snapshotPath), "cold read wrote a snapshot");
 		const snapshot = JSON.parse(fs.readFileSync(snapshotPath, "utf8"));
@@ -111,8 +108,7 @@ test("recovery repair: confirmed repair backs up, removes stale locks, and refre
 	try {
 		writeGoal(ctx);
 		writeStaleLock(ctx, "g1.lock");
-		// Orphaned snapshot entry.
-		readActiveGoalPool(ctx); // cold read writes the pool snapshot
+		readActiveGoalPool(ctx);
 		const snapshotPath = path.join(ctx.cwd, ".pi", ".goals-pool-snapshot.json");
 		const snapshot = JSON.parse(fs.readFileSync(snapshotPath, "utf8"));
 		const orphanCount = snapshot.goals.length;
@@ -131,12 +127,10 @@ test("recovery repair: confirmed repair backs up, removes stale locks, and refre
 		assert.ok(fs.existsSync(path.join(result.backupDir!, "pool-snapshot.json")), "snapshot backed up before refresh");
 		assert.equal(result.applied.length, 2);
 
-		// The refreshed snapshot no longer contains the orphan.
 		const refreshed = JSON.parse(fs.readFileSync(snapshotPath, "utf8"));
 		assert.equal(refreshed.goals.length, orphanCount);
 		assert.ok(!refreshed.goals.some((g: { goalId?: string }) => g.goalId === "gone"), "orphan dropped from the refreshed snapshot");
 
-		// A follow-up report is healthy for the repaired classes.
 		const after = runRecoveryReport(ctx);
 		assert.equal(after.staleLocks.length, 0);
 		assert.equal(after.orphanedSnapshotGoals.length, 0);

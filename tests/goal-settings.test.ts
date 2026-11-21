@@ -1,6 +1,3 @@
-/**
- * Tests for the goal settings system (.pi/goal-settings.json + env var overrides).
- */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -24,7 +21,6 @@ import {
 	type GoalSettings,
 } from "../extensions/goal-settings.ts";
 
-// ── parseGoalSettings ───────────────────────────────────────────────────
 
 test("parseGoalSettings: null/undefined returns empty defaults", () => {
 	assert.deepEqual(parseGoalSettings(null), {});
@@ -114,7 +110,6 @@ test("parseGoalSettings: multiple unknown keys rejected with the full list", () 
 	);
 });
 
-// ── goalSettingsPath ────────────────────────────────────────────────────
 
 test("goalSettingsPath: resolves under .pi/ with new filename", () => {
 	const p = goalSettingsPath("/tmp/project");
@@ -123,20 +118,16 @@ test("goalSettingsPath: resolves under .pi/ with new filename", () => {
 });
 
 test("goalSettingsPath: respects PI_GOAL_SETTINGS_FILE env var", () => {
-	// Relative path
 	const rel = goalSettingsPath("/tmp/project", { PI_GOAL_SETTINGS_FILE: "custom-settings.json" });
 	assert.equal(rel, path.join("/tmp/project", "custom-settings.json"));
 
-	// Absolute path
 	const abs = goalSettingsPath("/tmp/project", { PI_GOAL_SETTINGS_FILE: "/etc/pi/settings.json" });
 	assert.equal(abs, "/etc/pi/settings.json");
 
-	// No env var — defaults to .pi/pi-goal-x-settings.json
 	const def = goalSettingsPath("/tmp/project", {});
 	assert.ok(def.endsWith(path.join(".pi", "pi-goal-x-settings.json")));
 });
 
-// ── loadGoalSettingsFileConfig ──────────────────────────────────────────
 
 function withTempDir(fn: (dir: string) => void): void {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-settings-test-"));
@@ -180,14 +171,11 @@ test("loadGoalSettingsFileConfig: unknown keys diagnosed while known values stil
 		const configPath = goalSettingsPath(dir);
 		fs.mkdirSync(path.dirname(configPath), { recursive: true });
 		fs.writeFileSync(configPath, JSON.stringify({ disableTasks: true, extra: "bad" }), "utf8");
-		// Layered behavior: the valid known key still applies; the unknown key
-		// is a visible diagnostic instead of silently erasing the whole file.
 		const result = loadGoalSettingsFileConfig(dir);
 		assert.equal(result.disableTasks, true);
 	});
 });
 
-// ── loadGoalSettings (env var overrides) ────────────────────────────────
 
 test("loadGoalSettings: no file, no env vars -> defaults false", () => {
 	withTempDir((dir) => {
@@ -202,7 +190,6 @@ test("loadGoalSettings: env vars override file config", () => {
 	withTempDir((dir) => {
 		const configPath = goalSettingsPath(dir);
 		fs.mkdirSync(path.dirname(configPath), { recursive: true });
-		// File says both should true
 		fs.writeFileSync(configPath, JSON.stringify({ disableTasks: true, disableContracts: true }), "utf8");
 		// Env says only disableTasks should be false (overriding file)
 		const result = loadGoalSettings(dir, { PI_GOAL_DISABLE_TASKS: "false", PI_GOAL_DISABLE_CONTRACTS: "true" });
@@ -353,7 +340,6 @@ test("effectiveSettingsReport: objectiveMaxChars row shows the effective value a
 	});
 });
 
-// ── Integration: prompt suppression with settings ────────────────────────
 
 import {
 	goalPrompt,
@@ -442,7 +428,6 @@ test("continuationPrompt: task list suppressed when disableTasks is true", () =>
 	assert.ok(!prompt.includes("TASK LIST"), "task list suppressed from continuationPrompt");
 });
 
-// ── subtaskDepth ────────────────────────────────────────────────────────
 
 test("parseGoalSettings: parses subtaskDepth as number", () => {
 	const result = parseGoalSettings({ disableTasks: false, disableContracts: false, subtaskDepth: 2 });
@@ -481,30 +466,24 @@ test("loadGoalSettings: reads subtaskDepth from file", () => {
 	});
 });
 
-// ── Scroll fix: hardware cursor toggle ──────────────────────────────────
 
 test("loadGoalSettings respects various subtaskDepth edge cases", () => {
 	withTempDir((dir) => {
-		// No file = default 1
 		assert.equal(loadGoalSettings(dir, {}).subtaskDepth, 1);
 
-		// subtaskDepth 0 is rejected (below minimum), defaults to 1
 		const configPath = goalSettingsPath(dir);
 		fs.mkdirSync(path.dirname(configPath), { recursive: true });
 		fs.writeFileSync(configPath, JSON.stringify({ disableTasks: false, disableContracts: false, subtaskDepth: 0 }), "utf8");
 		assert.equal(loadGoalSettings(dir, {}).subtaskDepth, 1);
 
-		// subtaskDepth non-integer rejected
 		fs.writeFileSync(configPath, JSON.stringify({ disableTasks: false, disableContracts: false, subtaskDepth: 1.5 }), "utf8");
 		assert.equal(loadGoalSettings(dir, {}).subtaskDepth, 1);
 
-		// subtaskDepth negative rejected
 		fs.writeFileSync(configPath, JSON.stringify({ disableTasks: false, disableContracts: false, subtaskDepth: -1 }), "utf8");
 		assert.equal(loadGoalSettings(dir, {}).subtaskDepth, 1);
 	});
 });
 
-// ── E2E-style: simulate goal creation with tasks ────────────────────────
 
 test("normalizeTaskList handles subtasks", () => {
 	const raw = {
@@ -524,7 +503,6 @@ test("normalizeTaskList handles subtasks", () => {
 	assert.equal(result.tasks[0]!.subtasks![0]!.id, "t1a");
 	assert.equal(result.tasks[0]!.subtasks![0]!.title, "Child");
 
-	// Verify normalizeTaskItem creates proper nested structure
 	const item = normalizeTaskItem({
 		id: "x", title: "X", status: "pending",
 		subtasks: [

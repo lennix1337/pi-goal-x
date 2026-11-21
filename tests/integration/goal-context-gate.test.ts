@@ -28,7 +28,6 @@ function runNode(args: string[], env: NodeJS.ProcessEnv = process.env): Promise<
 	});
 }
 
-/** Captures one fixture and prints where it worked and the size breakdown the gate compares with the baseline. */
 const CAPTURE_ONE = [
 	'const { captureOne, CAPTURE_CWD } = await import("./experiments/context/capture-context.mjs");',
 	'const { measureContext } = await import("./experiments/context/measure-context.mjs");',
@@ -52,7 +51,6 @@ test("two simultaneous gates pass, each in its own capture directory", async () 
 test("a capture does not depend on the session, the machine or another capture running at the same time", async () => {
 	const agentDir = mkdtempSync(path.join(tmpdir(), "goal-gate-agent-"));
 	try {
-		// Saved global goal defaults change the request the model sees.
 		writeFileSync(path.join(agentDir, "pi-goal-x-settings.json"), JSON.stringify({ maxAutonomousRuns: 7 }));
 		const plain: NodeJS.ProcessEnv = { ...process.env };
 		for (const name of ["PI_SUBAGENT_CHILD", "PI_SUBAGENT_DEPTH", "PI_GOAL_GLOBAL_SETTINGS_FILE", "PI_CODING_AGENT_DIR"]) delete plain[name];

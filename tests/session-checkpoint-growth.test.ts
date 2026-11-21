@@ -48,7 +48,6 @@ async function fireContinuation(goal: GoalRecord): Promise<SentMessage> {
 		isActionable: () => true,
 	});
 	runtime.queueContinuation(idleCtx(), goal, true);
-	// Idle ctx schedules with 0ms delay; wait past the timer.
 	await new Promise((resolve) => setTimeout(resolve, 30));
 	assert.equal(sent.length, 1, "exactly one follow-up must be delivered");
 	return sent[0]!;

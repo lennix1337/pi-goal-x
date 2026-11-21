@@ -25,7 +25,6 @@ function cleanup(ctx: TestContext): void {
 	try {
 		rmSync(ctx.cwd, { recursive: true, force: true });
 	} catch {
-		// ignore
 	}
 }
 
@@ -64,12 +63,10 @@ test("sequential quick-syncs: two updates, only latest objective on disk", () =>
 		const active = writeActiveGoalFile(ctx, goal);
 		assert.equal(active.objective, obj1);
 
-		// Update 1
 		const after1 = writeActiveGoalFile(ctx, { ...active, objective: obj2 });
 		assert.equal(after1.objective, obj2);
 		assert.equal(after1.status, "active");
 
-		// Update 2
 		const after2 = writeActiveGoalFile(ctx, { ...after1, objective: obj3 });
 		assert.equal(after2.objective, obj3);
 		assert.equal(after2.status, "active");
@@ -80,19 +77,14 @@ test("sequential quick-syncs: two updates, only latest objective on disk", () =>
 		assert.ok(!disk.includes(obj2), "obj2 should not be on disk");
 		assert.ok(disk.includes(obj3), "obj3 should be on disk");
 
-		// Pool membership unchanged
 		assert.ok(readActiveGoalPool(ctx).has(goal.id));
 
-		// Same active file path
 		assert.equal(after2.activePath, active.activePath);
 	} finally {
 		cleanup(ctx);
 	}
 });
 
-// ── 2. Quick-sync then later complete (separate calls) ────────────────────────
-// Simulates: agent syncs objective mid-flight, continues work, then later
-// marks complete. The archived file should have the updated objective.
 
 test("quick-sync then later complete: archived file has updated objective", () => {
 	const ctx = tempCtx();
@@ -100,17 +92,14 @@ test("quick-sync then later complete: archived file has updated objective", () =
 		const originalObj = "Original objective";
 		const updatedObj = "Updated objective after requirements changed";
 
-		// Write active goal
 		const goal = makeGoal({ objective: originalObj });
 		const active = writeActiveGoalFile(ctx, goal);
 
-		// Step 1: Quick sync (simulating update_goal (deprecated))
 		const synced = writeActiveGoalFile(ctx, { ...active, objective: updatedObj });
 		assert.equal(synced.objective, updatedObj);
 		assert.equal(synced.status, "active");
 		assert.equal(synced.archivedPath, undefined);
 
-		// Step 2: Later, mark complete (simulating update_goal({status:"complete"}))
 		const completed = writeActiveGoalFile(ctx, {
 			...synced,
 			status: "complete" as const,
@@ -123,12 +112,10 @@ test("quick-sync then later complete: archived file has updated objective", () =
 			"deferred archival: should still be in active dir");
 		assert.equal(completed.archivedPath, undefined, "deferred archival: not archived yet");
 
-		// Step 3: Turn_end archives (simulating archiveGoalFile)
 		const archived = archiveGoalFile(ctx, completed);
 		assert.equal(archived.activePath, undefined);
 		assert.match(archived.archivedPath ?? "", /^\.pi\/goals\/archived\/goal_/);
 
-		// Verify archived file has the updated objective
 		const archivedContent = readArchivedFile(ctx, archived);
 		assert.ok(archivedContent.includes(updatedObj),
 			"archived file must have the updated objective (not the original)");
@@ -141,9 +128,6 @@ test("quick-sync then later complete: archived file has updated objective", () =
 	}
 });
 
-// ── 3. Sync + approval path ──────────────────────────────────────────────────
-// Simulates: objective updated, then completion with audit approval.
-// Verifies the buildCompletionReport includes the updated objective context.
 
 test("sync + approval path: report includes new objective and approval", () => {
 	const report = buildCompletionReport({
@@ -156,8 +140,6 @@ test("sync + approval path: report includes new objective and approval", () => {
 	assert.ok(report.includes("Build feature Y"), "must reference the updated objective");
 });
 
-// ── 4. Sync + disabled bypass ────────────────────────────────────────────────
-// Verifies the buildCompletionReport with updated objective + skip reason.
 
 test("sync + disabled bypass: report includes new objective and skip reason", () => {
 	const report = buildCompletionReport({
@@ -171,8 +153,6 @@ test("sync + disabled bypass: report includes new objective and skip reason", ()
 	assert.ok(!report.includes("<approved/>"), "must NOT include approval marker");
 });
 
-// ── 5. Sync + Esc bypass ─────────────────────────────────────────────────────
-// Verifies the buildCompletionReport with updated objective + Esc reason.
 
 test("sync + Esc bypass: report includes new objective and Esc reason", () => {
 	const report = buildCompletionReport({
@@ -197,14 +177,12 @@ test("multiple syncs then complete: final objective in archived file", () => {
 		const goal = makeGoal({ objective: objs[0] });
 		let current = writeActiveGoalFile(ctx, goal);
 
-		// Three sequential quick-syncs
 		for (const obj of objs) {
 			current = writeActiveGoalFile(ctx, { ...current, objective: obj });
 			assert.equal(current.objective, obj);
 			assert.equal(current.status, "active");
 		}
 
-		// Mark complete
 		const completed = writeActiveGoalFile(ctx, {
 			...current,
 			status: "complete" as const,
@@ -213,7 +191,6 @@ test("multiple syncs then complete: final objective in archived file", () => {
 		});
 		assert.equal(completed.objective, objs[2]);
 
-		// Archive (turn_end)
 		const archived = archiveGoalFile(ctx, completed);
 		const archivedContent = readArchivedFile(ctx, archived);
 
@@ -226,9 +203,6 @@ test("multiple syncs then complete: final objective in archived file", () => {
 	}
 });
 
-// ── 7. Sync while paused ─────────────────────────────────────────────────────
-// Simulates: goal is paused and the objective is updated via /goal-tweak.
-// Status stays paused, objective changes on disk.
 
 test("sync while paused: status stays paused, objective changed on disk", () => {
 	const ctx = tempCtx();
@@ -241,9 +215,6 @@ test("sync while paused: status stays paused, objective changed on disk", () => 
 		assert.equal(paused.status, "paused");
 		assert.equal(paused.objective, originalObj);
 
-		// Valid gate check
-
-		// Update objective while paused
 		const updated = writeActiveGoalFile(ctx, { ...paused, objective: newObj });
 		assert.equal(updated.status, "paused", "status must stay paused");
 		assert.equal(updated.objective, newObj, "objective must be updated");
@@ -256,8 +227,6 @@ test("sync while paused: status stays paused, objective changed on disk", () => 
 	}
 });
 
-// ── 8. Deferred archival after sync (fully sequential) ────────────────────────
-// Sync objective → mark complete → not archived → archiveGoalFile → archived.
 
 test("deferred archival after sync: verify active then archived", () => {
 	const ctx = tempCtx();
@@ -266,11 +235,9 @@ test("deferred archival after sync: verify active then archived", () => {
 		const goal = makeGoal({ objective: "Original" });
 		const active = writeActiveGoalFile(ctx, goal);
 
-		// Sync
 		const synced = writeActiveGoalFile(ctx, { ...active, objective: updatedObj });
 		assert.equal(synced.archivedPath, undefined);
 
-		// Mark complete (deferred archival)
 		const completed = writeActiveGoalFile(ctx, {
 			...synced,
 			status: "complete" as const,
@@ -282,11 +249,9 @@ test("deferred archival after sync: verify active then archived", () => {
 		assert.equal(completed.archivedPath, undefined,
 			"after mark complete: no archivedPath");
 
-		// Pool should filter it out (readActiveGoalPool skips complete)
 		const pool = readActiveGoalPool(ctx);
 		assert.equal(pool.has(goal.id), false, "complete goal filtered from pool");
 
-		// Now archive (turn_end)
 		const archived = archiveGoalFile(ctx, completed);
 		assert.equal(archived.activePath, undefined, "after archive: no activePath");
 		assert.match(archived.archivedPath ?? "", /^\.pi\/goals\/archived\/goal_/,
@@ -302,9 +267,6 @@ test("deferred archival after sync: verify active then archived", () => {
 	}
 });
 
-// ── 9. All three bypass paths (no sync) — separate tools already covered ──────
-// This test verifies all three produce distinct reports and that goal
-// archival is consistent regardless of which bypass was taken.
 
 test("all three bypass paths produce correct distinct reports", () => {
 	const base = "Base detailed summary";
@@ -334,8 +296,6 @@ test("all three bypass paths produce correct distinct reports", () => {
 	assert.ok(disabled.includes("Goal complete."), "disabled: complete");
 	assert.ok(esc.includes("Goal complete."), "esc: complete");
 
-	// Verify archival same for all — simulate by having each pass through
-	// writeActiveGoalFile + archiveGoalFile with a fresh goal each time
 	for (const label of ["approval", "disabled", "esc"]) {
 		const ctx = tempCtx();
 		try {

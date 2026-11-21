@@ -25,7 +25,6 @@ function cleanup(ctx: TestContext): void {
 	try {
 		rmSync(ctx.cwd, { recursive: true, force: true });
 	} catch {
-		// ignore
 	}
 }
 
@@ -40,7 +39,6 @@ function makeGoal(overrides: Partial<GoalRecord> = {}): GoalRecord {
 	};
 }
 
-// ─── updatedObjective schema rejection (removed from the model surface) ──────
 
 test("update_goal schema has additionalProperties: false and no updatedObjective", () => {
 	const source = readFileSync("extensions/goal-core-tools.ts", "utf8");
@@ -59,9 +57,6 @@ test("update_goal schema has additionalProperties: false and no updatedObjective
 
 test("update_goal routes complete directly to the shared completion flow", () => {
 	const source = readFileSync("extensions/goal-core-tools.ts", "utf8");
-	// The completion flow is reached directly from the update_goal executor for
-	// status=complete; blocked and paused route to their own flows. The claim
-	// is a single scalar parameter — no options object, no paperwork fields.
 	assert.ok(!source.includes("params.updatedObjective"),
 		"Phase 1 updatedObjective handling must be removed");
 	assert.ok(source.includes("completion_summary: Type.Optional(Type.String"),
@@ -76,9 +71,6 @@ test("update_goal routes complete directly to the shared completion flow", () =>
 		"handler must not reference updatedObjective in error messages");
 });
 
-// ─── completion flow unaffected ────────────────────────────────────────────
-
-// ─── completion flow unaffected ────────────────────────────────────────────
 
 test("update_goal(complete) with status=complete still works (completion flow unchanged)", () => {
 	const ctx = tempCtx();
@@ -107,7 +99,6 @@ test("update_goal(complete) with status=complete still works (completion flow un
 	}
 });
 
-// ─── buildCompletionReport ──────────────────────────────────────────────────
 
 test("buildCompletionReport handles updated objective display", () => {
 	const report = buildCompletionReport({
@@ -118,11 +109,6 @@ test("buildCompletionReport handles updated objective display", () => {
 	assert.ok(report.includes("<approved/>"));
 });
 
-// ─── tweak persist-path simulation (shared proposal validators) ────────────
-// The tweak persist path writes the new objective via
-// writeActiveGoalFile, appends a state entry, clears tweakDraftingFor, sets
-// turnStoppedFor, and returns terminate:true. We simulate the storage-level
-// write and verify the goal is updated on disk.
 
 test("tweak persist path: writeActiveGoalFile with new objective (simulated handler execution)", () => {
 	const ctx = tempCtx();
@@ -130,13 +116,10 @@ test("tweak persist path: writeActiveGoalFile with new objective (simulated hand
 		const originalObj = "Original objective";
 		const newObj = "Tweaked objective after /goal-tweak interview";
 
-		// Write the original active goal
 		const goal = makeGoal({ objective: originalObj });
 		const active = writeActiveGoalFile(ctx, goal);
 		assert.equal(active.objective, originalObj);
 
-		// Simulate the tweak persist path: write with new objective (same
-		// pattern the handler uses: spread state goal, set new objective + updatedAt)
 		const tweaked = writeActiveGoalFile(ctx, {
 			...active,
 			objective: newObj,
@@ -147,12 +130,10 @@ test("tweak persist path: writeActiveGoalFile with new objective (simulated hand
 		assert.equal(tweaked.activePath, active.activePath,
 			"active file path should not change on tweak");
 
-		// Verify disk has the updated objective
 		const diskContent = readFileSync(path.join(ctx.cwd, tweaked.activePath ?? "missing"), "utf8");
 		assert.ok(diskContent.includes(newObj), "disk must have the tweaked objective");
 		assert.ok(diskContent.includes('"status": "active"'), "disk must show active status");
 
-		// Verify still in the active pool
 		const pool = readActiveGoalPool(ctx);
 		assert.ok(pool.has(goal.id), "tweaked goal must still be in active pool");
 	} finally {
@@ -173,7 +154,6 @@ test("tweak persist path: taskList persisted when tasks parameter provided", () 
 			{ id: "t2", title: "Task two", status: "pending" as const, verificationContract: "Must verify" },
 		];
 
-		// Simulate the tweak persist path with tasks parameter
 		const tweaked = writeActiveGoalFile(ctx, {
 			...active,
 			objective: "Updated objective with new tasks",
@@ -191,7 +171,6 @@ test("tweak persist path: taskList persisted when tasks parameter provided", () 
 		assert.equal(tweaked.taskList.tasks[1]!.verificationContract, "Must verify");
 		assert.equal(tweaked.objective, "Updated objective with new tasks");
 
-		// Verify disk has the task list JSON
 		const diskContent = readFileSync(path.join(ctx.cwd, tweaked.activePath ?? "missing"), "utf8");
 		assert.ok(diskContent.includes("Task one"), "disk must contain task title");
 		assert.ok(diskContent.includes("Must verify"), "disk must contain verification contract");
@@ -207,7 +186,6 @@ test("tweak persist path: original taskList inherited when tasks omitted", () =>
 			{ id: "orig1", title: "Original task", status: "pending" as const },
 		];
 
-		// Write goal WITH task list
 		const goal = makeGoal({
 			objective: "Goal with original task list",
 			taskList: {
@@ -219,14 +197,12 @@ test("tweak persist path: original taskList inherited when tasks omitted", () =>
 		const active = writeActiveGoalFile(ctx, goal);
 		assert.ok(active.taskList, "original must have taskList");
 
-		// Simulate the tweak persist path WITHOUT tasks parameter:
-		// the handler inherits the current goal's taskList
 		const updatedObjective = "Objective tweaked, tasks inherited unchanged";
 		const withInherited = writeActiveGoalFile(ctx, {
 			...active,
 			objective: updatedObjective,
 			updatedAt: new Date().toISOString(),
-			taskList: active.taskList, // This is what the handler does
+			taskList: active.taskList,
 		});
 
 		assert.ok(withInherited.taskList, "inherited taskList must be present");
@@ -235,7 +211,6 @@ test("tweak persist path: original taskList inherited when tasks omitted", () =>
 		assert.equal(withInherited.taskList.tasks[0]!.title, "Original task");
 		assert.equal(withInherited.objective, updatedObjective);
 
-		// Verify disk has both the new objective and the original task
 		const diskContent = readFileSync(path.join(ctx.cwd, withInherited.activePath ?? "missing"), "utf8");
 		assert.ok(diskContent.includes(updatedObjective), "disk must have new objective");
 		assert.ok(diskContent.includes("Original task"), "disk must have original task from inheritance");
@@ -247,17 +222,15 @@ test("tweak persist path: original taskList inherited when tasks omitted", () =>
 test("tweak persist path: taskList cleared when tasks omitted and goal has no taskList", () => {
 	const ctx = tempCtx();
 	try {
-		// Goal WITHOUT task list
 		const goal = makeGoal({ objective: "Goal without task list" });
 		const active = writeActiveGoalFile(ctx, goal);
 		assert.equal(active.taskList, undefined, "original must have no taskList");
 
-		// Simulate handler: no tasks param and no inherited taskList
 		const tweaked = writeActiveGoalFile(ctx, {
 			...active,
 			objective: "Still no tasks",
 			updatedAt: new Date().toISOString(),
-			taskList: undefined, // Handler does not set taskList
+			taskList: undefined,
 		});
 
 		assert.equal(tweaked.taskList, undefined, "must still have no taskList");
@@ -272,9 +245,6 @@ test("tweak persist path: task validation rejects deep subtasks", () => {
 		const goal = makeGoal({ objective: "Test validation" });
 		const active = writeActiveGoalFile(ctx, goal);
 
-		// Tasks with subtask depth > 1 (default max) — this is what the
-		// handler's findSubtaskDepthViolation call would catch at confirm time.
-		// We verify the goal can be written but that validateTaskListProposal
 		const deepTasks = [{
 			id: "t1", title: "Parent", status: "pending" as const,
 			subtasks: [{
@@ -285,13 +255,11 @@ test("tweak persist path: task validation rejects deep subtasks", () => {
 			}],
 		}];
 
-		// Simulate the handler calling findSubtaskDepthViolation
 		const depthViolation = findSubtaskDepthViolation(deepTasks, 1);
 		assert.ok(depthViolation, "must reject tasks with subtask depth > 1");
 		assert.ok(depthViolation.includes("subtask nesting depth"),
 			`must mention depth violation. Got: ${depthViolation}`);
 
-		// Also verify that validateTaskListProposal rejects it
 		const proposalResult = validateTaskListProposal({ goal: tweakedRecord(active), tasks: deepTasks });
 		assert.equal(proposalResult.ok, false, "must reject deep subtasks");
 		assert.ok(proposalResult.message.includes("depth"),
@@ -305,7 +273,6 @@ function tweakedRecord(g: GoalRecord): GoalRecord {
 	return { ...g, status: "active" as const, autoContinue: true };
 }
 
-// ─── prompt evolution instruction ────────────────────────────────────────────
 
 test("goal evolution instruction mentions /goal-tweak instead of updatedObjective", async () => {
 	const { goalPrompt } = await import("../extensions/prompts/goal-prompts.ts");

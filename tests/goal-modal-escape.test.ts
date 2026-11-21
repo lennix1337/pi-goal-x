@@ -171,13 +171,8 @@ test("Escape while a goal modal is open never pauses the goal; Escape after it c
 		const openResult = h.terminalInput(CTRL_SHIFT_T);
 		assert.deepEqual(openResult, { consume: true }, "ctrl+shift+t must be consumed by the widget");
 		assert.equal(h.overlayShown(), false, "ctrl+shift+t must not open the task-list overlay anymore");
-		// Toggle back to compact so the final Escape exercises the pause path
-		// rather than collapsing the expanded dashboard.
 		h.terminalInput(CTRL_SHIFT_T);
 
-		// Open a real goal modal through the real wiring: set_goal_tasks shows
-		// the task-confirmation dialog (ui.custom), entering the goal modal
-		// (depth counter) before showing it.
 		const setTasks = h.tools["set_goal_tasks"];
 		assert.ok(setTasks, "set_goal_tasks tool registered");
 		const toolPromise = setTasks.execute("set-1", {
@@ -192,7 +187,6 @@ test("Escape while a goal modal is open never pauses the goal; Escape after it c
 		assert.equal(escapeInModal, undefined, "handler must not consume Escape while a goal modal is open");
 		assert.ok(!h.notifyCalls.includes("Goal paused."), "goal must not be paused while a goal modal is open");
 
-		// Close the modal via its done callback -> the modal exits (finally).
 		h.overlayDone();
 		await toolPromise;
 		await new Promise((resolve) => setTimeout(resolve, 10));
@@ -201,7 +195,6 @@ test("Escape while a goal modal is open never pauses the goal; Escape after it c
 		h.terminalInput(ESCAPE);
 		assert.ok(h.notifyCalls.includes("Goal paused."), "Escape without a goal modal pauses the goal");
 	} finally {
-		// temp dir cleanup is best-effort.
 	}
 });
 
@@ -214,7 +207,6 @@ test("Escape with no goal modal open pauses the goal (regression guard)", async 
 		h.terminalInput(ESCAPE);
 		assert.ok(h.notifyCalls.includes("Goal paused."), "Escape must pause the goal when no modal is open");
 	} finally {
-		// temp dir cleanup is best-effort.
 	}
 });
 
@@ -232,7 +224,6 @@ test("Escape on a live goal pauses AND passes the key back to pi (stops the work
 		assert.equal(result, undefined, "Escape on a live goal must pass back to pi so the current turn stops");
 		assert.ok(h.notifyCalls.includes("Goal paused."), "Escape on a live goal must still pause the goal");
 	} finally {
-		// temp dir cleanup is best-effort.
 	}
 });
 
@@ -242,7 +233,6 @@ test("Escape while the goal is paused passes through to pi without any goal stat
 	try {
 		await startSession(h);
 
-		// First Escape pauses the live goal (one notification).
 		h.terminalInput(ESCAPE);
 		assert.equal(h.notifyCalls.filter((m) => m === "Goal paused.").length, 1, "first Escape pauses the live goal");
 
@@ -257,6 +247,5 @@ test("Escape while the goal is paused passes through to pi without any goal stat
 			"Escape while paused must not re-pause or otherwise change goal state",
 		);
 	} finally {
-		// temp dir cleanup is best-effort.
 	}
 });

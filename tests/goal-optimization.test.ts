@@ -170,14 +170,11 @@ test("a numeric cursor is the character offset shown in the page header, and a m
  const goal = createGoal({objective: "a".repeat(3999)+"🧪"+"b".repeat(6200), autoContinue: true, sisyphus: false});
  const first = goalDetailPage(goal, {section: "objective"}); assert.ok(first.ok && first.nextCursor);
  const viaToken = goalDetailPage(goal, {section: "objective", cursor: first.nextCursor}); assert.ok(viaToken.ok);
- // The header said "(0–3999/…)": continuing from that number reads the same next page as the token.
  const end = Number(/\(0–(\d+)\//.exec(first.text)![1]);
  const viaOffset = goalDetailPage(goal, {section: "objective", cursor: String(end)}); assert.ok(viaOffset.ok);
  assert.equal(viaOffset.content, viaToken.content);
- // An offset inside a surrogate pair starts at the whole character.
  const mid = goalDetailPage(goal, {section: "objective", cursor: "4000"}); assert.ok(mid.ok);
  assert.ok(mid.content.startsWith("🧪"));
- // Past the end, negative, or not a plain integer: refused, naming the length.
  for (const cursor of [String(goal.objective.length + 1), "-1", "40.5", "1e3"]) {
   const page = goalDetailPage(goal, {section: "objective", cursor});
   assert.equal(page.ok, false, cursor);

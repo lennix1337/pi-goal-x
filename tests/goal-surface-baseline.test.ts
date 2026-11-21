@@ -25,7 +25,6 @@ import {
 	FIVE_GOAL_TOOLS,
 } from "../extensions/goal-tool-names.ts";
 
-// ── Recording mock Pi ───────────────────────────────────────────────────────
 
 function createRecordingPi() {
 	const registeredTools: string[] = [];
@@ -55,14 +54,7 @@ function createRecordingPi() {
 	return { pi, registeredTools, registeredCommands, messages };
 }
 
-// ── The pinned baseline ──────────────────────────────────────────────────────
 
-/**
- * The five goal tools registered today (registration order, which is also the
- * order pi exposes them in the model tool list). All five are registered from
- * the split tool modules (goal-core-tools.ts + goal-task-tools.ts) via the
- * goal-tools.ts composition installer.
- */
 const EXPECTED_REGISTERED_TOOLS = [
 	"get_goal",
 	"create_goal",
@@ -74,13 +66,6 @@ const EXPECTED_REGISTERED_TOOLS = [
 	"propose_goal_draft",
 ] as const;
 
-/**
- * The 10 slash commands registered today (the curated Stage 5 palette):
- * /goal and /sisyphus are the two direct creation paths (bare /goal shows
- * status); the remaining eight are dedicated lifecycle commands. The five
- * legacy/aliased commands (/goal-status, /goals, /goals-set, /sisyphus-set,
- * /goal-abort) are removed with documented mappings.
- */
 const EXPECTED_REGISTERED_COMMANDS = [
 	"goal",
 	"sisyphus",

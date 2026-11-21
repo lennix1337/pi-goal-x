@@ -22,14 +22,12 @@ import { GoalAccounting, budgetReached, budgetRemaining } from "../extensions/go
 import { effectiveRunLimit, normalizeRunLimit } from "../extensions/goal-run-budget.ts";
 import { NETWORK_ERROR_BACKOFF_DELAYS_MS, networkErrorBackoffPlan } from "../extensions/network-error-backoff.ts";
 
-// Property tests over seeded generators: every failing case reproduces from its seed (the assertion message names it).
 const rng = (seed: number) => () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 const CASES = 200;
 type Next = () => number;
 const pick = <T>(next: Next, items: readonly T[]): T => items[Math.floor(next() * items.length)]!;
 const T0 = "2026-11-07T00:00:00.000Z";
 
-// ---- Target 1: task tree (counts, completion gate, subtree operations, persisted task lists) ----
 
 const STATUSES: GoalTask["status"][] = ["pending", "complete", "skipped"];
 
@@ -127,7 +125,6 @@ test("property persisted task list never throws on junk and keeps only usable ta
 	}
 });
 
-// ---- Target 2: goal status read-back and the action matrix that depends on it ----
 
 const KNOWN_STATUSES = ["active", "paused", "blocked", "budget_limited", "complete"] as const;
 const STATUS_VALUES: unknown[] = ["active", "ACTIVE", " paused ", "Blocked", "budget_limited", "BUDGET_LIMITED", "complete", "Complete ", "failed",
@@ -189,7 +186,6 @@ test("property status action matrix: complete is absorbing and only active goals
 	}
 });
 
-// ---- Target 3: persisted scheduler state (run counters and dispatch phases) ----
 
 const PHASES = ["idle", "ready", "waiting", "claimed", "running", "interrupted"];
 const SCHEDULER_WEIRD: unknown[] = [undefined, null, 0, 1, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER, 2 ** 53, "", "x", "ready", "waiting",
@@ -237,9 +233,7 @@ test("property persisted scheduler keeps phase invariants, never loses spent all
 	assert.ok(accepted >= 20 && rejected >= 20, `generator covers both outcomes: accepted ${accepted}, rejected ${rejected}`);
 });
 
-// ---- Target 4: accounting clock, budgets, run allowance, network recovery ladder ----
 
-/** Replace Date.now for the duration of `body`, so charges are deterministic. */
 function withClock<T>(start: number, body: (set: (ms: number) => void) => T): T {
 	const realNow = Date.now;
 	let now = start;
@@ -288,7 +282,6 @@ test("property a clock stepping back never charges the same wall-clock interval 
 test("property token budget remaining and reached agree with usage, and an unset budget never limits", () => {
 	for (let seed = 1; seed <= CASES; seed++) {
 		const next = rng(seed), tokenBudget = 1 + Math.floor(next() * 1000);
-		// Half the cases sit at the boundary (budget - 2 .. budget + 2), where an off-by-one changes the answer.
 		const used = next() < 0.5 ? Math.max(0, tokenBudget + Math.floor(next() * 5) - 2) : Math.floor(next() * 2000);
 		const goal = { tokenBudget, usage: { tokensUsed: used } };
 		const remaining = budgetRemaining(goal);
@@ -334,7 +327,6 @@ test("property network recovery ladder escalates, plateaus at its cap, and a bou
 	}
 });
 
-// ---- Red-first regressions for the defects the properties above found ----
 
 test("regression a block gate ignores skipped tasks: all complete or skipped does not block completion", () => {
 	const block = (tasks: GoalTask[]) => taskCompletionBlockWarning({ tasks, blockCompletion: true, proposedAt: T0 });

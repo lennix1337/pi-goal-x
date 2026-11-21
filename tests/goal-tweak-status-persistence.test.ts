@@ -138,7 +138,6 @@ function newTmpDir(name: string): string {
 	return cwd;
 }
 
-// ── R1: status/evidence/timestamps survive a task-list tweak (disk round-trip) ─
 
 test("e2e: completed task status, evidence, and completedAt survive a task-list tweak through disk reload", async () => {
 	const cwd = newTmpDir("tweak-status-complete-");
@@ -150,7 +149,6 @@ test("e2e: completed task status, evidence, and completedAt survive a task-list 
 			{ id: "b", title: "Task B" },
 		]);
 
-		// Complete task a via the real flow (with evidence), then start b.
 		const complete = await callTaskTool(h, "update_goal_task", { task_id: "a", status: "complete", evidence: "verified-e2e" });
 		assert.ok(JSON.stringify(complete.content).includes("a"), "complete result mentions the task");
 		await callTaskTool(h, "update_goal_task", { task_id: "b", status: "start" });
@@ -166,7 +164,6 @@ test("e2e: completed task status, evidence, and completedAt survive a task-list 
 			],
 		})));
 
-		// Reload the persisted goal from disk.
 		const goal = diskGoal(cwd);
 		assert.ok(goal.objective.includes("Revised objective"), "objective updated by the tweak");
 		const a = goal.taskList!.tasks.find((t) => t.id === "a")!;
@@ -226,7 +223,6 @@ test("e2e: subtask completion status survives a task-list tweak", async () => {
 		]);
 		await callTaskTool(h, "update_goal_task", { task_id: "p1", status: "complete", evidence: "child-done" });
 
-		// Tweak proposing the same parent/subtask structure.
 		await h.commands.get("goal-tweak")!.handler("Revise", h.ctx);
 		await confirmDialog(h, runProposal(h, proposalParams("Revised objective", {
 			tasks: [
@@ -258,7 +254,6 @@ test("e2e: currentTaskId survives while its task stays pending and clears when r
 		await callTaskTool(h, "update_goal_task", { task_id: "x", status: "start" });
 		assert.equal(diskGoal(cwd).currentTaskId, "x");
 
-		// Tweak keeping x: focus survives.
 		await h.commands.get("goal-tweak")!.handler("Keep the plan", h.ctx);
 		await confirmDialog(h, runProposal(h, proposalParams("Kept objective", {
 			tasks: [
@@ -268,7 +263,6 @@ test("e2e: currentTaskId survives while its task stays pending and clears when r
 		})));
 		assert.equal(diskGoal(cwd).currentTaskId, "x", "currentTaskId survives when its task stays pending");
 
-		// Tweak removing x: focus clears.
 		await h.commands.get("goal-tweak")!.handler("Drop task X", h.ctx);
 		await confirmDialog(h, runProposal(h, proposalParams("Dropped objective", {
 			tasks: [
@@ -372,8 +366,6 @@ test("lowering active budget stops immediately and invalidates queued dispatch",
  t.after(()=>{h.core.scheduler.shutdown();h.core.clearContinuationState();rmSync(cwd,{recursive:true,force:true});});
  await createGoalWithTasks(h,"Objective",[{id:"one",title:"One"}]);
  const goal=diskGoal(cwd);goal.usage.tokensUsed=20;
- // A goal saved before next actions were removed still carries decision.nextAction
- // on disk. Seeding it here shows that such a goal loads and tweaks normally.
  goal.scheduler={...newGoalScheduler("tweak-status-session"),phase:"ready",decision:{kind:"ready",purpose:"ready",nextAction:"Old action"} as unknown as {kind:"ready";purpose:"ready"},used:2};
  writeActiveGoalFile(h.ctx,goal);h.core.reconcileFocusedGoalFromDisk(h.ctx);
  await h.commands.get("goal-tweak")!.handler("Set budget to 1",h.ctx);

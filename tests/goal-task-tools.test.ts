@@ -1,7 +1,3 @@
-/**
- * Stage 4 task-tool tests: flat parent-linked set_goal_tasks conversion and
- * validation, id-stable merging, and the update_goal_task discriminated union.
- */
 
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,7 +14,6 @@ import { goalLedgerPath } from "../extensions/goal-ledger.ts";
 
 import { showTaskConfirmation } from "../extensions/goal-task-confirmation.ts";
 
-// ── Flat conversion unit tests ───────────────────────────────────────────────
 
 test("flat input converts to the same recursive tree", () => {
 	const result = convertFlatTasks([
@@ -90,7 +85,6 @@ test("mergeTasksWithExisting preserves status and evidence for matching ids", ()
 	assert.equal(merged.find((t) => t.id === "b")?.status, "pending", "new id starts pending");
 });
 
-// ── Tool execution harness ───────────────────────────────────────────────────
 
 function createHarness(cwd: string, sessionEntries: unknown[]) {
 	const handlers = new Map<string, Function>();
@@ -226,7 +220,6 @@ test("update_goal_task(skipped) requires a reason and cascades to subtasks", asy
 		{ id: "t1", title: "Parent", status: "pending" },
 		{ id: "t2", title: "Child", status: "pending", parent_id: "t1" },
 	]);
-	// Rebuild with subtasks nested properly.
 	f.cleanup();
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-task-skip-"));
 	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });
@@ -291,7 +284,6 @@ test("update_goal_task(pending) reopens a skipped task; completed tasks are immu
 	}
 });
 
-// ── Stage 3 hardening: structural merge semantics ───────────────────────────
 
 test("mergeTasksWithExisting: structural omission clears contract, flag, and children while progress survives", () => {
 	const existing: GoalTask[] = [{
@@ -305,7 +297,6 @@ test("mergeTasksWithExisting: structural omission clears contract, flag, and chi
 		],
 	}];
 	const incoming = convertFlatTasks([
-		// a omits verification_contract, lightweight_subtasks, and children.
 		{ id: "a", title: "A restructured" },
 	]);
 	assert.ok(incoming.ok);
@@ -372,7 +363,6 @@ test("countTasks counts every node including descendants", () => {
 	assert.equal(countTasks(undefined), 0);
 });
 
-// ── Stage 3 hardening: disk-fresh transactions ──────────────────────────────
 
 test("set_goal_tasks preserves an external disk edit made between confirmation and apply", async () => {
 	// Session starts with t1/t2 pending. An external edit marks t2 complete on
@@ -384,7 +374,6 @@ test("set_goal_tasks preserves an external disk edit made between confirmation a
 		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
 		await h.handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "go", systemPromptOptions: {} }, h.ctx);
 
-		// External edit: mark t2 complete directly on disk.
 		const files = readdirSync(path.join(f.cwd, ".pi", "goals")).filter((n) => n.startsWith("active_goal_"));
 		const path0 = path.join(f.cwd, ".pi", "goals", files[0]!);
 		const diskGoal = parseGoalFile(path0)!;
@@ -417,7 +406,6 @@ test("update_goal_task updates only the requested path and preserves concurrent 
 		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
 		await h.handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "go", systemPromptOptions: {} }, h.ctx);
 
-		// Concurrent external edit: add a brand-new task to the disk tree.
 		const files = readdirSync(path.join(f.cwd, ".pi", "goals")).filter((n) => n.startsWith("active_goal_"));
 		const path0 = path.join(f.cwd, ".pi", "goals", files[0]!);
 		const diskGoal = parseGoalFile(path0)!;
@@ -447,7 +435,6 @@ test("update_goal_task returns a typed failure for a task removed on disk", asyn
 		await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
 		await h.handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "go", systemPromptOptions: {} }, h.ctx);
 
-		// External edit removes t1 from disk (leaving another task so the list exists).
 		const files = readdirSync(path.join(f.cwd, ".pi", "goals")).filter((n) => n.startsWith("active_goal_"));
 		const path0 = path.join(f.cwd, ".pi", "goals", files[0]!);
 		const diskGoal = parseGoalFile(path0)!;

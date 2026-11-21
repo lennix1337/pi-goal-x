@@ -74,7 +74,6 @@ try {
 	assert.equal(core.state.goal.scheduler.used, 1);
 	await delay(200); assert.equal(workRequests, 4, 'waiting must not spin after reads or writes');
 	if (lifecycleMode) {
-		// Add a persisted turn boundary so this short scripted session is compactable.
 		manager.appendMessage({ role: 'user', content: [{ type: 'text', text: 'Retain the latest waiting state.' }], timestamp: Date.now() });
 		compacting = true;
 		try { await session.compact('Summarize the fixture state.'); } finally { compacting = false; }
@@ -89,8 +88,6 @@ try {
 	assert.equal(workRequests, 8, 'ready, wake, ready, one repair only');
 	assert.equal(core.state.goal.scheduler.used, 4);
 	if (uncapped) assert.match(core.state.goal.pauseReason, /No execution disposition/, 'uncapped mode stops after its only repair');
-	// Next actions were removed, so a repair dispatch carries no per-run text. The
-	// mechanism is unchanged: the repair is spent and the goal then pauses.
 	assert.equal(core.state.goal.scheduler.repairUsed, true, 'the repair dispatch was spent');
 	assert.ok(!JSON.stringify(requests).includes('This is the only repair prompt'), 'no next-action repair text reaches the provider');
 	await delay(200); assert.equal(workRequests, 8);

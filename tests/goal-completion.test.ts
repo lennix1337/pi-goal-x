@@ -55,7 +55,6 @@ test("update_goal(complete) keeps the usage accrued while the auditor ran", asyn
 		writeActiveGoalFile({ cwd }, goal);
 		const entries = [{ type: "custom", customType: "pi-goal-focus", data: goalFocusDetails(goal.id, "created") }];
 		const h = createHarness(cwd, entries, async () => {
-			// The audit takes two minutes of wall-clock time.
 			Date.now = () => realNow() + 125_000;
 			return { approved: true, disapproved: false, output: "ok\n<approved/>", model: "mock" };
 		});
@@ -70,7 +69,6 @@ test("update_goal(complete) keeps the usage accrued while the auditor ran", asyn
 	}
 });
 
-// Machine: completion audit (idle -> running -> done) held in auditProgress + auditAnimationTimer + auditAbortController.
 test("update_goal(complete) leaves no audit running when the auditor rejects", async () => {
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-completion-throw-"));
 	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });

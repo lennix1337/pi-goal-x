@@ -55,7 +55,6 @@ describe("inspectCheckpointHealth", () => {
 	});
 
 	it("requires both marker shape and version 2 for v2 classification", () => {
-		// Right shape but missing details.version → treated as legacy.
 		const health = inspectCheckpointHealth([
 			entry({ content: checkpointTriggerPrompt("g1"), details: { kind: "checkpoint", goalId: "g1" } }),
 		]);

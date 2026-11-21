@@ -1,8 +1,3 @@
-/**
- * Budget integration tests (Stage 2): when accounted usage reaches tokenBudget,
- * the runtime marks the goal budget_limited exactly once, emits the
- * goal_budget_limited ledger event, and arms one-time wrap-up steering.
- */
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -100,17 +95,14 @@ test("budget reached marks the goal budget_limited exactly once with ledger + on
 		const { handlers, ctx } = createHarness(f.cwd, f.sessionEntries);
 		await handlers.get("session_start")?.({ reason: "start" }, ctx);
 
-		// First turn_end charges 30 tokens: 80 + 30 = 110 >= budget 100 → transition.
 		await handlers.get("turn_end")?.({ message: turnEndMessage(30) }, ctx);
 
-		// Status flipped on disk to budget_limited.
 		const active = activeGoalFiles(f.cwd);
 		assert.equal(active.length, 1, "goal stays in the active dir (not archived)");
 		const disk = parseGoalFile(path.join(f.cwd, ".pi", "goals", active[0]!));
 		assert.ok(disk, "goal file must parse");
 		assert.equal(disk.status, "budget_limited");
 
-		// Ledger event written with budget + usage snapshot.
 		const events = ledgerEvents(f.cwd);
 		const budgetEvents = events.filter((e) => e.type === "goal_budget_limited");
 		assert.equal(budgetEvents.length, 1, "exactly one goal_budget_limited event");
@@ -118,7 +110,6 @@ test("budget reached marks the goal budget_limited exactly once with ledger + on
 		assert.equal(budgetEvents[0]!.budget, 100);
 		assert.ok(Number(budgetEvents[0]!.tokensUsed) >= 100);
 
-		// One-time wrap-up steering is injected on the next agent start.
 		await handlers.get("before_agent_start")?.({
 			systemPrompt: "base",
 			prompt: "",
@@ -173,7 +164,7 @@ test("goal without a budget never transitions", async () => {
  const notices:string[]=[];h.ctx.ui.notify=(text:string)=>{notices.push(text);};
  t.after(()=>{h.core.scheduler.shutdown();h.core.clearContinuationState();rmSync(f.cwd,{recursive:true,force:true});});
  await h.handlers.get("session_start")?.({reason:"start"},h.ctx);
- h.core.accountProgress(h.ctx,{completedTurnTokens:15}); // 80 -> 95 crosses all three
+ h.core.accountProgress(h.ctx,{completedTurnTokens:15});
  assert.equal(ledgerEvents(f.cwd).filter(e=>e.type==="goal_budget_warning").length,1);
  assert.equal(notices.filter(n=>n.startsWith("Token budget")).length,1);
  h.core.accountProgress(h.ctx,{completedTurnTokens:1});

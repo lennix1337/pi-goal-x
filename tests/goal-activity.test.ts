@@ -1,7 +1,3 @@
-/**
- * Activity feed tests (plan §19.3): durable ledger events map to readable,
- * capped, deduplicated activity items with task titles preferred over ids.
- */
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -19,9 +15,6 @@ const TITLES = new Map<string, string>([
 	["t3", "Add the download button"],
 ]);
 
-// ---------------------------------------------------------------------------
-// Event → readable text mapping
-// ---------------------------------------------------------------------------
 
 test("lifecycle events map to readable activity text", () => {
 	const events = [
@@ -110,9 +103,6 @@ test("long reasons are truncated safely", () => {
 	assert.ok(items[0]!.text.endsWith("..."));
 });
 
-// ---------------------------------------------------------------------------
-// Ordering, dedupe, capping, filtering
-// ---------------------------------------------------------------------------
 
 test("items are ordered chronologically (oldest first)", () => {
 	const events = [

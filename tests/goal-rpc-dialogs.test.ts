@@ -69,7 +69,6 @@ type RichComponent = {
 	focused?: boolean;
 };
 
-/** Mount the rich questionnaire with a capable fake TUI and hand back the component. */
 function mountRichDialog(h: ReturnType<typeof host>, tui: unknown = {
 	getShowHardwareCursor: () => true,
 	setShowHardwareCursor: () => {},

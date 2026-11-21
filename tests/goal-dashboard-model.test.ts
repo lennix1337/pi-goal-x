@@ -33,9 +33,6 @@ import {
 	type DashboardTaskNode,
 } from "../extensions/widgets/goal-dashboard-model.ts";
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
 
 function task(id: string, title: string, overrides: Partial<GoalTask> = {}): GoalTask {
 	return { id, title, status: "pending", ...overrides };
@@ -64,7 +61,6 @@ function model(
 	return m;
 }
 
-/** Standard five-top-level-task tree from the plan's examples. */
 function fiveTaskList(): GoalTask[] {
 	return [
 		task("t1", "Review reports page and data source", { status: "complete", evidence: "Reviewed source" }),
@@ -90,9 +86,6 @@ function ev(type: string, at: string, extra: Record<string, unknown> = {}): Goal
 	return { type, goalId: "g1", at, ...extra } as unknown as GoalLedgerEvent;
 }
 
-// ---------------------------------------------------------------------------
-// Formatting helpers
-// ---------------------------------------------------------------------------
 
 test("formatDashboardDuration renders compact h/m/s labels", () => {
 	assert.equal(formatDashboardDuration(0), "0s");
@@ -113,12 +106,8 @@ test("formatBudget summarizes used/total/percentage", () => {
 	assert.equal(formatBudget(0, 0), "0 / 0 · 0%");
 });
 
-// ---------------------------------------------------------------------------
-// Status derivation
-// ---------------------------------------------------------------------------
 
 test("auditorEnabled derives from the goal's persisted skipAuditor (§auditor-toggle)", () => {
-	// Unset/absent → on (the global default); skipAuditor: true → off.
 	assert.equal(model().auditorEnabled, true, "no per-goal setting keeps the auditor on");
 	assert.equal(model({ skipAuditor: true }).auditorEnabled, false, "skipAuditor: true turns the auditor off");
 });
@@ -136,9 +125,6 @@ test("status maps lifecycle states to explicit display codes", () => {
 	assert.deepEqual(deriveGoalStatus(goal({ status: "complete" })), { code: "complete", label: "Complete", footerLabel: "complete" });
 });
 
-// ---------------------------------------------------------------------------
-// Top-level progress (§9.1)
-// ---------------------------------------------------------------------------
 
 test("active goal without tasks has no progress sections", () => {
 	const m = model();
@@ -154,7 +140,6 @@ test("partial tasks derive 3/5 · 60% with skipped counted as done", () => {
 	tasks.push(task("t6", "Legacy fallback", { status: "skipped" }));
 	const m = model(withTasks(tasks));
 	assert.deepEqual(m.taskProgress, { completed: 3, total: 6, percentage: 50 });
-	// skipped is tracked separately in the tree but counts toward progress
 	const skipped = m.taskTree.find((n) => n.id === "t6");
 	assert.equal(skipped?.status, "skipped");
 });
@@ -175,9 +160,6 @@ test("top-level progress counts only top-level tasks", () => {
 	assert.deepEqual(deriveTopLevelTaskProgress(goal(withTasks(tasks))), { completed: 1, total: 2, percentage: 50 });
 });
 
-// ---------------------------------------------------------------------------
-// Task tree flattening (§9.2)
-// ---------------------------------------------------------------------------
 
 test("flattenTaskTree walks the tree recursively with depth and current marker", () => {
 	const nodes = flattenTaskTree(fiveTaskList(), "t3.3");
@@ -205,15 +187,12 @@ test("tree nodes carry verification contracts and evidence", () => {
 test("tree nodes carry direct-child subtask counts for the compact marker", () => {
 	const nodes = flattenTaskTree(fiveTaskList());
 	const t3 = nodes.find((n) => n.id === "t3");
-	// t3 has three direct children, two complete → 2/3; skipped counts as done.
 	assert.equal(t3?.totalSubtasks, 3);
 	assert.equal(t3?.completedSubtasks, 2);
-	// Leaves carry zero counts.
 	for (const id of ["t1", "t2", "t4", "t5"]) {
 		assert.equal(nodes.find((n) => n.id === id)?.totalSubtasks, 0);
 		assert.equal(nodes.find((n) => n.id === id)?.completedSubtasks, 0);
 	}
-	// Subtask nodes are leaves too.
 	assert.equal(nodes.find((n) => n.id === "t3.1")?.totalSubtasks, 0);
 });
 
@@ -232,9 +211,6 @@ test("tree node subtask counts count skipped children as done", () => {
 	assert.equal(node.completedSubtasks, 2);
 });
 
-// ---------------------------------------------------------------------------
-// Task-list viewport / scroll (§9.6)
-// ---------------------------------------------------------------------------
 
 function nodesWithCompletions(completed: Array<[string, string]>): DashboardTaskNode[] {
 	const ids = ["t1", "t2", "t3", "t4", "t5", "t6", "t7"];
@@ -259,18 +235,17 @@ test("latestCompletedNodeIndex picks the max completedAt and ties resolve to the
 		["t2", "2026-01-01T11:00:00.000Z"],
 		["t5", "2026-01-01T09:00:00.000Z"],
 	]);
-	assert.equal(latestCompletedNodeIndex(nodes), 1); // t2
+	assert.equal(latestCompletedNodeIndex(nodes), 1);
 	const tied = nodesWithCompletions([
 		["t2", "2026-01-01T11:00:00.000Z"],
 		["t5", "2026-01-01T11:00:00.000Z"],
 	]);
-	assert.equal(latestCompletedNodeIndex(tied), 4); // t5 wins the tie (last position)
+	assert.equal(latestCompletedNodeIndex(tied), 4);
 });
 
 test("latestCompletedNodeIndex returns -1 without completed/timestamped tasks", () => {
 	assert.equal(latestCompletedNodeIndex([]), -1);
 	assert.equal(latestCompletedNodeIndex(nodesWithCompletions([])), -1);
-	// status complete but no completedAt (legacy) does not qualify
 	const legacy = [{ id: "t1", title: "A", status: "complete" as const, depth: 0, isCurrent: false, totalSubtasks: 0, completedSubtasks: 0 }];
 	assert.equal(latestCompletedNodeIndex(legacy), -1);
 	// skipped tasks never qualify
@@ -281,34 +256,27 @@ test("latestCompletedNodeIndex returns -1 without completed/timestamped tasks", 
 });
 
 test("anchoredScrollOffset leads with the task in progress, one row of context above it", () => {
-	// t1, t2 done; t3 is the first open task → with 3+ rows the window starts at t2
 	const nodes = nodesWithCompletions([
 		["t1", "2026-01-01T10:00:00.000Z"],
 		["t2", "2026-01-01T11:00:00.000Z"],
 	]);
 	assert.equal(activeNodeIndex(nodes), 2);
-	assert.equal(anchoredScrollOffset(nodes, 3), 1); // rows t2..t4
-	assert.equal(anchoredScrollOffset(nodes, 2), 2); // no room for context: t3, t4
-	// an explicit current task wins over the first pending one
+	assert.equal(anchoredScrollOffset(nodes, 3), 1);
+	assert.equal(anchoredScrollOffset(nodes, 2), 2);
 	const withCurrent = nodes.map((node) => ({ ...node, isCurrent: node.id === "t5" }));
-	assert.equal(anchoredScrollOffset(withCurrent, 3), 3); // rows t4..t6
-	// near the end the window clamps to the tail
+	assert.equal(anchoredScrollOffset(withCurrent, 3), 3);
 	const late = nodesWithCompletions([1, 2, 3, 4, 5].map((n) => [`t${n}`, `2026-01-01T1${n}:00:00.000Z`] as [string, string]));
-	assert.equal(anchoredScrollOffset(late, 3), 4); // rows t5..t7, t6 in progress
-	// first task open → top
+	assert.equal(anchoredScrollOffset(late, 3), 4);
 	assert.equal(anchoredScrollOffset(nodesWithCompletions([]), 3), 0);
-	// list fits entirely → top
 	assert.equal(anchoredScrollOffset(nodesWithCompletions([["t3", "2026-01-01T10:00:00.000Z"]]), 7), 0);
 });
 
 test("anchoredScrollOffset bottom-anchors the latest completion when nothing is open", () => {
 	const all = nodesWithCompletions(["t1", "t2", "t3", "t4", "t5", "t6", "t7"].map((id, i) => [id, `2026-01-01T1${i}:00:00.000Z`] as [string, string]));
 	assert.equal(activeNodeIndex(all), -1);
-	assert.equal(anchoredScrollOffset(all, 3), 4); // rows t5..t7, t7 at the bottom
-	// out-of-order completion: t3 finished last → it is the bottom row
+	assert.equal(anchoredScrollOffset(all, 3), 4);
 	const reordered = all.map((node) => (node.id === "t3" ? { ...node, completedAt: "2026-01-02T00:00:00.000Z" } : node));
-	assert.equal(anchoredScrollOffset(reordered, 3), 0); // rows t1..t3
-	// legacy completions without timestamps → top
+	assert.equal(anchoredScrollOffset(reordered, 3), 0);
 	const legacy = all.map(({ completedAt: _drop, ...node }) => node);
 	assert.equal(anchoredScrollOffset(legacy, 3), 0);
 });
@@ -347,9 +315,6 @@ test("deriveTaskListViewport computes the window with hidden counts", () => {
 	assert.deepEqual(deriveTaskListViewport(0, 5, 0), { totalRows: 0, rows: 5, offset: 0, maxOffset: 0, hiddenAbove: 0, hiddenBelow: 0 });
 });
 
-// ---------------------------------------------------------------------------
-// Current task resolution (§7.2, §7.4, §9.3)
-// ---------------------------------------------------------------------------
 
 test("persisted current top-level task is resolved without inference", () => {
 	const m = model({ ...withTasks(fiveTaskList()), currentTaskId: "t3" });
@@ -389,8 +354,8 @@ test("current leaf task omits subtask progress (all-zero totals)", () => {
 test("invalid currentTaskId falls back to the first pending task and is marked inferred", () => {
 	const m = model({ ...withTasks(fiveTaskList()), currentTaskId: "t999" });
 	assert.equal(m.currentTask?.inferred, true);
-	assert.equal(m.currentTask?.id, "t3"); // first pending in tree order
-	assert.equal(m.currentTask?.completedSubtasks, 2); // subtask progress still derives
+	assert.equal(m.currentTask?.id, "t3");
+	assert.equal(m.currentTask?.completedSubtasks, 2);
 });
 
 test("removed current task falls back to first pending", () => {
@@ -412,9 +377,6 @@ test("deriveCurrentTask returns undefined when nothing is pending", () => {
 	assert.equal(deriveCurrentTask(goal(withTasks(tasks)), nodes), undefined);
 });
 
-// ---------------------------------------------------------------------------
-// Subtask progress rule (§9.3)
-// ---------------------------------------------------------------------------
 
 test("deriveCurrentTaskSubtaskProgress uses direct children of the parent", () => {
 	const tasks = fiveTaskList();
@@ -427,9 +389,6 @@ test("deriveCurrentTaskSubtaskProgress omits the ratio for a leaf", () => {
 	assert.deepEqual(deriveCurrentTaskSubtaskProgress({ id: "t4" }, tasks), { completedSubtasks: 0, totalSubtasks: 0, subtaskPercentage: 0 });
 });
 
-// ---------------------------------------------------------------------------
-// Verification visibility (§11)
-// ---------------------------------------------------------------------------
 
 test("goal-level and task-level verification contracts are surfaced", () => {
 	const m = model({
@@ -441,9 +400,6 @@ test("goal-level and task-level verification contracts are surfaced", () => {
 	assert.equal(m.currentTask?.verificationContract, "The button downloads a CSV using the active filters.");
 });
 
-// ---------------------------------------------------------------------------
-// Open goals / focus / path
-// ---------------------------------------------------------------------------
 
 test("other open goals and focus state are reflected", () => {
 	const m = model(withTasks(fiveTaskList()), { focused: false, otherOpenGoals: 2 });
@@ -462,9 +418,6 @@ test("no goal record derives a null model", () => {
 	assert.equal(deriveGoalDashboardModel(null, { focused: false, otherOpenGoals: 0 }), null);
 });
 
-// ---------------------------------------------------------------------------
-// Token budget
-// ---------------------------------------------------------------------------
 
 test("token budget derives used/total/percentage/remaining", () => {
 	const m = model({ tokenBudget: 50000 });
@@ -480,9 +433,6 @@ test("no budget means no budget section", () => {
 	assert.equal(model().budget, undefined);
 });
 
-// ---------------------------------------------------------------------------
-// Usage labels
-// ---------------------------------------------------------------------------
 
 test("usage derives footer-status bits (compact duration + compact tokens)", () => {
 	const m = model();
@@ -491,9 +441,6 @@ test("usage derives footer-status bits (compact duration + compact tokens)", () 
 	assert.equal(m.usage.footerBits, "12m47s 18.2K");
 });
 
-// ---------------------------------------------------------------------------
-// Activity (§12 via the model)
-// ---------------------------------------------------------------------------
 
 test("recent activity is derived from the durable ledger", () => {
 	const events = [

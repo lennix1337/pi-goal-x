@@ -94,8 +94,6 @@ for (const flavor of ["openai-completions", "openai-responses"] as const) {
 			// Two advances add at most the completed turns plus their small counter tails:
 			// the stable policy block is retained in place, never resent.
 			assert.ok(c.length - a.length <= 4, "retained tails grow by state changes, not by requests");
-			// Real tool-loop history, including parallel calls/results, followed by
-			// a user turn. No retained user tail may split a call/result pair.
 			session.push({...turn(3, 4), content: [
 				{type: "toolCall", id: "call_a", name: "read", arguments: {path: "a"}},
 				{type: "toolCall", id: "call_b", name: "read", arguments: {path: "b"}},
@@ -124,7 +122,6 @@ for (const flavor of ["openai-completions", "openai-responses"] as const) {
 			const resultIndex = delayedWire.findIndex((m: any) => m.call_id === "delayed" && m.type === "function_call_output" || m.tool_call_id === "delayed");
 			assert.ok(callIndex >= 0);
 			assert.equal(resultIndex, callIndex + 1, "wire result stays adjacent to the delayed call");
-			// Policy edits and compaction reset retained state, while host/tools stay stable.
 			const nextState = "[PI GOAL ACTIVE goalId=fixture]\nObjective: revised";
 			const edited = await capture(session, {state: nextState, counters: "Usage: 800 tokens"});
 			assert.ok(!JSON.stringify(conversation(edited)).includes("Objective: hold the line"));

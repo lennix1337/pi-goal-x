@@ -41,7 +41,6 @@ import type { ToolDefinition, ExtensionContext } from "@earendil-works/pi-coding
 const DIR = import.meta.dirname!;
 const EXT_PATH = path.resolve(DIR, "..", "..", "extensions", "goal.ts");
 
-// ── JSON event types ─────────────────────────────────────────────────────────
 
 interface ToolExecStart {
 	type: "tool_execution_start";
@@ -62,7 +61,6 @@ interface ToolExecEnd {
 	};
 }
 
-/** Parse JSONL output for matching tool_execution_start/end event pairs. */
 function findToolEvents(stdout: string): Array<{ start: ToolExecStart; end: ToolExecEnd }> {
 	const events: Array<{ start: ToolExecStart; end: ToolExecEnd }> = [];
 	const starts = new Map<string, ToolExecStart>();
@@ -74,12 +72,11 @@ function findToolEvents(stdout: string): Array<{ start: ToolExecStart; end: Tool
 				const start = starts.get(obj.toolCallId);
 				if (start) events.push({ start, end: obj as ToolExecEnd });
 			}
-		} catch { /* skip non-JSON lines */ }
+		} catch { }
 	}
 	return events;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function isPiAvailable(): boolean {
 	try { return spawnSync("which", ["pi"], { encoding: "utf8", stdio: "pipe" }).status === 0; }
@@ -116,7 +113,6 @@ function forkFixture(instruction: string): {
 		JSON.stringify({ type: "custom", customType: "pi-goal-state", timestamp: now, data: { version: 3, goal: goalData } }),
 	].join("\n") + "\n");
 
-	// System prompt that forces the model to always use tool calls
 	const sysPromptFile = path.join(cwd, "force-tool.md");
 	writeFileSync(sysPromptFile, "You must use the update_goal tool with status complete to complete the request. Only respond using tool calls. Never output only text without making a tool call.");
 
@@ -144,10 +140,8 @@ function forkFixture(instruction: string): {
 	};
 }
 
-// ── Test Suite ───────────────────────────────────────────────────────────────
 
 describe("Subagent E2E", () => {
-	// ── 1. File-validity checks ──────────────────────────────────────────────
 	it("agent file exists with bootstrapping (goal file + state entry)", () => {
 		const agentPath = path.resolve(DIR, "e2e-test-runner.md");
 		const content = readFileSync(agentPath, "utf8");
@@ -172,13 +166,6 @@ describe("Subagent E2E", () => {
 		assert.ok(!content.includes("combined sync"), "chain must not cover combined sync (removed)");
 	});
 
-	// ── 2. Real pi fork tests (handler-level integration lives in
-	//    tests/integration/extension.test.ts) ────────────────────────────────
-
-	// ── 3. Real pi fork test (--mode json, fully deterministic) ─────────────
-	// Uses --append-system-prompt + --tools to force the AI model to always
-	// call the required tools. Parses tool_execution_start/end events from
-	// JSONL output for structured field assertions — no free-text AI parsing.
 
 	function assertToolEvents(stdout: string, toolName: string, callback: (events: Array<{ start: ToolExecStart; end: ToolExecEnd }>) => void) {
 		const events = findToolEvents(stdout).filter((e) => e.start.toolName === toolName);
@@ -208,7 +195,6 @@ describe("Subagent E2E", () => {
 		} finally { f.cleanup(); }
 	});
 
-	// (removed — no updatedObjective / paperwork parameters exist on update_goal)
 
 	it("fork: deferred archival — complete without sync, result and filesystem",
 		{ skip: !isPiAvailable(), timeout: 120_000 }, async () => {

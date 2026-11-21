@@ -1,14 +1,3 @@
-/**
- * P1-3: per-turn transaction buffer.
- *
- * During a turn (turn_start … turn_end), task/status/usage mutations
- * accumulate in memory and flush ONCE at turn end — one lock acquire, one
- * goal-file write, one batched ledger append. The tests assert:
- *   - mid-turn: in-memory state is current but the disk file is NOT yet written;
- *   - turn_end: disk + ledger catch up in one flush;
- *   - update_goal(complete) flushes the buffer BEFORE the auditor runs so the
- *     auditor (a separate session) reads fresh task state.
- */
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -81,7 +70,6 @@ describe("P1-3 per-turn transaction buffer", () => {
 			await h.handlers.get("before_agent_start")?.({ systemPrompt: "p", prompt: "p", systemPromptOptions: {} }, h.ctx);
 			const setTasks = h.tools.get("set_goal_tasks");
 			await setTasks.execute("st", { tasks: [{ id: "t1", title: "T1" }, { id: "t2", title: "T2" }, { id: "t3", title: "T3" }], block_completion: false }, new AbortController().signal, undefined, h.ctx);
-			// set_goal_tasks stops the turn: close it, then open the buffered turn.
 			await h.handlers.get("turn_end")?.({ message: { role: "assistant", stopReason: "stop", usage: { input: 0, output: 0 } } }, h.ctx);
 			await h.handlers.get("turn_start")?.({}, h.ctx);
 
@@ -90,14 +78,12 @@ describe("P1-3 per-turn transaction buffer", () => {
 				await update.execute("u", { task_id: id, status: "complete", evidence: `done ${id}` }, new AbortController().signal, undefined, h.ctx);
 			}
 
-			// Mid-turn: in-memory state is current, disk is NOT yet written.
 			const before = goalFileText(f.cwd, f.goal);
 			assert.match(before, /\[ \] t1: T1/, "disk still shows pending mid-turn");
 			assert.match(before, /\[ \] t2: T2/, "disk still shows pending mid-turn");
 			const ledgerBefore = ledgerText(f.cwd);
 			assert.equal((ledgerBefore.match(/task_complete/g) ?? []).length, 0, "no task_complete ledger events mid-turn");
 
-			// turn_end: one flush writes the goal + batches the ledger.
 			await h.handlers.get("turn_end")?.({ message: { role: "assistant", stopReason: "stop", usage: { input: 0, output: 0 } } }, h.ctx);
 			const after = goalFileText(f.cwd, f.goal);
 			assert.match(after, /\[x\] t1: T1/, "disk catches up after flush");
@@ -145,10 +131,8 @@ describe("P1-3 per-turn transaction buffer", () => {
 			await h.handlers.get("session_start")?.({ reason: "start" }, h.ctx);
 			await h.handlers.get("before_agent_start")?.({ systemPrompt: "p", prompt: "p", systemPromptOptions: {} }, h.ctx);
 			await h.handlers.get("turn_start")?.({}, h.ctx);
-			// User Esc → the session abort signal fires → message_end aborted
-			// arrives with the signal set → pauseActiveGoal.
 			const controller = new AbortController();
-			controller.abort(); // user Esc fires the session abort signal
+			controller.abort();
 			const escCtx = { ...h.ctx, signal: controller.signal } as typeof h.ctx;
 			await h.handlers.get("message_end")?.({ message: { role: "assistant", stopReason: "aborted", usage: { input: 0, output: 0 } } }, escCtx);
 			const disk = goalFileText(f.cwd, f.goal);

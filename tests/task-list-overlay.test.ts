@@ -18,7 +18,6 @@ import { createMockExtensionContext, invokeCustomFactory, renderComponent } from
 import { showTaskListOverlay } from "../extensions/widgets/task-list-overlay.ts";
 import type { GoalRecord } from "../extensions/goal-record.ts";
 
-// ── Helpers ───────────────────────────────────────────────────────────
 
 function makeGoal(overrides: Partial<GoalRecord> & { id: string; objective: string }): GoalRecord {
 	return {
@@ -65,7 +64,6 @@ function makeGoalWithMixedTasks(id: string, objective: string): GoalRecord {
 	});
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────
 
 test("defaults to current goal only", async () => {
 	const ctx = createMockExtensionContext();
@@ -93,7 +91,6 @@ test("toggles to all open goals with 'a'", async () => {
 	const { component } = invokeCustomFactory(ctx._customCalls, 0);
 	const cmp = component as Component & { handleInput?: (d: string) => void };
 
-	// After 'a' toggle, both goals visible
 	cmp.handleInput?.("a");
 	const linesAll = renderComponent(component, 80);
 	const allJoined = linesAll.join("\n");
@@ -101,7 +98,6 @@ test("toggles to all open goals with 'a'", async () => {
 	assert.ok(allJoined.includes("Goal two"), "shows second goal after toggle");
 	assert.ok(allJoined.includes("2 goals"), "header says '2 goals' after toggle");
 
-	// Toggle back
 	cmp.handleInput?.("a");
 	const linesBack = renderComponent(component, 80);
 	const backJoined = linesBack.join("\n");
@@ -278,11 +274,9 @@ test("wraps long task titles at narrow width", async () => {
 	showTaskListOverlay(ctx, goalsById, "g1");
 	const { component } = invokeCustomFactory(ctx._customCalls, 0);
 
-	// At width 50, the inner width is small enough to force wrapping
 	const lines = renderComponent(component, 50);
 	const joined = lines.join("\n");
 
-	// The long title should appear in full (wrapped), not truncated with …
 	assert.ok(joined.includes("very long task title"), "long title appears via wrapping");
 });
 
@@ -290,7 +284,6 @@ test("scroll state changes on page up/down", async () => {
 	const ctx = createMockExtensionContext();
 	const goalsById = new Map<string, GoalRecord>();
 
-	// Create enough tasks to force scrolling
 	const tasks = Array.from({ length: 30 }, (_, i) => `Task ${i + 1}`);
 	goalsById.set("g1", makeGoalWithTasks("g1", "Long goal", tasks));
 
@@ -298,34 +291,27 @@ test("scroll state changes on page up/down", async () => {
 	const { component } = invokeCustomFactory(ctx._customCalls, 0);
 	const componentHandle = component as Component & { handleInput?: (data: string) => void };
 
-	// Initial render at top
 	const lines0 = renderComponent(component, 80);
 	assert.ok(lines0.join("\n").includes("Task 1"), "renders top of list at offset 0");
 
-	// Scroll down
 	componentHandle.handleInput?.("down");
 	const lines1 = renderComponent(component, 80);
 	const joined1 = lines1.join("\n");
 	assert.ok(!joined1.includes("Task 1") || joined1.includes("Task 2"),
 		"content changes after scrolling down once");
 
-	// Scroll up
 	componentHandle.handleInput?.("up");
 	const linesUp = renderComponent(component, 80);
 
-	// PgDn
 	componentHandle.handleInput?.("pagedown");
 	renderComponent(component, 80);
 
-	// Home
 	componentHandle.handleInput?.("home");
 	renderComponent(component, 80);
 
-	// End
 	componentHandle.handleInput?.("end");
 	renderComponent(component, 80);
 
-	// j/k aliases
 	componentHandle.handleInput?.("home");
 	componentHandle.handleInput?.("j");
 	renderComponent(component, 80);

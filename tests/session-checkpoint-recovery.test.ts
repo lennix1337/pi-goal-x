@@ -93,7 +93,6 @@ describe("pi-goal-x-recover", () => {
 		const backupText = readFileSync(path.join(fx.dir, backups[0]!), "utf8");
 		const originalRaw = originalLines.join("\n");
 		assert.ok(originalRaw.length > 0);
-		// Backup preserves the pre-repair content.
 		assert.match(backupText, /GOAL CHECKPOINT goalId=g1/);
 
 		let checkpoints = 0;
@@ -116,14 +115,11 @@ describe("pi-goal-x-recover", () => {
 				continue;
 			}
 			checkpoints += 1;
-			// Graph identity preserved.
 			assert.equal(parsedAfter.id, parsedBefore.id);
 			assert.equal(parsedAfter.parentId, parsedBefore.parentId);
-			// Content is now the bounded v2 marker.
 			assert.equal(parsedAfter.content, '<pi_goal_continuation goal_id="g1" kind="checkpoint" v="2"/>');
 			assert.equal(parsedAfter.details.version, 2);
 			assert.equal(parsedAfter.details.objective, undefined, "objective stripped from details");
-			// Idempotency: a second dry-run reports zero further changes.
 		}
 		assert.equal(checkpoints, 5);
 

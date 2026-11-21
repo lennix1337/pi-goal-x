@@ -1,12 +1,3 @@
-/**
- * Source-level contract: GoalService is the sole mutation boundary.
- *
- * Stage 1 exit criterion: no extension module writes goal files directly or
- * appends ledger events directly — every mutation routes through `GoalService`
- * (extensions/goal-service.ts), which owns the ordered write→ledger→archive→memory
- * pipeline. The thin installer (goal.ts) delegates all state to the GoalCore
- * (goal-state.ts); handlers live in the tools/commands/events/widget modules.
- */
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -17,8 +8,6 @@ import assert from "node:assert/strict";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const extensionsDir = path.join(here, "..", "extensions");
 
-// The modules that make up the extension implementation (the installer plus
-// the extracted state/tools/commands/events/widget/format modules).
 const IMPLEMENTATION_MODULES = [
 	"goal.ts",
 	"goal-state.ts",
@@ -78,8 +67,6 @@ describe("goal mutation boundary", () => {
 	it("keeps pure serializers and readers importable (no mutation)", () => {
 		const goalTs = readFileSync(path.join(extensionsDir, "goal.ts"), "utf8");
 		const widgetSource = readFileSync(path.join(extensionsDir, "goal-widget.ts"), "utf8");
-		// serializeGoalFile is a pure content builder (used for the debug widget);
-		// mergeGoalPromptFromDisk / readActiveGoalPool / readGoalLedger are reads.
 		assert.ok(goalTs.includes("createGoalCore("), "goal.ts must install the core");
 		assert.ok(widgetSource.includes("serializeGoalFile"), "goal-widget.ts may use the pure serializer");
 	});

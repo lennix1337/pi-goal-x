@@ -111,7 +111,6 @@ test("resume and clear policy preserve human-owned lifecycle affordances", () =>
 		"Goal confirmed and created.\n\nFinalized goal:\n\n# Objective\nShip the feature.\n\nGoal details:\nBudget: none\nStatus: active",
 	);
 
-	// auditSkippedReason produces "Goal audit skipped." header and includes the reason
 	const skipReport = buildCompletionReport({
 		detailedSummary: "Goal: Do the thing\nStatus: active",
 		auditSkippedReason: "auditor disabled in settings",
@@ -119,7 +118,6 @@ test("resume and clear policy preserve human-owned lifecycle affordances", () =>
 	assert.ok(skipReport.includes("Goal audit skipped."), "skip report must indicate audit was skipped");
 	assert.ok(skipReport.includes("auditor disabled in settings"), "skip reason must be included in report");
 	assert.ok(skipReport.includes("Goal complete."), "skip report must still say Goal complete");
-	// auditSkippedReason takes precedence over auditorReport
 	const skipPrecedence = buildCompletionReport({
 		detailedSummary: "Goal: Precedence test",
 		auditorReport: "<approved/>",

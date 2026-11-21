@@ -1,11 +1,3 @@
-/**
- * Dashboard golden tests (plan §19.4): render compact and expanded dashboards
- * at 40/50/60/80/100/140 columns across every §5.5 layout mode and the §19.4
- * state list. For every rendered line: visibleWidth(line) <= width.
- *
- * Rendering data always flows through the shared pure model
- * (deriveGoalDashboardModel), so these tests also pin the model pipeline.
- */
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -28,9 +20,6 @@ const theme = {
 	bold: (value: string) => value,
 } as never;
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
 
 function task(id: string, title: string, overrides: Partial<GoalTask> = {}): GoalTask {
 	return { id, title, status: "pending", ...overrides };
@@ -130,29 +119,19 @@ function assertWidthSafe(lines: string[], width: number): void {
 for (const width of WIDTHS) {
 	test(`width safety at ${width} cols: compact and expanded over all dashboard states`, () => {
 		const states: GoalRecord[] = [
-			// Running without tasks.
 			record(),
-			// Running with tasks.
 			withTasks(fiveTaskTree(), { currentTaskId: "t3", verificationContract: "Run npm test with zero failures." }),
-			// Paused.
 			record({ status: "paused", stopReason: "user", pauseReason: "User is away", pauseSuggestedAction: "Run /goal-resume when back." }),
-			// Blocked.
 			record({ status: "blocked", pauseReason: "Missing API key", pauseSuggestedAction: "Set the key and run /goal-resume." }),
-			// Budget limited.
 			record({ status: "budget_limited", tokenBudget: 20000 }),
-			// Complete (pre-archive).
 			withTasks(fiveTaskTree().map((t) => ({ ...t, status: "complete" as const, subtasks: t.subtasks?.map((s) => ({ ...s, status: "complete" as const, skipReason: undefined })) })), {
 				status: "complete",
 				activePath: undefined,
 				archivedPath: ".pi/goals/archived/goal_g1.md",
 			}),
-			// Long objective.
 			record({ objective: "x".repeat(600) }),
-			// Long path.
 			record({ activePath: `.pi/goals/${"a".repeat(200)}.md` }),
-			// Long contract.
 			record({ verificationContract: "Run ".repeat(60) }),
-			// Unicode content.
 			withTasks([
 				task("u1", "中文任务：处理報告数据", { status: "complete" }),
 				task("u2", "日本語のタスクと📊チャート"),
@@ -201,9 +180,6 @@ test("palette: neutral-gray chrome, colour-coded content (§5)", () => {
 	renderExpandedDashboard(model, colorTheme, 100);
 	const byColor = (c: string) => captured.filter(([col]) => col === c).map(([, v]) => v);
 	const muted = byColor("muted");
-	// The chrome is ONE neutral-gray tone (muted, #808080 — no blue tinge):
-	// corners, top/bottom dashes, left/right edges and interior rules all
-	// share it. The blue-gray mdLink token is banned from the dashboard.
 	assert.equal(byColor("mdLink").length, 0, "no blue-tinged mdLink anywhere — chrome is neutral gray");
 	assert.equal(byColor("borderMuted").length, 0, "the dark borderMuted token is not used");
 	assert.ok(muted.some((v) => /^─+$/.test(v)), "top/bottom frame dashes are neutral gray");
@@ -219,28 +195,20 @@ test("palette: neutral-gray chrome, colour-coded content (§5)", () => {
 	assert.ok(muted.some((v) => v.includes("Ctrl+Shift+T: expand tasks")), "footer hint is part of the frame tone");
 	assert.ok(muted.some((v) => v.includes("12m47s")), "header usage meta is part of the frame tone");
 	assert.ok(muted.some((v) => v.includes("Add CSV export to reports")), "header title is part of the frame tone");
-	// Task markers are colour-coded pastel: pending amber, complete green, skipped gray.
 	assert.ok(byColor("mdHeading").includes("·"), "pending marker is pastel amber");
 	assert.ok(byColor("success").includes("✓"), "complete marker is muted green");
 	assert.ok(muted.includes("~"), "skipped marker is gray");
-	// Task ids share the marker color; titles stay pastel amber; the current
-	// task is fully accent (marker, id, title).
 	assert.ok(byColor("success").some((v) => v.includes("t1") || v.includes("t2")), "completed ids are muted green");
 	assert.ok(byColor("mdHeading").some((v) => v.includes("Review reports page")), "task titles are pastel amber");
 	assert.ok(byColor("accent").some((v) => v.includes("t3")), "current task id stays accent (teal)");
 	assert.ok(byColor("accent").some((v) => v.includes("Add the download button")), "current task title is accent too");
-	// The compact header brand is teal; the progress bar is fully muted —
-	// neutral-gray fill with dim empty cells, matching the muted percentage.
 	assert.ok(byColor("accent").some((v) => v.includes("pi-goal-x")), "brand is accent");
 	assert.ok(muted.some((v) => /^█+$/.test(v)), "progress bar fill is neutral gray");
 	assert.ok(byColor("dim").some((v) => /^░+$/.test(v)), "progress bar empty cells are dim");
-	// No accent progress numbers remain: the tasks counts, the header bar
-	// fraction and the current task's subtask fraction are all neutral gray.
 	assert.ok(muted.some((v) => /✓\d+ done · \d+ open/.test(v)), "task counts live in the muted header row");
 	assert.ok(muted.some((v) => /^\d+\/\d+$/.test(v)), "subtask fraction is neutral gray");
 	assert.ok(muted.some((v) => /^ ▸ \d+\/\d+$/.test(v)), "per-row subtask marker is neutral gray");
 	assert.equal(byColor("accent").some((v) => /^\d+\/\d+/.test(v)), false, "no accent progress fractions remain");
-	// No blinding #ffff00-style warning anywhere.
 	assert.equal(byColor("warning").length, 0, "the bright warning color is not used in the dashboard");
 });
 
@@ -250,30 +218,23 @@ test("audit-running widget is width-safe at every width", () => {
 	}
 });
 
-// ---------------------------------------------------------------------------
-// Compact layout goldens (spot checks at fixed widths)
-// ---------------------------------------------------------------------------
 
 test("compact: top-level task list is shown by default with '+N more' overflow", () => {
 	const model = modelFor(withTasks(fiveTaskTree(), { currentTaskId: "t3" }));
 	assert.ok(model);
-	// Medium (80): four rows; t3 is in progress, so t1 gives way to t5.
 	const medium = renderCompactDashboard(model, theme, 80).join("\n");
 	assert.match(medium, /├─ Tasks /);
 	assert.match(medium, /↑ 1 more task\b/);
 	assert.match(medium, /✓ t2  Implement filtered CSV export/);
 	assert.match(medium, /~ t5  Add and run tests/);
 	assert.doesNotMatch(medium, /\+[0-9]+ more task/);
-	// Wide (100): all five top-level rows fit, no overflow.
 	const wide = renderCompactDashboard(model, theme, 100).join("\n");
 	assert.match(wide, /~ t5  Add and run tests/);
 	assert.doesNotMatch(wide, /\+[0-9]+ more task/);
-	// Minimal (40): two rows, led by the task in progress.
 	const minimal = renderCompactDashboard(model, theme, 40).join("\n");
 	assert.match(minimal, /↑ 2 more tasks/);
 	assert.match(minimal, /▸ t3  /);
 	assert.match(minimal, /\+1 more task\b/);
-	// No tasks → no task section at all.
 	const emptyModel = modelFor(record());
 	assert.ok(emptyModel);
 	const empty = renderCompactDashboard(emptyModel, theme, 100).join("\n");
@@ -283,15 +244,10 @@ test("compact: top-level task list is shown by default with '+N more' overflow",
 test("compact: the auditor indicator is a bottom-right border dot, green on / gray off (§auditor-toggle)", () => {
 	const model = modelFor(withTasks(fiveTaskTree(), { currentTaskId: "t3" }));
 	assert.ok(model);
-	// The standalone muted auditor content line is gone; the status lives in
-	// the border footer as a single dot before the corner.
 	const wide = renderCompactDashboard(model, theme, 100).join("\n");
 	assert.doesNotMatch(wide, /Auditor  on/, "no standalone auditor content line");
 	assert.doesNotMatch(wide, /│ Auditor/, "no Auditor label row");
 	assert.match(wide, /toggle auditor ● ─╯/, "dot + right-aligned note sit at the bottom-right border");
-	// Wide/medium right-align a note explaining that Ctrl+Shift+A turns the
-	// auditor on and off; it sits directly left of the dot at the right edge.
-	// Narrow/minimal keep just the dot.
 	assert.match(wide, /Ctrl\+Shift\+A: toggle auditor/, "wide footer carries the toggle note");
 	assert.match(wide, /Ctrl\+Shift\+A: toggle auditor ●/, "note sits directly left of the border dot");
 	assert.match(wide, /expand tasks─+ Ctrl\+Shift\+A: toggle auditor/, "note is right-aligned: only fill between hint and note");
@@ -304,8 +260,6 @@ test("compact: the auditor indicator is a bottom-right border dot, green on / gr
 		assert.match(out, /─ ● ─╯/, "the border dot survives every layout");
 	}
 
-	// Green when the auditor is on, gray (muted) when off — assert the actual
-	// theme colors via a color-capturing theme.
 	const seen: Array<[string, string]> = [];
 	const trackingTheme = {
 		fg: (color: string, value: string) => {
@@ -339,17 +293,14 @@ test("compact: the auditor indicator is a bottom-right border dot, green on / gr
 test("compact: the default viewport follows the task in progress (§9.6)", () => {
 	const model = modelFor(withTasks(manyTaskTree(), { currentTaskId: "t21" }));
 	assert.ok(model);
-	// Wide (100): 5 rows; current t21 with the latest completion t20 above → t20..t24.
 	const wide = renderCompactDashboard(model, theme, 100).join("\n");
 	assert.match(wide, /↑ 19 more tasks/);
 	assert.match(wide, /✓ t20  Task number 20[\s\S]*▸ t21  Task number 21/);
 	assert.doesNotMatch(wide, /[✓▸·~] t1\s/, "the earliest task row is hidden");
 	assert.match(wide, /… \+6 more tasks/);
-	// Minimal (40): 2 rows; the current task leads.
 	const minimal = renderCompactDashboard(model, theme, 40).join("\n");
 	assert.match(minimal, /↑ 20 more tasks/);
 	assert.match(minimal, /▸ t21  Task number 21/);
-	// Nothing open: the latest completion is the last visible row.
 	const done = manyTaskTree().map((t, i) => ({ ...t, status: "complete" as const, completedAt: `2026-01-01T10:${String(i).padStart(2, "0")}:00.000Z` }));
 	const doneModel = modelFor(withTasks(done));
 	assert.ok(doneModel);
@@ -372,12 +323,10 @@ test("compact: once the shown tasks are all done, the window moves to the task i
 		assert.match(text, /T06 +Package 6/, `width ${width}: the current task is visible`);
 		assert.doesNotMatch(text, /T01 +Package 1\b/, `width ${width}: old completed tasks give way`);
 	}
-	// Wide (5 rows): the latest completion stays as context above the current task.
 	const wide = renderCompactDashboard(model, theme, 100).join("\n");
 	assert.match(wide, /↑ 4 more tasks/);
 	assert.match(wide, /T05 +Package 5[\s\S]*T06 +Package 6[\s\S]*T09 +Package 9/);
 	assert.match(wide, /… \+5 more tasks/);
-	// Minimal (2 rows): no room for context, the current task leads.
 	const minimal = renderCompactDashboard(model, theme, 40).join("\n");
 	assert.match(minimal, /T06 +Package 6[\s\S]*T07 +Package 7/);
 });
@@ -401,7 +350,6 @@ test("expanded: rows + scrollOffset window the tree with indicators; full tree b
 	assert.match(mid, /↑ 5 more tasks/);
 	assert.match(mid, /Task number 6/);
 	assert.match(mid, /… \+15 more tasks/);
-	// No rows option → the whole tree is rendered (backward compatible).
 	const full = renderExpandedDashboard(model, theme, 100).join("\n");
 	assert.doesNotMatch(full, /↑ \d+ more tasks/);
 	assert.match(full, /Task number 30/);
@@ -415,9 +363,6 @@ test("compact: running with tasks at 100 shows status, header counts + bar, curr
 	assert.match(lines[0]!, /^╭─ pi-goal-x ─ Add CSV export to reports/);
 	assert.doesNotMatch(lines[0]!, /12m47s/, "usage moved from the header into the status line");
 	assert.match(lines[1]!, /goal: running \[12m47s 18\.2K\] \(\+2 open\)/);
-	// Header row: counts first (skipped counted as done → ✓3), task bar, then
-	// the current task's subtask bar beside it (`· Sub 2/3`); the standalone
-	// compact progress lines are gone.
 	assert.match(text, /├─ Tasks · ✓3 done · 2 open ─+ \[.*\] · Sub 2\/3 \[.*\] ┤/);
 	assert.doesNotMatch(text, /Tasks  \[.*\] \d\/\d · \d+%/, "standalone compact progress line is gone");
 	assert.doesNotMatch(text, /Subtasks \[.*\] 2\/3 · 67%/, "standalone compact subtask line is gone from compact");
@@ -484,9 +429,6 @@ test("compact: complete state shows the §4.7 message", () => {
 	assert.match(text, /✓5 done · 0 open/);
 });
 
-// ---------------------------------------------------------------------------
-// Expanded layout goldens
-// ---------------------------------------------------------------------------
 
 test("expanded: full dashboard at 100 shows sections and complete task tree", () => {
 	const model = modelFor(withTasks(fiveTaskTree(), { currentTaskId: "t3", verificationContract: "Run npm test with zero failures." }), {
@@ -531,7 +473,6 @@ test("expanded: current nested subtask shows its depth in the tree", () => {
 test("expanded: no task sections when tasks are disabled (§9.5)", () => {
 	const model = modelFor(withTasks(fiveTaskTree(), { verificationContract: "Run the suite." }), {});
 	assert.ok(model);
-	// Re-derive with tasksDisabled (settings).
 	const disabled = deriveGoalDashboardModel(withTasks(fiveTaskTree(), { verificationContract: "Run the suite." }), {
 		focused: true,
 		otherOpenGoals: 1,
@@ -548,20 +489,14 @@ test("compact: custom dashboard keybindings render in the footer hints", () => {
 	const model = modelFor(withTasks(fiveTaskTree(), { currentTaskId: "t3" }));
 	assert.ok(model);
 	const custom = { toggleExpand: "ctrl+alt+t", scrollUp: "ctrl+alt+u", scrollDown: "ctrl+alt+d" } as const;
-	// Wide (100): no overflow — the expand hint shows the configured toggle key.
 	const wide = renderCompactDashboard(model, theme, 100, { keybindings: custom }).join("\n");
 	assert.match(wide, /Ctrl\+Alt\+T: expand tasks/);
 	assert.doesNotMatch(wide, /Ctrl\+Shift\+T/, "the default toggle key is replaced when configured");
-	// Wide (100) with a six-task tree: overflow — both configured scroll keys
-	// appear in the hint (a sixth task exceeds the 5-row viewport at 100).
 	const six = modelFor(withTasks([...fiveTaskTree(), task("t6", "Extra row for overflow")], { currentTaskId: "t3" }));
 	assert.ok(six);
 	const wideOverflow = renderCompactDashboard(six, theme, 100, { keybindings: custom }).join("\n");
 	assert.match(wideOverflow, /Ctrl\+Alt\+T: expand · Ctrl\+Alt\+U\/Ctrl\+Alt\+D: scroll/);
 	assert.match(wideOverflow, /↑ 1 more task\b/, "six tasks overflow five rows");
-	// Defaults render identically when keybindings are omitted (width 100 so
-	// the hint fits; at 80 the auditor note truncates the hint the same way
-	// on current main — pre-existing, not a regression).
 	const defaults = renderCompactDashboard(six, theme, 100).join("\n");
 	assert.match(defaults, /Ctrl\+Shift\+T: expand · Ctrl\+Shift\+↑↓: scroll/);
 	// Long custom key names are tolerated: the hint ellipsizes inside the box

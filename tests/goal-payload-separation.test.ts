@@ -47,7 +47,7 @@ describe("PR F §61: single-source auditor prompt", () => {
 		const g = goal();
 		const prompt = buildGoalAuditorPrompt({
 			goal: g,
-			detailedSummary: `Goal: ${g.objective}\nStatus: running\nTasks: 1/2 complete`, // legacy verbose summary input
+			detailedSummary: `Goal: ${g.objective}\nStatus: running\nTasks: 1/2 complete`,
 			completionSummary: "I claim it is done.",
 		});
 		assert.equal(prompt.split("Deliver the audited thing.").length - 1, 1, "objective occurs once");

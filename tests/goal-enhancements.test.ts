@@ -1,6 +1,3 @@
-/**
- * E1/E4/E6/E7: enhancement behavior tests (task 4).
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -92,8 +89,6 @@ describe("E7 expandable pause detail", () => {
 			details: goalDetails(goal, detail),
 		};
 		const collapsed = renderGoalResult(result, undefined, theme).render(200).join("\n").trim();
-		// Collapsed heading: byte-identical to the pre-E7 generic summary
-		// (no resultDetail, no options.expanded).
 		assert.match(collapsed, /^Goal running - Pause test$/);
 		const expanded = renderGoalResult(result, { expanded: true }, theme).render(200).join("\n");
 		assert.match(expanded, /Pause reason: waiting on the user/);

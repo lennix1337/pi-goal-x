@@ -61,7 +61,6 @@ function writeFixtureGoal(cwd: string): void {
 	writeFileSync(path.join(cwd, FIXTURE_GOAL_RELPATH), readFileSync(fixturePath("goals/active_goal_fixture.md"), "utf8"));
 }
 
-// ── Expected normalized record for the fixture ───────────────────────────────
 
 function expectedFixtureRecord(now: string): GoalRecord {
 	return {
@@ -129,7 +128,6 @@ function expectedFixtureRecord(now: string): GoalRecord {
 	};
 }
 
-// ── Goal file format golden ─────────────────────────────────────────────────
 
 test("golden: fixture v3 goal file parses to the pinned record", () => {
 	const cwd = tempCwd();
@@ -139,7 +137,6 @@ test("golden: fixture v3 goal file parses to the pinned record", () => {
 		assert.ok(parsed, "fixture goal file must parse");
 		assert.deepEqual(parsed, expectedFixtureRecord(nowIso()));
 	} finally {
-		// temp dir cleanup is best-effort; os tmp dir reaps on reboot.
 	}
 });
 
@@ -157,12 +154,10 @@ test("golden: prompt body is authoritative over the JSON header objective", () =
 		const parsed = parseGoalFile(filePath);
 		assert.ok(parsed);
 		assert.equal(parsed.objective, "Edited objective from the prompt body");
-		// Header-driven fields are unchanged by the body edit.
 		assert.equal(parsed.id, "golden_fixture_goal");
 		assert.equal(parsed.status, "active");
 		assert.equal(parsed.verificationContract, "Run npm test (0 failures) and confirm every requirement is addressed.");
 	} finally {
-		// temp dir cleanup is best-effort.
 	}
 });
 
@@ -182,7 +177,6 @@ test("golden: serialize -> parse round-trips the fixture record", () => {
 		assert.deepEqual(reparsed.usage, parsed.usage);
 		assert.deepEqual(reparsed.taskList, parsed.taskList);
 	} finally {
-		// temp dir cleanup is best-effort.
 	}
 });
 
@@ -268,7 +262,6 @@ test("golden: legacy paused+autoContinue:true record stays paused through markdo
 	}
 });
 
-// ── Ledger format golden ─────────────────────────────────────────────────────
 
 test("golden: fixture ledger reads every event type and counts malformed lines", () => {
 	const cwd = tempCwd();
@@ -291,7 +284,6 @@ test("golden: fixture ledger reads every event type and counts malformed lines",
 			"task_skipped",
 		]);
 	} finally {
-		// temp dir cleanup is best-effort.
 	}
 });
 
@@ -314,11 +306,9 @@ test("golden: ledger reconstruction yields stable terminal and focus state", () 
 		assert.equal(terminalGoals.get("goal-b")?.latestStatus, "aborted");
 		assert.equal(terminalGoals.get("goal-b")?.abortedAt, "2026-08-03T09:07:00.000Z");
 	} finally {
-		// temp dir cleanup is best-effort.
 	}
 });
 
-// ── Focus restoration golden ────────────────────────────────────────────────
 
 test("golden: focus restores from a focus entry against the on-disk pool", () => {
 	const cwd = tempCwd();
@@ -337,17 +327,13 @@ test("golden: focus restores from a focus entry against the on-disk pool", () =>
 			focusEntry: { version: 1, focusedGoalId: "ghost-goal", reason: "selected" },
 		}), null);
 
-		// No focus entry + default settings -> unfocused.
 		assert.equal(resolveSessionFocus({ pool, focusEntry: null }), null);
 
-		// No focus entry + autoSelectSingleGoal -> single open goal is selected.
 		assert.equal(resolveSessionFocus({ pool, focusEntry: null, autoSelectSingleGoal: true }), "golden_fixture_goal");
 	} finally {
-		// temp dir cleanup is best-effort.
 	}
 });
 
-// ── Compaction summary golden ────────────────────────────────────────────────
 
 test("golden: compaction summary text for a focused active goal", () => {
 	const cwd = tempCwd();
@@ -373,7 +359,6 @@ test("golden: compaction summary text for a focused active goal", () => {
 			"Do not rely on chat memory for goal state; use the facts above.",
 		].join("\n"));
 	} finally {
-		// temp dir cleanup is best-effort.
 	}
 });
 
@@ -399,7 +384,6 @@ test("golden: compaction summary with ledger terminal goals", () => {
 		assert.match(summary, /^\[FOCUSED GOAL\]\nGoal golden_fixture_goal — running\n/);
 		assert.match(summary, /\[TERMINAL GOALS — 2 completed or aborted\]\n- goal-a — completed at 2026-08-03T09:06:00\.000Z\n- goal-b — aborted at 2026-08-03T09:07:00\.000Z/);
 	} finally {
-		// temp dir cleanup is best-effort.
 	}
 });
 
@@ -418,7 +402,6 @@ test("golden: compaction summary for an empty session", () => {
 	].join("\n"));
 });
 
-// ── Auditor verdict marker contract ─────────────────────────────────────────
 
 test("golden: auditor verdict marker contract is final-line approval/disapproval", () => {
 	// Pins the <approved/> / <disapproved/> marker contract that the completion
@@ -430,7 +413,6 @@ test("golden: auditor verdict marker contract is final-line approval/disapproval
 	assert.deepEqual(parseAuditorDecision("no marker"), { approved: false, disapproved: false });
 });
 
-// ── Sanity: serializeGoalFile still emits the fixture shape ─────────────────
 
 test("golden: serializeGoalFile emits the same header/body structure the fixture uses", () => {
 	const cwd = tempCwd();
@@ -448,13 +430,10 @@ test("golden: serializeGoalFile emits the same header/body structure the fixture
 		assert.match(serialized, /- \[x\] task-1: Implement core — evidence: npm run check passes/);
 		assert.match(serialized, /- \[~\] task-2: Docs — skipped: User cancelled docs work/);
 	} finally {
-		// temp dir cleanup is best-effort.
 	}
 });
 
 test("golden: invalid persisted token budgets normalize to absent", () => {
-	// Stage 4 contract: fractional, zero, negative, infinite, and unsafe
-	// persisted budgets become absent rather than silently changing meaning.
 	for (const bad of [0, -5, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
 		const record = normalizeGoalRecord({ id: "g1", objective: "x", status: "active", tokenBudget: bad });
 		assert.equal(record?.tokenBudget, undefined, `persisted tokenBudget ${bad} must normalize to absent`);

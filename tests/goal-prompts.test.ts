@@ -116,8 +116,6 @@ test("taskListBlock renders correctly with mixed statuses", () => {
 	assert.equal(block.includes("[~] t3"), false, "skipped tasks collapse to the header count");
 	assert.match(block, /\[ \] t2/);
 	assert.match(block, /TASK GATE/);
-	// PR E compact-v2: visible pending items make the separate "Next pending"
-	// line redundant (it would duplicate t2).
 	assert.equal(block.includes("Next pending: t2"), false, "next-pending duplicates a visible pending item");
 });
 
@@ -172,7 +170,6 @@ test("goalPrompt omits taskListBlock when no taskList", () => {
 });
 
 test("continuation checkpoint never embeds the task list (issue #30)", () => {
-	// Task-like substrings are valid in goal ids; a random id made this test flaky.
 	const g = goal({ id: "goal-t1" });
 	g.taskList = {
 		tasks: [{ id: "t1", title: "Task 1", status: "pending" }],
@@ -189,7 +186,6 @@ test("continuationPrompt omits taskListBlock when no taskList", () => {
 	assert.equal(continuation.includes("[TASK LIST"), false);
 });
 
-// ── Subtask hierarchical display ──────────────────────────────────────────────
 
 test("taskListBlock renders subtasks indented", () => {
 	const g = goal();
@@ -210,7 +206,6 @@ test("taskListBlock renders subtasks indented", () => {
 	// Subtasks indented (pending only; the completed t1b collapses to the count)
 	assert.match(block, /  \[ \] t1a/);
 	assert.equal(block.includes("[x] t1b"), false, "completed subtask collapses to the count (P1-4)");
-	// All tasks counted: t1 + t1a + t1b = 3 total, 1 complete
 	assert.match(block, /1\/3 tasks complete/);
 });
 
@@ -234,7 +229,6 @@ test("taskListBlock renders nested subtasks up to depth limit", () => {
 	assert.match(block, /\[ \] t1/);
 	assert.match(block, /\[ \] t1a/);
 	assert.equal(block.includes("[x] t1ai"), false, "completed grandchild collapses to the count (P1-4)");
-	// 3-level hierarchy: 3 tasks, 1 complete
 	assert.match(block, /1\/3 tasks complete/);
 });
 
@@ -253,7 +247,6 @@ test("taskListBlock shows lightweight subtask indicator", () => {
 	};
 	const block = taskListBlock(g);
 	assert.ok(block);
-	// Lightweight indicator shown
 	assert.match(block, /\(lightweight\)/);
 });
 
@@ -282,7 +275,6 @@ test("goalPrompt includes subtask rendering", () => {
 	};
 	const prompt = goalPrompt(g);
 	assert.match(prompt, /\[ \] t1/);
-	// P1-4: the completed child collapses to the header count.
 	assert.equal(prompt.includes("[x] t1a"), false, "completed subtask collapses to the count (P1-4)");
 	assert.match(prompt, /1\/2 tasks complete/);
 });
@@ -340,10 +332,8 @@ test("taskListBlock surfaces the persisted current task with its contract", () =
 	g.currentTaskId = "t2";
 	const block = taskListBlock(g);
 	assert.match(block, /Current: t2 · Task two \(contract: Run the check\.\)/);
-	// No focus: no Current line.
 	g.currentTaskId = undefined;
 	assert.doesNotMatch(taskListBlock(g), /Current:/);
-	// Focus on a contract-less task: no contract suffix.
 	g.currentTaskId = "t1";
 	assert.match(taskListBlock(g), /Current: t1 · Task one\n/);
 });
@@ -362,7 +352,6 @@ test("prompt cache key changes when currentTaskId changes", () => {
 	assert.doesNotMatch(before, /Current:/);
 });
 
-// ── PR E: single-source task block + prompt profiles ─────────────────────────
 
 test("compact-v2 renders the current task exactly once in the task block", () => {
 	const g = goal({ id: "dedupe-goal" });

@@ -27,7 +27,6 @@ const CORE = ["create_goal", "get_goal", "update_goal"];
 // never to the steady three/five execution surface.
 const DRAFTING = ["goal_question", "goal_questionnaire", "propose_goal_draft"];
 
-// Removed steady-state lifecycle tools — none may exist in the module.
 const REMOVED_STEADY = [
 	"propose_goal_tweak", "step_complete", "abort_goal", "propose_task_list",
 	"complete_task", "skip_task", "complete_goal", "pause_goal",

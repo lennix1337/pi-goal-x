@@ -1,7 +1,3 @@
-/**
- * Guided drafting is the normal entry path; the two -direct commands are the
- * explicit immediate-creation escape hatch.
- */
 
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -169,10 +165,7 @@ test("goal-settings renders sectioned rows with clearer auditor wording", async 
 	mkdirSync(path.join(cwd, ".pi"), { recursive: true });
 	const h = createHarness(cwd);
 	try {
-		// The settings menu is interactive: give the harness ctx a TUI.
 		(h.ctx as { hasUI: boolean }).hasUI = true;
-		// Capture the options list passed to ctx.ui.select; answer "Done" on the
-		// first call so the menu closes immediately.
 		let captured: string[] | null = null;
 		const ui = h.ctx.ui as unknown as { select: (title: string, options: string[]) => Promise<string | undefined> };
 		ui.select = async (_title: string, options: string[]) => {

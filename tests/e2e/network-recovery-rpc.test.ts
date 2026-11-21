@@ -61,7 +61,6 @@ const SCENARIO_503: OutageScenario = {
 	},
 };
 
-/** The exact second field-reported failure shape (OpenRouter-style 429). */
 const SCENARIO_429: OutageScenario = {
 	status: 429,
 	label: "429",
@@ -89,7 +88,6 @@ async function runOutageScenario(t: import("node:test").TestContext, scenario: O
 	const port = (server.address() as { port: number }).port;
 	t.after(() => server.close());
 
-	// ── Isolated agent dir + project cwd ───────────────────────────────────
 	const work = mkdtempSync(path.join(tmpdir(), "goal-netrecovery-e2e-"));
 	t.after(() => {
 		try {
@@ -122,17 +120,14 @@ async function runOutageScenario(t: import("node:test").TestContext, scenario: O
 			},
 		},
 	}));
-	// pi-goal-x settings: auto-focus the single active goal in fresh sessions.
 	writeFileSync(path.join(agentDir, "pi-goal-x-settings.json"), JSON.stringify({ autoSelectSingleGoal: true, maxAutonomousRuns: 100 }));
 
-	// Seed one active auto-continue goal via the extension's own serializers.
 	const goal = createGoal(
 		{ objective: "keep making progress despite provider outages", autoContinue: true, sisyphus: false },
 		Date.UTC(2026, 7, 25, 12, 0, 0),
 	);
 	writeActiveGoalFile({ cwd: projectDir }, goal);
 
-	// ── Drive a real pi RPC session ────────────────────────────────────────
 	const child = spawn(
 		"pi",
 		["--mode", "rpc", "-e", EXT_PATH, "-ne", "--no-session"],
@@ -226,8 +221,6 @@ async function runOutageScenario(t: import("node:test").TestContext, scenario: O
 
 	child.stdin!.write(JSON.stringify({ id: "r1", type: "prompt", message: "continue working on the task" }) + "\n");
 
-	// The first notification proves recovery engaged after Pi's own retries;
-	// the second proves the delivered continuation restarted the loop.
 	const gotTwo = await waitFor(() => notifications.length >= 2, 45_000);
 	child.kill("SIGKILL");
 

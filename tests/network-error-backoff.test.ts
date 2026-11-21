@@ -15,7 +15,6 @@ test("network-error backoff escalates and plateaus; default policy is unbounded"
 	assert.deepEqual(networkErrorBackoffPlan(1), { attempt: 1, maxAttempts: 0, delayMs: 5_000 });
 	assert.deepEqual(networkErrorBackoffPlan(5), { attempt: 5, maxAttempts: 0, delayMs: 80_000 });
 	assert.equal(networkErrorBackoffPlan(0), undefined);
-	// Unbounded default: the ladder plateaus at the max delay forever.
 	assert.deepEqual(networkErrorBackoffPlan(6), { attempt: 6, maxAttempts: 0, delayMs: 80_000 });
 	assert.deepEqual(networkErrorBackoffPlan(50), { attempt: 50, maxAttempts: 0, delayMs: 80_000 });
 });

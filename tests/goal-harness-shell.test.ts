@@ -1,10 +1,3 @@
-/**
- * Runs the experiment-harness shell tests (follow-up Stage 6) as part of the
- * fast suite. The bash tests stub curl/pi/tooling and exercise
- * SUPPORTED_CASES.json membership, raw-dir diagnostics, the MODEL-aware smoke
- * payload, missing configuration, HTTP/JSON validation, and portable timeout
- * discovery.
- */
 
 import { execFileSync, spawnSync } from "node:child_process";
 import path from "node:path";

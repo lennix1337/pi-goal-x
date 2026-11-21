@@ -1,10 +1,3 @@
-/**
- * Audit dashboard tests (plan §19.7): the five check stages transition
- * pending → running → passed (decision → passed or failed), the auditor
- * identity is shown, percentages clamp, expanded diagnostics retain tool
- * details, the result cards render, and the normal dashboard returns after a
- * finished audit (rejection keeps the goal open; approval shows the card).
- */
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -39,17 +32,14 @@ function checkState(model: ReturnType<typeof deriveAuditorDashboardModel>, id: s
 }
 
 test("objective: pending → running → passed as the audit advances", () => {
-	// No percentage yet: objective runs, everything else pending.
 	const start = deriveAuditorDashboardModel(progress({ percentage: undefined, label: "Starting audit..." }));
 	assert.equal(checkState(start, "objective"), "running");
 	assert.equal(checkState(start, "verification"), "pending");
 	assert.equal(checkState(start, "decision"), "pending");
 
-	// At 10% objective still runs.
 	const early = deriveAuditorDashboardModel(progress({ percentage: 10 }));
 	assert.equal(checkState(early, "objective"), "running");
 
-	// At 20% objective passes, verification starts.
 	const mid = deriveAuditorDashboardModel(progress({ percentage: 20 }));
 	assert.equal(checkState(mid, "objective"), "passed");
 	assert.equal(checkState(mid, "verification"), "running");
@@ -181,7 +171,6 @@ test("the normal dashboard returns after the audit result card clears", () => {
 	const cardText = component.render(100).join("\n");
 	assert.match(cardText, /Audit result ─ CHANGES REQUIRED/);
 	assert.match(cardText, /✗ Tests were not run/);
-	// The goal stays open: clearing the card restores the normal dashboard.
 	auditResult = null;
 	const normal = component.render(100).join("\n");
 	assert.match(normal, /pi-goal-x ─ Fix the parser/);

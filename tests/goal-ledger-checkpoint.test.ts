@@ -56,10 +56,8 @@ test("checkpoint: loadLedgerState falls back to full parse and writes a fresh ch
     assert.equal(result.state.goals.size, 2);
     assert.equal(result.state.focusedGoalId, "g2");
     assert.equal(result.recentEventsByGoal.get("g1")?.length, 2);
-    // A fresh checkpoint is written so the next cold start is bounded.
     assert.ok(fs.existsSync(checkpointPath(ctx)), "checkpoint written after full load");
 
-    // Second load from a cold cache serves the checkpoint.
     invalidateGoalLedgerCache();
     const hit = loadLedgerState(ctx);
     assert.equal(hit.source, "checkpoint");
@@ -90,7 +88,6 @@ test("checkpoint: tail replay applies only the ledger bytes past the checkpoint"
   const ctx = tempCtx();
   try {
     appendGoal(ctx, "g1");
-    // Bootstrap a checkpoint covering the current ledger.
     invalidateGoalLedgerCache();
     const first = loadLedgerState(ctx);
     assert.equal(first.source, "full");
@@ -111,7 +108,6 @@ test("checkpoint: tail replay applies only the ledger bytes past the checkpoint"
     assert.equal(result.state.focusedGoalId, "g1");
     assert.equal(result.recentEventsByGoal.get("g2")?.length, 1);
 
-    // The refreshed checkpoint now serves cold reads directly.
     invalidateGoalLedgerCache();
     const hit = loadLedgerState(ctx);
     assert.equal(hit.source, "checkpoint");
@@ -126,8 +122,7 @@ test("checkpoint: version mismatch falls back to the full parse", () => {
   try {
     appendGoal(ctx, "g1");
     invalidateGoalLedgerCache();
-    loadLedgerState(ctx); // writes checkpoint
-    // Corrupt the version to simulate a future format.
+    loadLedgerState(ctx);
     const raw = JSON.parse(fs.readFileSync(checkpointPath(ctx), "utf8"));
     raw.version = LEDGER_CHECKPOINT_VERSION + 1;
     fs.writeFileSync(checkpointPath(ctx), JSON.stringify(raw));
@@ -161,8 +156,7 @@ test("checkpoint: ledger truncated below checkpoint coverage falls back to the f
     appendGoal(ctx, "g1");
     appendGoal(ctx, "g2");
     invalidateGoalLedgerCache();
-    loadLedgerState(ctx); // checkpoint covers 4 events
-    // Truncate the ledger (external rewrite).
+    loadLedgerState(ctx);
     const ledgerPath = goalLedgerPath(ctx);
     const lines = fs.readFileSync(ledgerPath, "utf8").split("\n").filter(Boolean);
     fs.writeFileSync(ledgerPath, lines.slice(0, 2).join("\n") + "\n");
@@ -203,9 +197,6 @@ test("checkpoint: mutation-path maintenance keeps the checkpoint current without
   const ctx = tempCtx();
   try {
     appendGoal(ctx, "g1");
-    // Bootstrap via a full load, then append with the cache warm. The disk
-    // checkpoint write is throttled (32 appends / 2s) to hold the NAF append
-    // headroom, so drive 16 goal appends (32 events) past the boundary.
     invalidateGoalLedgerCache();
     loadLedgerState(ctx);
     for (let i = 2; i <= 17; i++) appendGoal(ctx, `g${i}`);
@@ -213,7 +204,6 @@ test("checkpoint: mutation-path maintenance keeps the checkpoint current without
     assert.equal(cpRaw.version, LEDGER_CHECKPOINT_VERSION);
     assert.ok(cpRaw.coveredEvents >= 2 + 32, `disk checkpoint advanced past the throttle boundary (${cpRaw.coveredEvents})`);
 
-    // A cold read (fresh cache) now hits the checkpoint with all events.
     invalidateGoalLedgerCache();
     const result = loadLedgerState(ctx);
     assert.equal(result.source, "checkpoint");
@@ -231,8 +221,6 @@ test("checkpoint: readGoalLedger (full-events API) is untouched and consistent",
     const full = readGoalLedger(ctx);
     assert.equal(full.events.length, 2);
     assert.equal(full.malformed, 0);
-    // The checkpoint file lives next to the ledger and does not change the
-    // JSONL event stream.
     const ledgerPath = goalLedgerPath(ctx);
     const lines = fs.readFileSync(ledgerPath, "utf8").split("\n").filter(Boolean);
     assert.equal(lines.length, 2);

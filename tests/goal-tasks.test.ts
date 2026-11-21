@@ -1,6 +1,3 @@
-/**
- * Tests for task list policy helpers in goal-policy.ts
- */
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -17,7 +14,6 @@ import {
 	validateTaskListProposal,
 } from "../extensions/goal-policy.ts";
 
-// ── Fixtures ─────────────────────────────────────────────────────────────────
 
 function makeGoal(taskOverrides: Array<Partial<{ id: string; title: string; status: "pending" | "complete" | "skipped" }>>) {
 	const tasks = taskOverrides.map((t, i) => ({
@@ -40,7 +36,6 @@ function makeGoal(taskOverrides: Array<Partial<{ id: string; title: string; stat
 	};
 }
 
-// ── buildTaskSummary ─────────────────────────────────────────────────────────
 
 test("buildTaskSummary: no tasks", () => {
 	const result = buildTaskSummary({
@@ -101,7 +96,6 @@ test("buildTaskSummary: all complete", () => {
 	assert.equal(result, "2/2 tasks complete");
 });
 
-// ── taskCompletionBlockWarning ────────────────────────────────────────────────
 
 test("taskCompletionBlockWarning: no blockCompletion returns null", () => {
 	const result = taskCompletionBlockWarning({
@@ -147,7 +141,6 @@ test("taskCompletionBlockWarning: plural tasks", () => {
 	assert.match(result!, /2 tasks/);
 });
 
-// ── validateTaskCompletion ────────────────────────────────────────────────────
 
 test("validateTaskCompletion: no goal", () => {
 	const result = validateTaskCompletion({ goal: null, taskId: "t1" });
@@ -189,7 +182,6 @@ test("validateTaskCompletion: valid pending task", () => {
 	assert.equal(result.ok, true);
 });
 
-// ── validateTaskSkip ──────────────────────────────────────────────────────────
 
 test("validateTaskSkip: no goal", () => {
 	const result = validateTaskSkip({ goal: null, taskId: "t1", reason: "irrelevant" });
@@ -237,7 +229,6 @@ test("validateTaskSkip: valid skip", () => {
 	assert.equal(result.ok, true);
 });
 
-// ── validateTaskListProposal ──────────────────────────────────────────────────
 
 test("validateTaskListProposal: no goal", () => {
 	const result = validateTaskListProposal({ goal: null, tasks: [{ id: "t1", title: "T1", status: "pending" }] });
@@ -307,7 +298,6 @@ test("validateTaskListProposal: duplicate ids within same subtask tree", () => {
 	assert.match(result.message, /Duplicate task id: "sub-a"/);
 });
 
-// ── Subtask depth validation ────────────────────────────────────────────
 
 test("findSubtaskDepthViolation: no violation at default depth", () => {
 	const tasks = [{
@@ -398,7 +388,6 @@ test("validateTaskListProposal: rejects with subtasks exceeding depth", () => {
 	assert.equal(result.ok, false);
 });
 
-// ── checkSubtasksComplete ───────────────────────────────────────────────
 
 test("checkSubtasksComplete: returns undefined when no subtasks", () => {
 	const task = { id: "t1", title: "Task 1", status: "pending" as const };
@@ -452,7 +441,6 @@ test("checkSubtasksComplete: checks nested subtasks", () => {
 	assert.ok(checkSubtasksComplete(task));
 });
 
-// ── skipAllSubtasks ─────────────────────────────────────────────────────
 
 test("skipAllSubtasks: skips direct subtasks", () => {
 	const task = {
@@ -477,7 +465,7 @@ test("skipAllSubtasks: does not modify completed subtasks", () => {
 		],
 	};
 	const result = skipAllSubtasks(task, "2026-06-01", "Cascade");
-	assert.equal(result.subtasks![0]!.status, "complete"); // unchanged
+	assert.equal(result.subtasks![0]!.status, "complete");
 	assert.equal(result.subtasks![1]!.status, "skipped");
 });
 
@@ -495,7 +483,6 @@ test("skipAllSubtasks: skips nested subtasks", () => {
 	assert.equal(result.subtasks![0]!.subtasks![0]!.status, "skipped");
 });
 
-// ── findTaskInTree / updateTaskInTree ───────────────────────────────────
 
 test("findTaskInTree: finds top-level task", () => {
 	const tasks = [
@@ -563,7 +550,6 @@ test("buildTaskSummary: counts subtasks recursively", () => {
 		proposedAt: "2026-05-27T00:00:00.000Z",
 	};
 	const result = buildTaskSummary(taskList);
-	// t1 (complete) + t1a (pending) = 1/2 complete
 	assert.match(result, /1\/2/);
 });
 

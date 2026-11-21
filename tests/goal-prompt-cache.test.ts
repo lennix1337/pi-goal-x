@@ -57,8 +57,6 @@ test("a contentless trailing message from the host does not defeat the repair", 
  assert.deepEqual(bedrock.messages[0].content.at(-1), {cachePoint: {type: "default", ttl: "1h"}});
  assert.deepEqual(bedrock.messages[1].content, [{text: live}]);
 
- // A trailing message that does carry content is still another extension's
- // business: the tail no longer matches the live block, so nothing moves.
  const foreign: any = {messages: [
   {role: "user", content: [{type: "text", text: "history"}]},
   {role: "user", content: [{type: "text", text: live, cache_control: control}]},
