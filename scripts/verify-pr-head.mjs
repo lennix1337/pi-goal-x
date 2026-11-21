@@ -1,21 +1,4 @@
 #!/usr/bin/env node
-/**
- * verify-pr-head — maintainer-provenance gate (plan §6.4).
- *
- * Proves that the current HEAD history (baseRef..HEAD) contains no forbidden
- * contributor commits: no forbidden ancestor SHA, no commit whose author,
- * committer, or message matches a forbidden pattern, and no Co-authored-by
- * trailer anywhere in the range.
- *
- * This is a provenance gate, not an authorship claim about individual ideas:
- * it proves the merged Git history contains only the new maintainer
- * implementation.
- *
- * Usage:
- *   node scripts/verify-pr-head.mjs --base origin/main \
- *     [--forbid-ancestor <sha>]... [--forbid-author <pattern>]...
- */
-
 import { execFileSync } from "node:child_process";
 
 function git(...args) {

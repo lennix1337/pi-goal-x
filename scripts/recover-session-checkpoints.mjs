@@ -1,24 +1,5 @@
 #!/usr/bin/env node
-/**
- * pi-goal-x-recover — offline repair for session files affected by issue #30.
- *
- * Before the v2 bounded-checkpoint fix, every auto-continue turn persisted a
- * full continuation prompt (~6.4K chars) as a custom_message entry. This tool
- * rewrites ONLY those legacy checkpoint entries to the tiny v2 marker form:
- *
- *   - line count unchanged; entry ids/parentIds unchanged;
- *   - header and non-goal lines byte-identical (malformed lines preserved);
- *   - only checkpoint `content` and `details` change;
- *   - idempotent; dry-run default.
- *
- * SAFETY: never run against a live Pi session. Close Pi first. --apply is
- * refused without --confirm-pi-closed. A timestamped backup is created before
- * replacement, which itself is an atomic same-directory rename.
- *
- * Usage:
- *   pi-goal-x-recover --session <session.jsonl>                    # dry-run
- *   pi-goal-x-recover --session <session.jsonl> --apply --confirm-pi-closed
- */
+// external: close Pi before applying repairs to avoid concurrent session writes.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -101,7 +82,7 @@ export function transformSessionLines(originalText) {
 			entry = JSON.parse(rawLine);
 		} catch {
 			malformed += 1;
-			outputLines.push(rawLine); // never discard unrelated malformed data
+			outputLines.push(rawLine);
 			continue;
 		}
 
@@ -176,7 +157,6 @@ function recoverSession(inputPath, apply) {
 			throw new Error(`non-goal line ${i + 1} would change — aborting`);
 		}
 	}
-	// Every non-header parentId must reference some id in the file.
 	const ids = new Set(outputGraph.map((g) => g.id).filter(Boolean));
 	for (const g of outputGraph) {
 		if (g.parentId != null && !ids.has(g.parentId)) {
@@ -219,7 +199,7 @@ function recoverSession(inputPath, apply) {
 
 	try {
 		fs.fsyncSync(fs.openSync(path.dirname(absolute), "r"));
-	} catch { /* directory fsync is platform-dependent; best effort */ }
+	} catch { /* external: directory fsync is not supported on every platform. */ }
 
 	const reread = fs.readFileSync(absolute, "utf8");
 	const rereadLines = reread.split("\n");
