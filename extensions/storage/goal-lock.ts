@@ -1,15 +1,4 @@
 import { goalStoragePath, ensureGoalStorageDirectory } from "./goal-root.ts";
-/**
- * Short per-goal filesystem lock (follow-up Stage 4).
- *
- * An exclusive lock is acquired through atomic creation of a lock file under
- * `.pi/goals/.locks/<goalId>.lock` carrying { pid, startedAt } metadata.
- * Acquisition is bounded: on contention the caller waits briefly and retries,
- * and stale locks (older than the TTL, or whose pid is no longer alive) are
- * recovered by removal. The lock serializes cross-process mutations of the
- * same goal; the optimistic revision check (goal-service.ts) detects stale
- * writers even when the lock hand-off is fast.
- */
 
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
@@ -22,18 +11,6 @@ export interface GoalLock {
 	release(): void;
 }
 
-// P1-5: strictly bounded acquisition so the main thread never freezes for
-// seconds under cross-process contention. The default window is 8×25ms ≈ 200ms;
-// the persist path passes an even tighter bound (4×25ms ≈ 100ms). A contended
-// write now fails fast with a typed error instead of blocking the TUI for the
-// old 100×25ms ≈ 2.5s worst case; the optimistic revision check (goal-service)
-// is the real guard against concurrent writers.
-//
-// NAF (2026-08-06): the default window drops to 8×1ms ≈ 8ms of sleep (+ the
-// per-attempt staleness check ≈ 8ms) — 10x+ smaller main-thread block under
-// long contention. Brief contention (<10ms) still succeeds; long-held locks
-// fail fast and the caller defers the write (P1-3 turn buffer / persist-skip),
-// so the TUI never freezes on a busy lock.
 const DEFAULT_ACQUIRE_ATTEMPTS = 8;
 const DEFAULT_RETRY_MS = 1;
 const DEFAULT_STALE_TTL_MS = 30_000;
@@ -61,7 +38,7 @@ function readLockPayload(lockPath: string): { pid?: number; startedAt?: string; 
 			token: typeof raw.token === "string" ? raw.token : undefined,
 		};
 	} catch {
-		// Unparseable payload means a writer crashed mid-create: treat as stale.
+		// external: an interrupted lock-file creation can leave an incomplete payload.
 		return {};
 	}
 }
@@ -95,8 +72,7 @@ export function acquireGoalLock(
 	const lockDir = goalStoragePath(ctx, GOAL_LOCK_DIR);
 	const lockPath = path.join(lockDir, `${safeLockName(goalId)}.lock`);
 	ensureGoalStorageDirectory(ctx, GOAL_LOCK_DIR, false);
-	// The token identifies this holder: after a stale recovery the file at
-	// lockPath may belong to someone else, and release() must not delete it.
+	// external: another process may reacquire a recovered lock path.
 	const token = randomUUID();
 	const payload = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString(), token });
 
@@ -108,19 +84,15 @@ export function acquireGoalLock(
 				release(): void {
 					if (released) return;
 					released = true;
-					// Only the holder named in the file may remove it. A lock recovered
-					// as stale and re-acquired by another writer is not ours any more.
 					if (readLockPayload(lockPath).token !== token) return;
 					try {
 						fs.unlinkSync(lockPath);
 					} catch {
-						// Lock already gone (stale recovery elsewhere); nothing to do.
 					}
 				},
 			};
 		} catch (err) {
 			if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-			// Bounded stale-lock recovery.
 			try {
 				const stat = fs.statSync(lockPath);
 				const observedText = readLockText(lockPath);
@@ -128,8 +100,7 @@ export function acquireGoalLock(
 				const pid = payloadInfo.pid;
 				const stale = Date.now() - stat.mtimeMs > ttlMs || (pid !== undefined && !pidAlive(pid));
 				if (stale) {
-					// Another writer may have recovered it and taken the lock since we
-					// looked: only remove the exact stale file we observed.
+					// external: another process may recover and reacquire the lock after it was inspected.
 					if (readLockText(lockPath) !== observedText) continue;
 					try {
 						fs.unlinkSync(lockPath);

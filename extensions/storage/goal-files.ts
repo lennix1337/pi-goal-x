@@ -28,7 +28,6 @@ interface GoalFileParseCacheEntry {
 
 const goalFileParseCache = new Map<string, GoalFileParseCacheEntry>();
 
-/** Directory listing cache (names only): keyed by (absolute path, dir mtime). */
 interface GoalDirListingCacheEntry {
 	mtimeMs: number;
 	names: string[];
@@ -36,15 +35,6 @@ interface GoalDirListingCacheEntry {
 
 const goalDirListingCache = new Map<string, GoalDirListingCacheEntry>();
 
-/**
- * Zero-op pool cache (NAF 2026-08-06): the fully-scanned active pool per
- * goals dir, served without any stat. Every extension write (atomic write /
- * unlink / archive) invalidates it, so extension-mediated changes are always
- * observed; external (non-extension) file edits go stale mid-session
- * (documented in the naf spec PRODUCT.md). The safety-critical persist path
- * re-reads the goal file directly (parseGoalFile, mtime-keyed) under the
- * lock, so cross-process revision conflicts are still detected.
- */
 const goalPoolCache = new Map<string, Map<string, GoalRecord>>();
 
 /**
@@ -64,23 +54,7 @@ function invalidateGoalDirCache(root: string): void {
 	goalPoolCache.delete(root);
 }
 
-// ── Persistent pool snapshot (NAF cold-start, 2026-08-06) ───────────────────
-// The zero-op pool cache is in-memory; a fresh process (new session) has no
-// cache, so a cold pool read re-scanned every goal file (2 fs ops per goal).
-// The snapshot persists the pool as ONE file, so a cold read is
-// lstat(root) + readFile(snapshot) = 2 ops total, and every extension write
-// keeps it current (read-modify-write, +4 ops per mutation — mutations are
-// write-floor-exempt in the bench).
-//
-// Freshness: the snapshot records the goals-dir mtime; if the dir mtime
-// changed (goal files added/removed — including external edits), the
-// snapshot is invalidated and a full scan re-syncs it. In-place content
-// edits to a goal file do NOT change the dir mtime, so a cold read may serve
-// the last extension-written snapshot until the next extension write or
-// mtime-changing change — the same staleness class as the in-memory pool
-// cache's documented mid-session behavior (external hand-edits go stale;
-// the safety-critical persist path still re-reads the goal file directly
-// via parseGoalFile, mtime-keyed, so cross-process conflicts are detected).
+// external: directory mtime does not detect in-place edits, so cached snapshots may be stale.
 interface PoolSnapshot {
 	version: 1;
 	dirMtimeMs: number;
@@ -137,7 +111,6 @@ function hydratePoolFromSnapshot(snapshot: PoolSnapshot): Map<string, GoalRecord
 	return pool;
 }
 
-/** Best-effort atomic snapshot write (temp + rename). */
 function writePoolSnapshotSync(ctx: GoalFileContext, root: string, goals: GoalRecord[]): void {
 	try {
 		const rootStat = fs.lstatSync(root);
@@ -149,7 +122,6 @@ function writePoolSnapshotSync(ctx: GoalFileContext, root: string, goals: GoalRe
 		fs.renameSync(tempPath, target);
 		removeLegacyPoolSnapshot(root);
 	} catch {
-		// best-effort: a missing/stale snapshot just costs a full scan next cold read
 	}
 }
 
@@ -528,10 +500,6 @@ export function readActiveGoalPool(ctx: GoalFileContext): Map<string, GoalRecord
 	return new Map(readActiveGoalPoolView(ctx));
 }
 
-/** Cold pool read: serve the persisted snapshot when the goals dir is unchanged (2 ops),
- * or when only non-goal entries changed (ledger churn: one extra readdir to verify the
- * active_goal filename set is identical — catches external add/remove). Otherwise full
- * scan + re-snapshot (external goal add/remove or no snapshot yet). */
 function readPoolWithSnapshotSync(ctx: GoalFileContext, root: string): Map<string, GoalRecord> {
 	let rootStat: fs.Stats | null = null;
 	try {
