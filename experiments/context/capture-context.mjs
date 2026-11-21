@@ -23,8 +23,6 @@ import { FIXTURES, userMessage, v2CheckpointMessage, assistantMessage } from "./
 import { serializeGoalFile } from "../../extensions/storage/goal-files.ts";
 import { GOAL_LEDGER_FILE } from "../../extensions/goal-ledger.ts";
 
-// One directory per process, removed on exit: with a fixed path, two runs at
-// the same time deleted each other's fixtures.
 export const CAPTURE_CWD = fs.mkdtempSync(path.join(os.tmpdir(), "goal-context-capture-"));
 process.on("exit", () => fs.rmSync(CAPTURE_CWD, { recursive: true, force: true }));
 // The capture depends only on the checked-out code, not on who runs it: a
@@ -111,7 +109,6 @@ function createCapture() {
  };
 }
 
-/** Materialize goal files, focus entry, and ledger events for a scenario. */
 function materializeState(scenario) {
 	fs.rmSync(CAPTURE_CWD, { recursive: true, force: true });
 	fs.mkdirSync(path.join(CAPTURE_CWD, ".pi", "goals", "archived"), { recursive: true });
@@ -145,7 +142,6 @@ function materializeState(scenario) {
 	return entries;
 }
 
-/** Deterministic default conversation for active-goal fixtures. */
 function baseConversation(goal) {
 	const messages = [userMessage("Begin working on the goal.")];
 	for (let i = 1; i <= 3; i += 1) {

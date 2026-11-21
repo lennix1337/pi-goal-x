@@ -27,7 +27,6 @@ import { createGoalCore } from "../../extensions/goal-state.ts";
 
 export { beginFsCount, endFsCount, setLatency, withLatency, sleepMs };
 
-// ── fixtures --------------------------------------------------------------
 
 export function makeFixtureCwd(prefix = "goal-bench-") {
 	const cwd = mkdtempSync(path.join(tmpdir(), prefix));
@@ -78,7 +77,6 @@ export function makeLedger(cwd, n) {
 	return events;
 }
 
-// ── measurement -----------------------------------------------------------
 
 export function percentile(sorted, p) {
 	if (sorted.length === 0) return NaN;
@@ -114,7 +112,6 @@ export function estimateTokens(text) {
 	return Math.ceil(text.length / 4);
 }
 
-// ── baseline rows ---------------------------------------------------------
 
 export class Baseline {
 	constructor() {
@@ -138,7 +135,6 @@ export class Baseline {
 	}
 }
 
-// ── agent-free integration harness (B7/B5) --------------------------------
 
 export function createHarness(options = {}) {
 	const handlers = new Map();

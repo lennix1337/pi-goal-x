@@ -44,7 +44,6 @@ const baseGoal = {
 	tokenBudget: undefined,
 };
 
-// A realistic progression of goal states while a goal runs.
 function states() {
 	const goal = structuredClone(baseGoal);
 	const events = [];
@@ -125,7 +124,6 @@ console.log("");
 console.log(`natural-height span across states: expanded ${Math.min(...rows.map((r) => r.expanded))}..${Math.max(...rows.map((r) => r.expanded))}, compact ${Math.min(...rows.map((r) => r.compact))}..${Math.max(...rows.map((r) => r.compact))}`);
 console.log(`rendered-height changes across states (expanded): ${changed} of ${rows.length} transitions change the buffer line count`);
 
-// Audit dashboard: height while the audit animation runs.
 const auditStates = [
 	{ label: "audit: just started", phase: "running", elapsedMs: 0, checks: 0, tool: false, output: 0 },
 	{ label: "audit: tool executing, output 1", phase: "tool_executing", elapsedMs: 8000, checks: 2, tool: true, output: 1 },

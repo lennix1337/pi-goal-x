@@ -19,7 +19,7 @@ import { compactGoalCheckpointContext } from "../../extensions/goal-events.ts";
 import { checkpointTriggerPrompt, goalPrompt, CHECKPOINT_TRIGGER_MAX_CHARS } from "../../extensions/prompts/goal-prompts.ts";
 import { makeGoalRecord } from "./bench-common.mjs";
 
-const LEGACY_CHECKPOINT_CHARS = 6400; // plan §17 fixture: ~6.4K chars per legacy full prompt
+const LEGACY_CHECKPOINT_CHARS = 6400;
 
 function legacyCheckpointLine(goalId, index) {
 	const entry = {
@@ -57,7 +57,6 @@ function taskTree(count) {
 }
 
 export function run(baseline) {
-	// ── persisted growth ─────────────────────────────────────────────────
 	const v2MarkerLen = checkpointTriggerPrompt("bench-goal").length;
 	if (v2MarkerLen > CHECKPOINT_TRIGGER_MAX_CHARS) {
 		throw new Error(`v2 marker ${v2MarkerLen} chars exceeds bound ${CHECKPOINT_TRIGGER_MAX_CHARS}`);
@@ -76,7 +75,6 @@ export function run(baseline) {
 		});
 	}
 
-	// Objective leakage check over the largest fixture.
 	const leaked = persistedCheckpointChars(1000);
 	if (leaked > 160_000) throw new Error(`B10 gate: persisted chars at 1000 turns = ${leaked} > 160000`);
 

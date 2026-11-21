@@ -28,7 +28,6 @@ const timeline = fs
 const emu = new Terminal({ cols, rows, scrollback: 5000, allowProposedApi: true });
 const b = emu.buffer.active;
 
-// replay with drains
 const drain = () => new Promise((res) => { emu.onWriteParsed(() => setTimeout(res, 2)); emu.write(""); });
 async function feed(data) {
 	emu.write(data);
@@ -36,7 +35,6 @@ async function feed(data) {
 }
 await feed(raw);
 
-// sample the buffer over time by replaying in slices aligned to the timeline
 const samples = [];
 let offset = 0;
 for (const item of timeline) {
@@ -64,7 +62,6 @@ console.log(`buffer length timeline: ${samples.map((s) => `${s.t}s:${s.len}`).jo
 console.log(`distinct buffer lengths: ${unique.join(",")}`);
 console.log(`buffer length CHANGES across samples: ${churnCount}`);
 console.log(`final buffer len=${b.length} baseY=${b.baseY} viewportY=${b.viewportY}`);
-// tail of the screen to confirm what's showing
 const lines = [];
 for (let y = Math.max(0, b.length - Math.min(rows, 24)); y < b.length; y++) {
 	lines.push(`${y}: ${b.getLine(y)?.translateToString(true) ?? ""}`);

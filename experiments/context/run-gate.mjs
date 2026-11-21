@@ -49,7 +49,6 @@ for (const fixtureId of expectedFixtureIds) {
 	const semantic = semanticCounts({ ...captured, goal: scenario.goal });
 	checked += 1;
 
-	// 1. deterministic equality
 	const baseRow = baselineById.get(fixtureId);
 	if (!baseRow) continue;
 	if (JSON.stringify(baseRow.breakdown) !== JSON.stringify(breakdown)) {
@@ -59,10 +58,8 @@ for (const fixtureId of expectedFixtureIds) {
 		failures.push(`${fixtureId}: semantic counts drifted from committed baseline`);
 	}
 
-	// 2. tool schemas included
 	if (!(breakdown.toolSchemaChars > 0)) failures.push(`${fixtureId}: no tool schema bytes measured`);
 
-	// 3. semantic fields classified
 	for (const key of ["objective", "verificationContract", "currentTask", "lifecyclePolicyThirdBlocker", "independentAuditor", "neverEditObjective"]) {
 		if (!(key in semantic)) failures.push(`${fixtureId}: semantic field ${key} not classified`);
 	}
@@ -73,7 +70,6 @@ for (const fixtureId of expectedFixtureIds) {
  if (["completion-audit", "audit-rejection-and-rework", "oracle-consultation"].includes(fixtureId) && !(breakdown.childRequestChars > 0)) failures.push(`${fixtureId}: child request not captured`);
  if (fixtureId === "post-compaction-turn" && !serializedRequestText(captured).includes("POST-COMPACTION RESYNC")) failures.push(`${fixtureId}: compaction hook was not exercised`);
 
-	// 4. Retain bounded markers in place: deleting old ones breaks prefix caching.
 	for (const message of captured.messages ?? []) {
 		if (message.customType === "pi-goal-event" && (typeof message.content !== "string" || message.content.length > 160 || !message.content.endsWith('v="2"/>'))) {
 			failures.push(`${fixtureId}: checkpoint is not a bounded v2 trigger`);

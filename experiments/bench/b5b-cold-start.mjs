@@ -45,7 +45,6 @@ const HOOKS_IMPORT = path.join(benchDir, "bench-adapter-hooks.mjs");
 
 const GOAL_COUNT = 50;
 
-/** One cold sample: spawn a fresh process, run the flow once, return {ops, wall}. */
 function coldSample(cwd, flow, lat25) {
 	return new Promise((resolve, reject) => {
 		const args = [
@@ -97,15 +96,11 @@ export async function run(baseline) {
 		writeFileSync(path.join(cwd, ".pi", "pi-goal-x-settings.json"), JSON.stringify({ subtaskDepth: 2, provider: "anthropic", model: "m", thinking_level: "medium" }));
 		makeLedger(cwd, 1000);
 
-		// Checkpoint fixture: same 50 goals + 1k-event ledger, plus a full
-		// checkpoint written by this process (children are fresh, so they see a
-		// genuinely cold checkpoint hit / tail replay).
 		makeGoalFiles(cwdCp, GOAL_COUNT);
 		mkdirSync(path.join(cwdCp, ".pi"), { recursive: true });
 		writeFileSync(path.join(cwdCp, ".pi", "pi-goal-x-settings.json"), JSON.stringify({ subtaskDepth: 2, provider: "anthropic", model: "m", thinking_level: "medium" }));
 		makeLedger(cwdCp, 1000);
-		loadLedgerState({ cwd: cwdCp }); // full fallback in the parent writes the checkpoint
-		// Tail fixture: checkpoint covers the ledger, then 50 external events grow it.
+		loadLedgerState({ cwd: cwdCp });
 		const tailLedger = path.join(cwdCp, ".pi", "goals", "goal_events.jsonl");
 		for (let i = 0; i < 50; i++) {
 			appendFileSync(tailLedger, JSON.stringify({ type: "task_complete", goalId: `g${i % 10}`, taskId: `t-tail-${i}`, evidence: "checkpoint tail", at: new Date(Date.UTC(2026, 9, 1) + i * 1000).toISOString() }) + "\n", "utf8");

@@ -49,9 +49,6 @@ function makeTerminal() {
 	};
 }
 
-// ANSI stream emulation: track cursor screen row + viewport scrolls (a \n feed
-// while the cursor is on the bottom row scrolls the terminal), count
-// 1049 / 2J / 3J, and count text writes. Returns final cursor screen row too.
 function analyze(stream, rows, startRow) {
 	let cursorRow = startRow;
 	let scrolled = 0;
@@ -114,9 +111,6 @@ const LONG_CONTEXT = [
 ].join("\n");
 const SHORT_CONTEXT = "● Goal draft/tweak ready for confirmation.\n\n=== Goal ===\nObjective: Short and simple.\nSuccess criteria: It works.";
 
-// ctx.ui mirroring pi's showExtensionCustom (editor swap / showOverlay) plus
-// setWorkingVisible mirroring interactive-mode's clearStatusIndicator: hides or
-// restores the statusContainer spinner.
 function makeCtx(tui, editorContainer, editor, statusContainer, spinner) {
 	const state = { component: null, handle: null };
 	const ctx = {
@@ -150,8 +144,6 @@ function makeCtx(tui, editorContainer, editor, statusContainer, spinner) {
 	return { ctx, state };
 }
 
-// pi's working spinner: changes its frame char every tick (~80ms) and
-// requestRender()s — the periodic output that snaps a scrolled-up user.
 function makeSpinner(tui) {
 	const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 	let idx = 0;
@@ -169,7 +161,6 @@ function makeSpinner(tui) {
 async function runScenario(chatLines, context, label, expectsFits) {
 	const { terminal, writes } = makeTerminal();
 	const tui = new TuiMainScreen(terminal, false, "/tmp/tui-before-after-churn");
-	// REAL pi layout: header, chat, status(spinner), editorContainer, footer.
 	const header = new Container();
 	header.render = () => ["pi • model • cwd"];
 	const chat = new Container();
@@ -196,7 +187,6 @@ async function runScenario(chatLines, context, label, expectsFits) {
 		recommended: 0, allowCustom: false,
 	}], undefined);
 
-	// open
 	const openStartRow = tui.hardwareCursorRow - tui.previousViewportTop;
 	tui.doRender();
 	const openStream = writes.join("");
@@ -204,8 +194,6 @@ async function runScenario(chatLines, context, label, expectsFits) {
 	const open = analyze(openStream, ROWS, openStartRow);
 	const openLines = (tui.previousLines ?? []).map(stripAnsi);
 
-	// spinner phase: the user scrolls up to read the proposal; pi's spinner
-	// ticks while the dialog is open. Any output per tick = snap to bottom.
 	let tickBytesTotal = 0;
 	let anyTickText = false;
 	for (let t = 0; t < SPINNER_TICKS; t++) {
@@ -218,7 +206,6 @@ async function runScenario(chatLines, context, label, expectsFits) {
 		if (res.textWrites > 0) anyTickText = true;
 	}
 
-	// nav: move selection down once
 	const component = state.component;
 	if (component?.handleInput) component.handleInput("\x1b[B");
 	const navStartRow = tui.hardwareCursorRow - tui.previousViewportTop;
@@ -227,7 +214,6 @@ async function runScenario(chatLines, context, label, expectsFits) {
 	writes.length = 0;
 	const nav = analyze(navStream, ROWS, navStartRow);
 
-	// close: escape (cancel)
 	if (component?.handleInput) component.handleInput("\x1b");
 	await resultPromise;
 	const closeStartRow = tui.hardwareCursorRow - tui.previousViewportTop;
@@ -237,8 +223,6 @@ async function runScenario(chatLines, context, label, expectsFits) {
 
 	const detailCount = (context.match(/Detail line \d+/g) ?? []).length;
 	const taskCount = (context.match(/\[ \] task-\d+/g) ?? []).length;
-	// Dialog content is written into the main buffer during OPEN (readable via
-	// scrollback while the dialog is up); check the open frame.
 	const fullDialogInBuffer = detailCount === 0 ? openLines.some((l) => /Objective:/.test(l)) : openLines.some((l) => l.includes(`Detail line ${detailCount - 1}`));
 	const fullTasksInBuffer = taskCount === 0 ? true : openLines.some((l) => l.includes(`task-${taskCount - 1}`));
 	const chatVisible = openLines.slice(0, chatLines).some((l) => l.startsWith("chat line"));

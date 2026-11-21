@@ -20,9 +20,6 @@ import { VStack } from "../../node_modules/@earendil-works/pi-tui/dist/component
 import { Container } from "../../node_modules/@earendil-works/pi-tui/dist/tui.js";
 import { TuiMainScreen } from "../../node_modules/@earendil-works/pi-tui/dist/index.js";
 import { GoalWidgetComponent } from "../../extensions/widgets/goal-widget.ts";
-// The rig's dock chrome (status 1 + editor 2 + footer 1) + 1 slack: the widget
-// sizes itself against the MEASURED chrome (spec 2026-08-11), so the expected
-// cap is terminalRows - (measuredChrome + 1).
 const DOCK_RESERVE = 4 + 1;
 
 const COLS = 120;
@@ -130,7 +127,6 @@ function goalStateSequence(expanded) {
 	return steps;
 }
 
-// ── Scenario A: EXPANDED widget — resize 40 -> 24 (below natural height) ────
 
 function runExpandedResize() {
 	console.log(`\n── EXPANDED: terminal 40 -> 24 rows (below the widget's natural height), then goal updates ──`);
@@ -149,7 +145,6 @@ function runExpandedResize() {
 	});
 	makeFrame(tui, { chatLines: 10, widgetComponent: component });
 
-	// Initial render at 40 rows (widget fits).
 	tui.doRender();
 	writes.length = 0;
 	let frame = frameLines(tui);
@@ -157,7 +152,6 @@ function runExpandedResize() {
 	const naturalAt40 = widgetSpan(frame, start);
 	console.log(`  at 40 rows: widget rendered ${naturalAt40} lines (cap ${Math.max(1, 40 - DOCK_RESERVE)}), frame ${frame.length} lines`);
 
-	// RESIZE to 24 rows.
 	terminal.rows = 24;
 	tui.doRender();
 	const resizeStream = writes.join("");
@@ -169,7 +163,6 @@ function runExpandedResize() {
 	console.log(`  after resize: widget rendered ${widgetH} lines (cap ${cap24}), frame ${frame.length} lines, viewportTop=${tui.previousViewportTop}`);
 	check(widgetH <= cap24, `widget capped at ${cap24} after the resize`, `rendered ${widgetH}`);
 
-	// Drive goal-state updates + spinner-style re-renders.
 	const seq = goalStateSequence(true);
 	let wipes = 0, churn = 0, prevLen = frame.length, prevWidgetH = widgetH;
 	const updateReports = [];
@@ -201,7 +194,6 @@ function runExpandedResize() {
 	console.log(`  per-update: ${updateReports.map((u) => `${u.label.split(" (")[0]}:h${u.widgetH}/f${u.frameLen}/b${u.bytes}/w${u.wipes}`).join("\n              ")}`);
 	if (fullDump) {
 		console.log("── full write stream after resize (first update) ──");
-		// Re-run first update to capture its stream for inspection.
 		const step = seq[0];
 		step.mutate(currentRef.current);
 		eventsRef.current = step.events;
@@ -213,11 +205,10 @@ function runExpandedResize() {
 	}
 }
 
-// ── Scenario B: UNEXPANDED widget — resize below its natural height ─────────
 
 function runCompactResize() {
 	console.log(`\n── UNEXPANDED: terminal 30 -> 14 rows (below the widget's natural height), then goal updates ──`);
-	const cap14 = Math.max(1, 14 - DOCK_RESERVE); // 8
+	const cap14 = Math.max(1, 14 - DOCK_RESERVE);
 	const { terminal, writes, tui } = makeTerminal(30);
 	const currentRef = { current: { ...structuredClone(baseGoal), taskList: { tasks: Array.from({ length: 6 }, (_, i) => task(`t${i}`, i < 3 ? "complete" : "pending")) } } };
 	const eventsRef = { current: [] };
@@ -271,7 +262,6 @@ function runCompactResize() {
 	check(churn === 0, `frame length CONSTANT across updates after resize`, `churn=${churn}`);
 }
 
-// ── Scenario C: periodic spinner-style re-renders after the resize ──────────
 
 function runSpinnerAfterResize() {
 	console.log(`\n── EXPANDED: spinner-style periodic re-renders (status line + usage tick) after resize to 24 ──`);
@@ -296,8 +286,6 @@ function runSpinnerAfterResize() {
 	writes.length = 0;
 	const start = 1 + 10 + 1;
 
-	// Every tick: the status line changes (spinner frame) AND the widget's
-	// usage content changes (live display seconds) — a full tree re-render.
 	let wipes = 0, churn = 0, prevLen = (frameLines(tui)).length;
 	const spins = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 	let usage = 65;

@@ -26,7 +26,6 @@ export class EvaluationBudget {
     const u=message?.usage;
     const cost=u?.cost?.total;
     Object.assign(entry,{input:u?.input??0,output:u?.output??0,cacheRead:u?.cacheRead??0,cacheWrite:u?.cacheWrite??0,error:message?.errorMessage,stopReason:message?.stopReason});
-    // Missing usage on a failed/aborted request is not proof of zero billing.
     entry.cost=Number.isFinite(cost)&&cost>=0&&(u.input+u.output+u.cacheRead+u.cacheWrite>0)?cost:reserve;
     if(entry.cost===reserve)entry.uncertain=true;
     this.reserved-=reserve;this.spent+=entry.cost;

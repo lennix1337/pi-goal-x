@@ -1,4 +1,3 @@
-/** Opt-in model smoke comparison. Isolated artifacts; shared executor/child budget. */
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {pathToFileURL} from 'node:url';
 import {createAgentSession,DefaultResourceLoader,ModelRuntime,SessionManager,SettingsManager} from '@earendil-works/pi-coding-agent';
 import {EvaluationBudget} from './budget.mjs';

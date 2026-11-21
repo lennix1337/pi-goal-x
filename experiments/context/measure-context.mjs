@@ -40,10 +40,8 @@ export function measureContext(captured) {
 				: "";
 		if (message.role === "custom" && message.customType === "pi-goal-event") {
 			checkpointChars += text.length;
-			// Historical = any pi-goal-event beyond the LAST one in the list.
 		}
 	}
-	// Historical checkpoints: every event message except the last one.
 	const eventIndexes = [];
 	(captured.messages ?? []).forEach((m, i) => {
 		if (m.role === "custom" && m.customType === "pi-goal-event") eventIndexes.push(i);

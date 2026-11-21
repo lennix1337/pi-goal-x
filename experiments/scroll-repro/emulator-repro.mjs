@@ -29,9 +29,6 @@ import { VStack } from "../../node_modules/@earendil-works/pi-tui/dist/component
 import { Container } from "../../node_modules/@earendil-works/pi-tui/dist/tui.js";
 import { TuiMainScreen } from "../../node_modules/@earendil-works/pi-tui/dist/index.js";
 import { GoalWidgetComponent } from "../../extensions/widgets/goal-widget.ts";
-// The rig's dock chrome (status 1 + editor 2 + footer 1) + 1 slack: the widget
-// sizes itself against the MEASURED chrome (spec 2026-08-11), so the expected
-// cap is terminalRows - (measuredChrome + 1).
 const DOCK_RESERVE = 4 + 1;
 
 const COLS = 120;
@@ -114,7 +111,6 @@ function check(cond, label, detail) {
 	else console.log(`  ✓ ${label}`);
 }
 
-// ── the emulator rig ────────────────────────────────────────────────────────
 
 function makeRig(rows, chatLines, expanded, tasks) {
 	const emu = new Terminal({ cols: COLS, rows, scrollback: 2000, allowProposedApi: true });
@@ -176,7 +172,7 @@ async function runScenario(name, rig, { steps, cap, widgetStart, expectStable })
 		widgetH = widgetSpan(frame, widgetStart);
 		bufLen = b.length; baseY = b.baseY;
 		if (baseY !== rows[rows.length - 1].baseY) churnCount++;
-		if (baseY !== rows[rows.length - 1].baseY) yankCount++; // new lines appended -> follow-to-bottom trigger
+		if (baseY !== rows[rows.length - 1].baseY) yankCount++;
 		rows.push({ step: step.label, widgetH, frameLen: frame.length, bufLen, baseY });
 	}
 	console.log(`  per-update: ${rows.map((r) => `${r.step.split(" ")[0]}:w${r.widgetH}/f${r.frameLen}/b${r.bufLen}/y${r.baseY}`).join("\n              ")}`);
@@ -191,7 +187,6 @@ async function runScenario(name, rig, { steps, cap, widgetStart, expectStable })
 	return { churnCount, wipeCount, rows };
 }
 
-// ── A: NEW FINDING — terminal BIGGER than the widget (fits) ────────────────
 
 async function scenarioAFits() {
 	console.log(`\n── A: TERMINAL BIGGER THAN THE WIDGET (expanded, 40-row terminal, cap 34, natural < cap) ──`);
@@ -204,7 +199,6 @@ async function scenarioAFits() {
 	await runScenario("A: fits case", rig, { steps, cap, widgetStart, expectStable: true });
 }
 
-// ── B: resize below the widget height (expanded) ────────────────────────────
 
 async function scenarioBResizeExpanded() {
 	console.log(`\n── B: RESIZE BELOW THE WIDGET (expanded: 40 → 24 rows, cap 18) ──`);
@@ -223,7 +217,6 @@ async function scenarioBResizeExpanded() {
 	await runScenario("B: post-resize", rig, { steps: goalStateSequence(), cap, widgetStart, expectStable: true });
 }
 
-// ── C: resize below the widget height (unexpanded) ──────────────────────────
 
 async function scenarioCResizeCompact() {
 	console.log(`\n── C: RESIZE BELOW THE WIDGET (unexpanded: 30 → 14 rows, cap 8) ──`);
@@ -242,7 +235,6 @@ async function scenarioCResizeCompact() {
 	await runScenario("C: post-resize", rig, { steps: goalStateSequence().slice(0, 5), cap, widgetStart, expectStable: true });
 }
 
-// ── D: scroll-up hold — the user's exact experience ─────────────────────────
 
 async function scenarioDScrollHold() {
 	console.log(`\n── D: USER SCROLLED UP — do goal updates yank the viewport? (expanded, 40-row terminal) ──`);
@@ -254,7 +246,6 @@ async function scenarioDScrollHold() {
 	await rig.flush();
 	const b = emu.buffer.active;
 	console.log(`  initial: buffer=${b.length} baseY=${b.baseY} viewportY=${b.viewportY} (scrollback ${b.baseY} lines)`);
-	// The user scrolls up into the chat (10 lines up).
 	emu.scrollLines(-10);
 	console.log(`  user scrolls up 10: viewportY=${b.viewportY} (${b.baseY - b.viewportY} lines up)`);
 	const startBaseY = b.baseY;
@@ -281,7 +272,6 @@ async function scenarioDScrollHold() {
 	check(!yanked, `scrolled-up viewport holds across goal updates (no 2J/3J, no buffer growth)`, yanked ? "yank detected" : "clean");
 }
 
-// ── run ─────────────────────────────────────────────────────────────────────
 
 await scenarioAFits();
 await scenarioBResizeExpanded();

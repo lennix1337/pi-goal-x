@@ -30,8 +30,6 @@ import { classifyRows } from "./classify.mjs";
 const benchDir = fileURLToPath(new URL(".", import.meta.url));
 const campaign = process.argv[2] ?? "extension-review-plan";
 const cfg = campaignConfig(campaign);
-// CI measures the current base on the same machine; historical 10x campaign
-// targets still apply when no reference is supplied.
 const reference = process.env.PI_GOAL_BENCH_REFERENCE;
 const before = JSON.parse(readFileSync(reference ?? path.join(benchDir, `${cfg.jsonPrefix}before.json`), "utf8"));
 const afterPath = path.join(benchDir, `${cfg.jsonPrefix}after.json`);
@@ -50,21 +48,19 @@ const afterMap = byId(after.rows);
 const failures = [];
 const regressions = [];
 
-// 1. No-regression rule: every numeric p50 row (headroom AND exempt).
 for (const [id, bRow] of beforeMap) {
 	const aRow = afterMap.get(id);
 	if (!aRow) {
 		failures.push(`${id}: missing in after run`);
 		continue;
 	}
-	if (typeof bRow.p50 !== "number" || typeof aRow.p50 !== "number") continue; // non-timing rows (B4 tokens) handled by their metric below
+	if (typeof bRow.p50 !== "number" || typeof aRow.p50 !== "number") continue;
 	const limit = Math.max(bRow.p50 * 1.5, bRow.p50 + 10);
 	if (aRow.p50 > limit) {
 		regressions.push({ id, before: bRow.p50, after: aRow.p50, limit: Math.round(limit * 10) / 10 });
 	}
 }
 
-// 2. Claim-specific invariants (extension-review-plan campaign, unchanged).
 if (campaign === "extension-review-plan") {
 	const p = (id) => afterMap.get(id)?.p50;
 	if (typeof p("B3.parse.1000") === "number" && typeof p("B3.parse.10000") === "number") {

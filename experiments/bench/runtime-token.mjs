@@ -1,4 +1,3 @@
-/** Isolated runtime/token campaign; real hooks, no model calls. */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -60,7 +59,6 @@ for(const count of (process.env.GOAL_BENCH_HISTORY_ONLY ? [] : [10,100])) {
   writeActiveGoalFile({cwd:f.cwd},{...f.goal,taskList:{tasks:Array.from({length:count},(_,i)=>({id:`t${i}`,title:`Task ${i}`,status:'pending'})),blockCompletion:true,proposedAt:'2026-09-07'}});
   const h=createHarness({cwd:f.cwd,sessionEntries:f.sessionEntries});await startHarness(h);
   const tool=h.tools.get('update_goal_task');
-  // Equivalent ordered focus transitions: legacy calls versus the optional batch form.
   const updates=Array.from({length:count},(_,i)=>({task_id:`t${i}`,status:'start'}));
   await measure(`task_batch.${count}`,async()=>{
    await h.handlers.get('turn_start')({},h.ctx);

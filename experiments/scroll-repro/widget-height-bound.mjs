@@ -30,13 +30,10 @@ import { VStack } from "../../node_modules/@earendil-works/pi-tui/dist/component
 import { Container } from "../../node_modules/@earendil-works/pi-tui/dist/tui.js";
 import { TuiMainScreen } from "../../node_modules/@earendil-works/pi-tui/dist/index.js";
 import { GoalWidgetComponent } from "../../extensions/widgets/goal-widget.ts";
-// The rig's dock chrome (status 1 + editor 2 + footer 1) + 1 slack: the widget
-// sizes itself against the MEASURED chrome (spec 2026-08-11), so the expected
-// cap is terminalRows - (measuredChrome + 1).
 const DOCK_RESERVE = 4 + 1;
 
 const COLS = 120;
-const ROWS = 24; // == expanded dashboard natural height (the primary repro)
+const ROWS = 24;
 
 const expectMode = process.argv.includes("--expect");
 const theme = { fg: (_c, s) => s, bg: (_c, s) => s, bold: (s) => s, dim: (s) => s };
@@ -90,7 +87,6 @@ const baseGoal = {
 	tokenBudget: undefined,
 };
 
-/** A realistic goal-state progression while a goal runs (spec 2026-08-11). */
 function goalStateSequence() {
 	return [
 		{ label: "3 pending tasks", mutate(g) { g.taskList.tasks = [task("t1", "pending"), task("t2", "pending"), task("t3", "pending")]; }, events: [] },
@@ -104,11 +100,6 @@ function goalStateSequence() {
 	];
 }
 
-/**
- * Real pi frame: ScrollView transcript (documentContainer = header + chat)
- * above a VStack dock [pending, status, widgetContainerAbove, editor,
- * footer] — the exact interactive-mode regular-mode geometry.
- */
 function makeFrame(tui, { chatLines, widgetComponent }) {
 	const documentContainer = new Container();
 	const header = new Container();
@@ -179,15 +170,11 @@ function frameLines(tui) {
 	return (tui.previousLines ?? []).map(stripAnsi);
 }
 
-/** Widget rendered height = rows reserved in the frame between the status
- * line and the editor ("❯ "). Sticky-cap blank padding counts as widget rows
- * (the widget component rendered them). */
 function widgetSpan(frame, widgetStart) {
 	const editorIdx = frame.findIndex((line, i) => i >= widgetStart && line.startsWith("❯"));
 	return editorIdx >= 0 ? editorIdx - widgetStart : Math.max(0, frame.length - widgetStart);
 }
 
-// ── Scenario: sticky-cap steady-state stability (spec 2026-08-11) ───────────
 
 function runStickySteadyState() {
 	console.log(`\n── sticky cap: steady-state stability across goal-state changes (24-row terminal, expanded) ──`);
@@ -214,7 +201,7 @@ function runStickySteadyState() {
 		tui.doRender();
 		writes.length = 0;
 		const frame = frameLines(tui);
-		const widgetStart = 1 + 10 + 1; // header + chat + status
+		const widgetStart = 1 + 10 + 1;
 		const h = widgetSpan(frame, widgetStart);
 		heights.push(h);
 		frameLens.push(frame.length);
@@ -222,9 +209,6 @@ function runStickySteadyState() {
 			console.log(`  ✗ FAIL: widget rendered ${h} lines > cap ${cap} at "${step.label}"`);
 			failures++;
 		}
-		// The latch engages at the FIRST render of the regime: the widget
-		// rendered height and the buffer line count are constant across every
-		// goal-state change (fits or capped).
 		if (prevHeight !== undefined && h !== prevHeight) stable = false;
 		if (prevFrameLen !== undefined && frame.length !== prevFrameLen) stable = false;
 		prevHeight = h;
@@ -240,7 +224,6 @@ function runStickySteadyState() {
 	console.log(`  heights per state: ${heights.join(" → ")}`);
 }
 
-// ── Scenario: fits case — first render byte-identical, then latched ────────
 
 function runFitsByteIdentical() {
 	console.log(`\n── fits case: widget never exceeds the cap; first render byte-identical, then the height latches (30-row terminal, expanded, 3 tasks) ──`);
@@ -263,7 +246,6 @@ function runFitsByteIdentical() {
 	const widgetStart = 1 + 4 + 1;
 	const widgetLines = frame.slice(widgetStart, widgetStart + natural.length);
 	check(widgetLines.join("\n") === natural.join("\n"), "rendered widget == natural (byte-identical)");
-	// state update stays differential, height unchanged
 	currentRef.current.usage = { activeSeconds: 2000, tokensUsed: 2500 };
 	component.invalidate();
 	tui.doRender();
@@ -288,7 +270,6 @@ function runFitsByteIdentical() {
 	check(h3 === natural.length, `fits-case growth keeps the latched height (${h3} == ${natural.length})`);
 }
 
-// ── Scenario: resize adaptation ─────────────────────────────────────────────
 
 function runResizeAdaptation() {
 	console.log(`\n── sticky cap: terminal resize adapts (grow shows more widget, shrink re-latches) ──`);
@@ -332,7 +313,6 @@ function runResizeAdaptation() {
 	check(hFinal === cap24, `height stable after resize + update (${hFinal})`);
 }
 
-// ── Scenario: regime reset ──────────────────────────────────────────────────
 
 function runRegimeReset() {
 	console.log(`\n── sticky cap: regime change (compact↔expanded) re-evaluates from natural ──`);
@@ -368,7 +348,6 @@ function runRegimeReset() {
 	check(hAgain === cap, `expanded re-latched at cap ${cap} (rendered ${hAgain})`);
 }
 
-// ── Scenario: audit dashboard at a small terminal ───────────────────────────
 
 function runAuditSticky() {
 	const cap = Math.max(1, 13 - DOCK_RESERVE);
@@ -410,7 +389,6 @@ function runAuditSticky() {
 	check(heights.every((h) => h <= cap), `audit rendered heights <= cap ${cap}`);
 }
 
-// ── Existing scenarios (2026-08-10 invariants) ──────────────────────────────
 
 function runScenario({ label, chatLines, expanded, preFix, rows, demo }) {
 	console.log(`\n── ${label}${demo ? " (demonstration only)" : ""} ──`);
@@ -418,8 +396,6 @@ function runScenario({ label, chatLines, expanded, preFix, rows, demo }) {
 	const currentRef = { current: { ...structuredClone(baseGoal), taskList: { tasks: Array.from({ length: 12 }, (_, i) => task(`t${i}`, i < 5 ? "complete" : "pending")) } } };
 	const eventsRef = { current: [] };
 	const expandedRef = { current: expanded };
-	// preFix: hide `terminal` from the widget so it renders unbounded (the
-	// pre-bound behavior); everything else delegates to the real TUI.
 	const widgetTui = preFix
 		? new Proxy(tui, {
 			get: (t, p) => {
@@ -435,8 +411,8 @@ function runScenario({ label, chatLines, expanded, preFix, rows, demo }) {
 	writes.length = 0;
 
 	const frame = frameLines(tui);
-	const widgetStart = 1 + chatLines + 1; // header + chat + status
-	const widgetNatural = component.render(COLS).length; // widget's own render (unbounded comparison)
+	const widgetStart = 1 + chatLines + 1;
+	const widgetNatural = component.render(COLS).length;
 	const frameLen = frame.length;
 	const viewportTop = Math.max(0, frameLen - rows);
 	const cap = Math.max(1, rows - DOCK_RESERVE);
@@ -467,7 +443,6 @@ function runScenario({ label, chatLines, expanded, preFix, rows, demo }) {
 	return { frameLen, viewportTop, renderedWidget, cap, natural: widgetNatural };
 }
 
-// Scenarios
 runStickySteadyState();
 runFitsByteIdentical();
 runResizeAdaptation();

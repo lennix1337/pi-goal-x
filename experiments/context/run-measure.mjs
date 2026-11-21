@@ -1,10 +1,3 @@
-/**
- * context:measure — capture and measure every fixture's composed request and
- * write experiments/context/baseline-main.json (PR D).
- *
- * Deterministic: fixed fixture ids/timestamps; the breakdown is byte-stable
- * across runs on the same code state. No network, no live model.
- */
 
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

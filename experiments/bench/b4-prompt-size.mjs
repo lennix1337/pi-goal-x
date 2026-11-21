@@ -1,10 +1,3 @@
-/**
- * B4 — Prompt/context size and prefill estimate.
- * Goal block token counts (chars/4 estimate) for 10- and 50-task trees on
- * taskListBlock, continuationPrompt, and goalPrompt. The prefill estimate is
- * tokens / 1000 tok/s — a documented heuristic, NOT a live measurement (B8:
- * no live agents in benchmarks).
- */
 
 import { makeGoalRecord } from "./bench-common.mjs";
 import { Baseline, estimateTokens } from "./bench-common.mjs";

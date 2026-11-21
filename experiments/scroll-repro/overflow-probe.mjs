@@ -114,7 +114,6 @@ async function probe(rows, chatLines, editorLines) {
 	const frame1 = (tui.previousLines ?? []).map(stripAnsi);
 	const frameLen1 = frame1.length;
 	const w0 = countWipes(stream1);
-	// the "elapsed tick": active goal usage change, widget content changes
 	currentRef.current = structuredClone(baseGoal);
 	currentRef.current.usage = { tokensUsed: 48213, activeSeconds: 1428 };
 	tui.doRender();
@@ -123,18 +122,15 @@ async function probe(rows, chatLines, editorLines) {
 	const frameLen2 = (tui.previousLines ?? []).length;
 	const b = emu.buffer.active;
 	const bufBefore = { len: b.length, baseY: b.baseY };
-	// one more tick
 	currentRef.current = structuredClone(baseGoal);
 	currentRef.current.usage = { tokensUsed: 48213, activeSeconds: 1429 };
 	tui.doRender();
 	const stream3 = await rig.flush();
 	const w2 = countWipes(stream3);
-	// agent write: append a chat line (grow the document)
 	rig.chatLinesRef.current.push(`chat line ${rig.chatLinesRef.current.length} new agent output ${"y".repeat(20)}`);
 	tui.doRender();
 	const stream4 = await rig.flush();
 	const w3 = countWipes(stream4);
-	// status tick (spinner)
 	rig.statusLine.current = "⠹ Working... ↑0 ↓0";
 	tui.doRender();
 	const stream5 = await rig.flush();
@@ -142,7 +138,6 @@ async function probe(rows, chatLines, editorLines) {
 	const bufAfter = { len: b.length, baseY: b.baseY };
 	const editorIdx = frame1.findIndex((l) => l.startsWith("❯"));
 	const widgetEnd = editorIdx >= 0 ? editorIdx : frame1.length;
-	// widget span: from the box top to the editor
 	const boxTop = frame1.findIndex((l) => l.includes("pi-goal-x"));
 	const widgetH = boxTop >= 0 ? widgetEnd - boxTop : -1;
 	const overflow = widgetH > 0 && rows < widgetH + (frame1.length - widgetEnd);

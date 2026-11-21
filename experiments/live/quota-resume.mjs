@@ -52,7 +52,6 @@ const sdk = await import(pathToFileURL(join(sdkRoot, 'pi-coding-agent/dist/index
 const ai = await import(pathToFileURL(join(sdkRoot, 'pi-ai/dist/index.js')).href);
 const runtime = await sdk.ModelRuntime.create({ authPath: join(agent, 'auth.json'), modelsPath: null, modelsStorePath: join(agent, 'models.json'), refreshOnCreate: false });
 
-// quota: 'open' before the goal exists, 'exhausted' until the test restores it, then 'restored'.
 let quota = 'open';
 let step = 0;
 const requests = [];
@@ -77,7 +76,7 @@ for (const provider of providers) runtime.registerProvider(provider, {
     let content;
     if (quota === 'open') {
       content = [call('create_goal', { objective: 'Disposable quota recovery validation', max_autonomous_runs: 5 })];
-      quota = 'exhausted'; // the goal exists from here on; every account is out of quota
+      quota = 'exhausted';
     } else if (last.role === 'toolResult') {
       content = [{ type: 'text', text: 'stopped after recovery' }];
     } else {
@@ -141,7 +140,6 @@ try {
     assert.deepEqual(loader.getExtensions().errors, []);
     await waitFor(() => requests.length > before, 'the goal to retry once after reload');
     await waitFor(() => requests.slice(before).filter(r => r.quota === 'exhausted').length >= providers.length, 'every account to refuse again after reload');
-    // Retries come from cooldown deadlines (COOLDOWN_MS), so measure well inside one.
     await sleep(300);
     const settled = requests.length;
     await sleep(500);
@@ -152,7 +150,7 @@ try {
   quota = 'restored';
   const restoredAt = Date.now();
   await waitFor(() => results.some(row => row.tool === 'update_goal' && row.goal?.status === 'paused'), 'the goal to resume by itself after quota recovery', COOLDOWN_MS * 6);
-  await sleep(COOLDOWN_MS + 500); // a duplicate wake would show up here
+  await sleep(COOLDOWN_MS + 500);
   const afterRecovery = requests.filter(r => r.quota === 'restored');
   const resumedRuns = userMessages.filter(m => m.quota === 'restored').length;
   assert.equal(resumedRuns, 1, `exactly one automatic resume message after recovery (got ${resumedRuns})`);

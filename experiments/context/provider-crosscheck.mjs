@@ -16,7 +16,6 @@ import {runGoalCompletionAuditor} from '../../extensions/goal-auditor.ts';
 import {runBlockerOracle} from '../../extensions/goal-oracle.ts';
 
 const work=fs.mkdtempSync(path.join(os.tmpdir(),'goal-wire-check-'));
-// Exercise Responses caller compatibility resolution, not merely its converter.
 const registered=[];
 goalExtension({registerTool:tool=>registered.push(tool),registerCommand(){},on(){},getActiveTools:()=>[],setActiveTools(){},appendEntry(){},registerMessageRenderer(){}});
 const responseTools=registered.filter(tool=>['create_goal','get_goal','update_goal_task','propose_goal_draft'].includes(tool.name)).map(({name,description,parameters})=>({name,description,parameters}));

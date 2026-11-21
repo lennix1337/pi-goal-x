@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// Zellij-focused analysis: replay the raw zellij output, and at each MARK +
-// at 1s intervals afterward, snapshot the LAST 3 screen rows (zellij's status
-// bar area) plus detect the goal widget box. Reports how the status bar
-// (incl. any scroll indicator) changes over time while pi sits idle.
 import xtermPkg from "@xterm/headless";
 import fs from "node:fs";
 
@@ -59,11 +55,9 @@ for (const item of timeline) {
 	}
 	await feed(raw.slice(offset, offset + item.len));
 	offset += item.len;
-	// 1s-interval samples after 15s (post-resize steady state)
 	if (item.t > 15 && (samples.length === 0 || item.t - samples[samples.length - 1].t >= 1)) {
 		samples.push({ t: item.t, ...screenShot(`t=${item.t.toFixed(1)}s`) });
 	}
 }
-// final screen
 console.log("=== END ===");
 screenShot("end");

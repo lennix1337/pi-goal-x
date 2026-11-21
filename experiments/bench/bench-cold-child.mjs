@@ -65,9 +65,6 @@ async function runFlow() {
 			readGoalLedger({ cwd });
 			break;
 		case "ledgerstate":
-			// Checkpoint-aware bounded cold read (reliability campaign): hits the
-			// checkpoint (2 ops) when covered, replays a positioned tail when the
-			// ledger grew, or falls back to a full parse + checkpoint write.
 			loadLedgerState({ cwd });
 			break;
 		case "startup": {

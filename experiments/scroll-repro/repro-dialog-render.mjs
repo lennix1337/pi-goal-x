@@ -43,12 +43,8 @@ class Dialog extends Container {
 	}
 }
 
-// True terminal emulation of the ANSI stream: track the cursor row and the
-// terminal's scroll count. A feed (\n) while the cursor is on the bottom row
-// scrolls the viewport by one. `startRow` is the cursor's screen row before
-// the write begins (the renderer's model: hardwareCursorRow - viewportTop).
 function emulateTerminal(stream, rows, startRow) {
-	let cursorRow = startRow; // 0-indexed
+	let cursorRow = startRow;
 	let scrolled = 0;
 	let i = 0;
 	const s = stream;
@@ -70,13 +66,12 @@ function emulateTerminal(stream, rows, startRow) {
 					case "A": cursorRow = Math.max(0, cursorRow - (Number.isNaN(n) ? 1 : n)); break;
 					case "B": cursorRow = Math.min(rows - 1, cursorRow + (Number.isNaN(n) ? 1 : n)); break;
 					case "G": break; // column only
-					case "K": case "J": case "H": break; // no row movement
+					case "K": case "J": case "H": break;
 					default: break;
 				}
 				i += m[0].length;
 				continue;
 			}
-			// Skip other escapes (OSC etc.) up to BEL/ST
 			const st = s.indexOf("\x07", i);
 			if (st !== -1 && s.slice(i, i + 2) !== "\x1b[") { i = st + 1; continue; }
 			i++;
@@ -95,7 +90,6 @@ function classify(buffer, label, rows, startRow) {
 	return { scrolled, hasFullClear };
 }
 
-// ── Scenario A: current behavior — non-overlay dialog replacing the editor ──
 {
 	const tui = new TuiMainScreen(terminal, false, "/tmp/tui-repro");
 	const chat = new Chat();
@@ -107,7 +101,6 @@ function classify(buffer, label, rows, startRow) {
 	tui.addChild(chat); tui.addChild(footer); tui.addChild(editorContainer);
 	tui.doRender();
 	writes.length = 0;
-	// Starting cursor row on screen = (hardwareCursorRow - previousViewportTop)
 	const startRowA = () => tui.hardwareCursorRow - tui.previousViewportTop;
 
 	editorContainer.clear();
@@ -126,7 +119,6 @@ function classify(buffer, label, rows, startRow) {
 	console.log(`  A) open scrolls: ${open.scrolled}, close scrolls: ${close.scrolled}\n`);
 }
 
-// ── Scenario B: overlay dialog (composited in place) ──
 {
 	const tui = new TuiMainScreen(terminal, false, "/tmp/tui-repro");
 	const chat = new Chat();

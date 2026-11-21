@@ -1,4 +1,3 @@
-/** Acceptance gate for the isolated 2026-09-07 campaign. No model calls. */
 import fs from 'node:fs';
 const directory = new URL('../../specs/2026-09-07-runtime-token-optimization/', import.meta.url);
 const read = name => JSON.parse(fs.readFileSync(new URL(name, directory), 'utf8'));
