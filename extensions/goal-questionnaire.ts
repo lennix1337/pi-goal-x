@@ -159,17 +159,6 @@ export function fitDialogLines(
 	return [...lines.slice(0, keepHead), ...rest.slice(rest.length - budget)];
 }
 
-/**
- * §options-scroll viewport fit: never truncate or drop content — window the
- * full dialog lines with a scrollTop offset so every line (question, context,
- * options, footer, border) stays reachable. The last viewport row is reserved
- * as the bottom edge: the bottom border when the end is reached, otherwise a
- * themed `… +N more · PgUp/PgDn scroll` indicator (mirrors the dashboard's
- * `… +N more task` rows). A themed `▲ N more` indicator replaces the first
- * content row when scrolled down. Selection auto-follow (needsFollow) nudges
- * the window so the selected option's line range is inside it. Output length
- * is exactly maxDialogLines when clipped, never more (churn-guard invariant).
- */
 function fitDialogViewport(
 	lines: string[],
 	maxDialogLines: number,
@@ -196,11 +185,6 @@ function fitDialogViewport(
 		viewport[0] = dimStyle(`▲ ${hiddenAbove} more`);
 	}
 	if (hiddenBelow > 0) {
-		// The reserved bottom edge row advertises the scroll affordance — it
-		// replaces the border while content is clipped below (mirrors the
-		// dashboard's `… +N more task` rows) and gives way to the border at the
-		// end. The footer hint sits directly above the border, so it is only
-		// visible when the end is reached (never while clipped — geometry).
 		viewport.push(dimStyle(`… +${hiddenBelow} more · PgUp/PgDn scroll`));
 	} else {
 		viewport.push(lines[lines.length - 1]!);
@@ -208,15 +192,6 @@ function fitDialogViewport(
 	return viewport;
 }
 
-/**
- * Proposal confirmation fit: keep the protected head, the tasks section, the
- * interactive auditor toggle line (when present), and the options/footer/
- * bottom border; the objective-box middle is sacrificed in-frame (it stays
- * fully readable in the scrollback presentation). Interior blank spacing lines
- * are dropped first when room is short; task lines are only dropped after
- * that, from the end, when the bound is exhausted (those lines remain in the
- * scrollback presentation). Never exceeds maxDialogLines.
- */
 function fitProposalPresentation(
 	lines: string[],
 	maxDialogLines: number,
@@ -231,12 +206,6 @@ function fitProposalPresentation(
 	if (candidate.length <= maxDialogLines) return candidate;
 	const stripped = candidate.filter((l, i) => i < keepHead || l.trim() !== "");
 	if (stripped.length <= maxDialogLines) return stripped;
-	// Bound still exhausted: keep the head, then the auditor toggle line (the
-	// actionable status control — its feedback must stay visible), then spend
-	// the room on the tail (options/footer/bottom border — the decision
-	// surface — kept from its end so the border and footer never drop), then on
-	// the tasks from the start. The dropped task lines remain fully readable in
-	// the scrollback presentation. Never exceeds maxDialogLines.
 	const tailNoBlanks = tail.filter((l) => l.trim() !== "");
 	const hasAuditor = tail.length > 0 && tail[0]!.includes("press 'a' to toggle");
 	const restTail = hasAuditor ? tailNoBlanks.slice(1) : tailNoBlanks;
@@ -277,7 +246,7 @@ export function shouldAutoConfirmProposal(args: { hasUI: boolean; autoConfirmEnv
 }
 
 export function proposalDecisionFromQuestionnaireResult(args: { cancelled: boolean; answer?: string }): ProposalDecision {
-	if (args.cancelled) return "continue"; // never trapped; escape keeps refining
+	if (args.cancelled) return "continue";
 	if ((args.answer ?? "").startsWith("Confirm")) return "confirm";
 	if ((args.answer ?? "").startsWith("Cancel")) return "cancel";
 	return "continue";
@@ -292,14 +261,12 @@ export function isHeadlessQuestionSufficientForDraft(args: { topic: string; ques
 
 const CUSTOM_ANSWER_LABEL = "Write your own answer...";
 
-/** Sequential native dialogs for hosts that cannot render terminal components. */
 async function runQuestionnaireWithBasicDialogs(
 	ctx: ExtensionContext,
 	questions: GoalQuestionnaireQuestion[],
 	auditorToggleInit?: { defaultEnabled: boolean },
 ): Promise<GoalQuestionnaireResult> {
 	const unavailable = (): GoalQuestionnaireResult => ({ questions: [], answers: [], cancelled: true, unavailable: true, ...(auditorToggleInit ? { auditorEnabled: auditorToggleInit.defaultEnabled } : {}) });
-	// Require only the primitives this questionnaire can actually use.
 	if ((auditorToggleInit || questions.some(q => q.options.length > 0)) && typeof ctx.ui.select !== "function") return unavailable();
 	if (questions.some(q => q.options.length === 0 || q.allowCustom !== false) && typeof ctx.ui.input !== "function") return unavailable();
 	let auditorEnabled = auditorToggleInit?.defaultEnabled;
@@ -372,15 +339,7 @@ export async function runGoalQuestionnaire(ctx: ExtensionContext, rawQuestions: 
 		const wasHardwareCursorShown = tui.getShowHardwareCursor();
 		tui.setShowHardwareCursor(false);
 		ctx.ui.setWorkingVisible(false);
-		// Terminal-height bound: the dialog renders in the editor slot, so the opened
-		// frame height is (pre-dialog frame - 1) + dialog lines. Bound the dialog so
-		// the frame never exceeds the terminal height — without this, closing a dialog
-		// taller than the terminal triggers pi-tui's generic shrink full-render
-		// (\x1b[2J\x1b[H\x1b[3J), erasing terminal scrollback and yanking the viewport
-		// so the window takes ~10s to scroll back to the bottom. The slice keeps
-		// the question and the actionable options/footer in view (see
-		// fitDialogLines); content that fits renders exactly as the
-		// pre-regression (383ae52) UI. Only applies with real TUI dimensions.
+		// external: pi-tui can erase scrollback when a dialog taller than the terminal closes.
 		const tuiInfo = tui as unknown as { terminal?: { rows?: number }; previousLines?: string[] };
 		const terminalRows = tuiInfo.terminal?.rows;
 		const baseFrame = tuiInfo.previousLines?.length;
@@ -392,7 +351,6 @@ export async function runGoalQuestionnaire(ctx: ExtensionContext, rawQuestions: 
 		let dialogFocused = false;
 		let cachedLines: string[] | undefined;
 		let optionsStartIndex = -1;
-		// §options-scroll viewport state (select-mode + submit tabs only).
 		let scrollTop = 0;
 		let needsFollow = false;
 		let optionRanges: Array<[number, number]> = [];
@@ -486,15 +444,6 @@ function advanceAfterAnswer() {
 			answers.set(qId, { id: qId, question: q?.question ?? qId, answer: value, wasCustom });
 		}
 
-		/**
-	 * §options-first fit: every option line always stays in frame. When the
-	 * question + context + options exceed the bound, the question/context
-	 * section yields first (it remains in the agent transcript): middle lines
-	 * (blanks, auditor, "Current:", context) drop before the question block
-	 * and the footer hint, and the tail slack (blank/footer) gives way before
-	 * the question. Returns null when even the option block + borders cannot
-	 * fit (pathological) so the caller falls back to the scroll viewport.
-	 */
 	function fitOptionsInFrame(
 		lines: string[],
 		maxDialogLines: number,
@@ -508,8 +457,6 @@ function advanceAfterAnswer() {
 		const middle = lines.slice(Math.max(questionBlockEnd, 1), optionsStart);
 		const tail = lines.slice(optionsStart);
 		const optionsBlockLen = lastOptionLine - optionsStart + 1;
-		// The option block + bottom border must fit on their own; otherwise the
-		// scroll viewport is the last resort (nothing is ever hidden).
 		if (optionsBlockLen + 1 > maxDialogLines) return null;
 		const mid = middle.slice();
 		while (head.length + mid.length + tail.length > maxDialogLines && mid.length > 0) {
@@ -520,13 +467,8 @@ function advanceAfterAnswer() {
 			if (blankIdx >= 0) mid.splice(blankIdx, 1);
 			else mid.pop();
 		}
-		// Still over: the tail gives its slack (blank between options and
-		// footer, then the footer hint) before the question block does. Never
-		// drop the option block or the bottom border.
 		const tailKept = tail.slice();
 		while (head.length + mid.length + tailKept.length > maxDialogLines && tailKept.length > optionsBlockLen + 1) {
-			// Prefer removing a blank line (never the options or the border),
-			// then the line just above the bottom border (the footer hint).
 			let tailBlank = -1;
 			for (let i = tailKept.length - 2; i >= 1; i--) {
 				if (tailKept[i]!.trim() === "") { tailBlank = i; break; }
@@ -743,8 +685,6 @@ function advanceAfterAnswer() {
 
 					if (trimmed.startsWith("│")) {
 						const afterPipe = trimmed.slice(1).trim();
-						// 3a. Task checkbox under │ prefix — detect before key-value to avoid
-						// "[x] t1: ..." being misinterpreted as a key-value pair.
 						const pipeTaskMatch = afterPipe.match(/^(\[.\])(\s+)(.+)$/);
 						if (pipeTaskMatch) {
 							const bracket = pipeTaskMatch[1]!;
@@ -772,8 +712,6 @@ function advanceAfterAnswer() {
 						continue;
 					}
 
-					// 4. Goal objective structure lines — detected before task checkboxes
-					// because === Goal could overlap with ─── markers but we already checked those.
 					const GOAL_SECTION_RE = /^(=== (Goal|Sisyphus Goal) ===|Objective:|Success criteria:|Boundaries:|Constraints:|Verification contract:|If blocked:)/;
 					if (GOAL_SECTION_RE.test(trimmed)) {
 						addWrapped(theme.fg("accent", rawLine));
@@ -801,8 +739,6 @@ function advanceAfterAnswer() {
 			};
 
 			add(theme.fg("accent", "─".repeat(safeWidth)));
-			// Lines up to the question line (top border, tabs, question incl.
-			// wraps) are the protected head — the slice below must never hide them.
 			let protectedCount = lines.length;
 			if (isMulti) {
 				const tabs: string[] = ["← "];
@@ -882,22 +818,12 @@ function advanceAfterAnswer() {
 				add(theme.fg("dim", isMulti ? " Tab/←→ navigate • ↑↓ select • Enter confirm • Esc cancel" + auditorHint : " ↑↓ navigate • Enter select • Esc cancel" + auditorHint));
 			}
 			add(theme.fg("accent", "─".repeat(safeWidth)));
-			// Safety net: ensure no returned line exceeds the terminal width
 			for (let i = 0; i < lines.length; i++) {
 				const line = lines[i];
 				if (line && visibleWidth(line) > safeWidth) {
 					lines[i] = truncateToWidth(line, safeWidth);
 				}
 			}
-			// Churn guard: bound to the terminal height (see factory top) so the
-			// opened frame never exceeds the screen. Never slice the question:
-			// keep the protected head, then spend the rest of the budget on the
-			// tail (options/footer/bottom border) — or, for plain select-mode
-			// questions where the options start right after the head, keep the
-			// top options so the recommended one stays visible. Proposal
-			// confirmations additionally keep the tasks section in frame; the
-			// objective-box middle is sacrificed there because the full objective
-			// is always in the scrollable transcript presentation (renderCall).
 			if (maxDialogLines !== undefined && lines.length > maxDialogLines) {
 				const proposalSegments = !inputMode && currentTab !== questions.length && !!q && q.context
 					? findProposalPresentationSegments(lines, optionsStartIndex)
@@ -941,15 +867,9 @@ function advanceAfterAnswer() {
 			},
 		};
 	});
-	// RPC hosts historically never reached this path (the mode check sent them
-	// straight to the per-question dialogs), so keep their safety net: a host that
-	// advertises `custom` yet throws while building or rendering the component
-	// degrades to per-question dialogs instead of failing the whole draft. Non-rpc
-	// hosts keep upstream semantics — their errors surface to the caller.
+	// external: RPC hosts may advertise custom components but fail to render them.
 	const result = ctx.mode === "rpc"
 		? await showRichDialog().catch((error) => {
-			// Degrading silently would look like the per-question dialogs came back for no
-			// reason (and any already-answered questions are re-asked): say why first.
 			ctx.ui.notify(
 				`Goal dialog could not be rendered by this host (${error instanceof Error ? error.message : String(error)}); falling back to one dialog per question.`,
 				"warning",
