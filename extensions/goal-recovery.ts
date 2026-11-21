@@ -1,21 +1,4 @@
 import { goalStoragePath, goalPoolSnapshotPath, ensureGoalStorageDirectory } from "./storage/goal-root.ts";
-/**
- * /goal-recovery — read-only storage/recovery report + guarded repair.
- *
- * Reliability campaign 2026-08-09. The report scans four failure classes:
- *   - malformed goal files (active_goal_*.md that do not parse);
- *   - malformed ledger lines (counted by the ledger reader);
- *   - stale locks (.pi/goals/.locks/*.lock whose pid is dead or whose age
- *     exceeds the TTL — left behind by crashed sessions);
- *   - orphaned snapshot data (pool-snapshot goals with no matching file).
- *
- * Everything is read-only by default. Repair operations (stale-lock removal,
- * snapshot refresh) require an explicit confirmation AND copy the affected
- * files into a timestamped backup directory first. Malformed goal files and
- * malformed ledger lines are reported but never rewritten automatically —
- * rewriting user-owned data is deliberately out of scope (and automatic
- * ledger rewriting is a documented non-goal of the reliability campaign).
- */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -124,7 +107,6 @@ function scanStaleLocks(ctx: GoalFileContext): StaleLockEntry[] {
 				out.push({ fileName: name, pid, startedAt, ageMs });
 			}
 		} catch {
-			// Unreadable lock body: report as stale (pid unknown).
 			out.push({ fileName: name, pid: 0, startedAt: "", ageMs: now });
 		}
 	}

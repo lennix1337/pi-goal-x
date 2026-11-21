@@ -215,9 +215,6 @@ export function registerGoalCommands(core: GoalCore): void {
 			}
 			return;
 		}
-		// Issue #30: surface persisted-checkpoint health for this session file
-		// (read-only). Legacy full checkpoints are repairable offline with the
-		// shipped pi-goal-x-recover CLI; this command never writes.
 		const sessionFile = (ctx.sessionManager as { getSessionFile?: () => string | undefined } | undefined)?.getSessionFile?.();
 		const checkpointHealth = sessionFile ? readSessionCheckpointHealth(sessionFile) : null;
 		const checkpointSection = checkpointHealth && checkpointHealth.total > 0
@@ -286,15 +283,12 @@ export function registerGoalCommands(core: GoalCore): void {
 			activeFilePresent: health && view?.activePath
 				? existsSync(goalStoragePath(ctx, view.activePath))
 				: undefined,
-			// Issue #30: checkpoint growth report (health view only, read-only).
 			checkpointHealth: health
 				? readSessionCheckpointHealth(
 					(ctx.sessionManager as { getSessionFile?: () => string | undefined } | undefined)?.getSessionFile?.() ?? "",
 				)
 				: null,
 			checkpointSessionFile: (ctx.sessionManager as { getSessionFile?: () => string | undefined } | undefined)?.getSessionFile?.(),
-			// §13.2: effective settings with provenance appear only in verbose mode;
-			// the standard mode stays free of settings noise (§13.1).
 			settingsReport: verbose ? [...effectiveSettingsReport(ctx.cwd), `effective goal pool: ${goalStorageRoot(ctx)}`] : [],
 		});
 		ctx.ui.notify(text, "info");
@@ -366,8 +360,6 @@ export function registerGoalCommands(core: GoalCore): void {
 		{ key: "provider", label: "provider", section: "Completion auditor", kind: "modelSelector" },
 		{ key: "model", label: "model", section: "Completion auditor", kind: "modelSelector" },
 		{ key: "thinkingLevel", label: "thinking_level", section: "Completion auditor", kind: "thinking" },
-		// Issue #26: opt-in blocker Oracle. Disabled by default; provider/model
-		// must BOTH be set explicitly — the executor model is never used silently.
 		{ key: "oracleEnabled", label: "oracle enabled", section: "Blocker Oracle", kind: "boolean", path: ["oracle", "enabled"] },
 		{ key: "oracleProviderModel", label: "oracle provider/model", section: "Blocker Oracle", kind: "modelSelector", path: ["oracle"] },
 		{ key: "oracleThinkingLevel", label: "oracle thinking_level", section: "Blocker Oracle", kind: "thinking", path: ["oracle", "thinkingLevel"] },
@@ -394,7 +386,6 @@ export function registerGoalCommands(core: GoalCore): void {
 
 	async function handleSettingsMenu(ctx: ExtensionContext): Promise<void> {
 		if (!ctx.hasUI) {
-			// Headless: read-only report of both layer paths.
 			ctx.ui.notify(
 				`Settings — project file: ${goalSettingsPath(ctx.cwd)}\nGlobal file: ${goalGlobalSettingsPath()}`,
 				"info",
@@ -407,8 +398,6 @@ export function registerGoalCommands(core: GoalCore): void {
 			if (tasksEnabledNow !== core.tasksEnabled) {
 				core.installGoalToolProfile(tasksEnabledNow);
 			}
-			// PR #29: settings changes must be visible immediately — the banner
-			// hide/restore happens through this coalesced UI refresh.
 			core.updateUI(ctx);
 		};
 
@@ -565,9 +554,6 @@ export function registerGoalCommands(core: GoalCore): void {
 					continue;
 				}
 
-				// modelSelector rows (provider, model): searchable model picker with
-				// explicit inherit/default handling. Auditor rows apply provider+model
-				// at the flat paths; the Oracle row writes oracle.provider/oracle.model.
 				const oraclePair = row.path?.[0] === "oracle";
 				const pairPrefix = oraclePair ? ["oracle"] : [];
 				const configuredBase = oraclePair
@@ -625,8 +611,6 @@ export function registerGoalCommands(core: GoalCore): void {
 		}
 		const target = core.state.goal;
 		const focusToken = core.focusedOperationToken(target.id);
-		// Headless behavior is explicit: guidance without mutation. Clearing
-		// requires an interactive confirmation (follow-up Stage 2).
 		if (!ctx.hasUI) {
 			ctx.ui.notify(`Run /goal-clear in an interactive session to confirm clearing: ${oneLineSummary(target)}`, "warning");
 			return;

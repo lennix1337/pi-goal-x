@@ -100,8 +100,6 @@ export function evaluateDraftingToolGate(args: {
 	tweakApplyToolName?: string;
 	getGoalToolName?: string;
 }): ToolGateDecision {
-	// Goal confirmation is prompt-guided, not runtime-enforced. The agent should
-	// avoid substantive work before confirmation, but minimal reconnaissance is allowed.
 	void args;
 	return { block: false };
 }

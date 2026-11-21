@@ -169,7 +169,6 @@ export function buildPostCompactionGoalDelta(args: {
   const { goal, ledgerEvents, otherOpenCount } = args;
   const lines: string[] = [];
   lines.push(`[POST-COMPACTION RESYNC goalId=${goal.id}]`);
-  // Execution focus (with contract) — the one thing memory must not lose.
   if (goal.currentTaskId && goal.taskList) {
     const current = taskIndex(goal.taskList.tasks).byId.get(goal.currentTaskId);
     if (current) {

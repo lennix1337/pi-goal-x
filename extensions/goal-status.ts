@@ -1,12 +1,3 @@
-/**
- * /goal-status text builder (plan §13).
- *
- * Renders the SAME shared dashboard model as the above-editor widget: the
- * standard mode composes a static compact-dashboard box, the current-task
- * details block, recent activity, and the last audit result; verbose mode adds
- * the full diagnostic detail (§13.2). Pure module — no TUI imports, no ctx —
- * so the exact text is unit-testable and can never drift from the widget.
- */
 
 import { truncateText } from "./goal-core.ts";
 import type { GoalLedgerEvent, GoalLedgerEvent as LedgerEvent } from "./goal-ledger.ts";
@@ -106,11 +97,6 @@ interface HealthCheck {
 	severity: "ok" | "warn" | "error";
 }
 
-/**
- * Render a concise, read-only integrity report. This deliberately checks
- * storage/runtime coherence only; it does not infer that the work itself is
- * complete from task counts or contracts.
- */
 function buildHealthStatus(options: GoalStatusTextOptions, width: number): string {
 	const goal = options.goal;
 	if (!goal) {

@@ -1,12 +1,3 @@
-/**
- * GoalRuntime — continuation scheduling, stale-checkpoint state, the turn-stop
- * guard, and one-time steering reminders (post-compaction, budget reached).
- *
- * The extension (`extensions/goal.ts`) instantiates one GoalRuntime with hooks
- * bound to its closure state and the pi API; every runtime decision is
- * encapsulated here so the scheduling/guarding behavior is independently
- * testable with a mock context.
- */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { GoalCheckpointDetailsV3, GoalRecord } from "./goal-record.ts";
@@ -48,7 +39,6 @@ export class GoalRuntime {
 	private turnSeq = 0;
 	private turnStoppedFor: { goalId: string; turnSeq: number } | null = null;
 
-	// ── stale checkpoint state ───────────────────────────────────────────
 	private checkpointGoalId: string | null = null;
 
 	/** Monotonic per-session counter persisted on v2 checkpoint details (issue #30). */
@@ -223,7 +213,6 @@ export class GoalRuntime {
 		return this.turnStoppedFor.goalId;
 	}
 
-	// ── stale checkpoint state ───────────────────────────────────────────
 
 	setCheckpoint(goalId: string | null): void {
 		this.checkpointGoalId = goalId;

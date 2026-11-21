@@ -112,8 +112,6 @@ export function renderGoalResult(result: { details?: unknown; content: Array<{ t
 
 export function normalizeGoalEventDetails(value: unknown): GoalEventDetails {
 	const raw = asRecord(value);
-	// "checkpoint" is the only kind writers emit today; "stale" remains a
-	// legacy read for historical checkpoint entries.
 	const kind: GoalEventKind = raw?.kind === "stale" ? "stale" : "checkpoint";
 	const goalId = typeof raw?.goalId === "string" ? raw.goalId : "unknown";
 	const focus: GoalMode | undefined = raw?.focus === "sisyphus" ? "sisyphus" : raw?.focus === "goal" ? "goal" : undefined;
@@ -172,20 +170,12 @@ export function renderGoalAuditEvent(message: { content?: unknown; details?: Goa
 	);
 }
 
-/**
- * Issue #30 v2 markers are self-closing and carry an explicit version:
- * `<pi_goal_continuation goal_id="..." kind="checkpoint" v="2"/>`.
- */
 function matchV2SelfClosingContinuation(text: string): string | null {
 	const match = text.match(/^<pi_goal_continuation\s+goal_id="([^"]+)"[^>]*v="2"\s*\/?>/);
 	return match?.[1] ?? null;
 }
 
 function matchLegacyContinuation(text: string): string | null {
-	// Phase 5 C1: structured outer marker `<pi_goal_continuation goal_id="..." kind="...">`.
-	// Borrowed from pi-codex-goal. More robust than bare bracket text because
-	// the angle brackets + attributes are nearly impossible for users to type
-	// by accident, and the structure is grep-able / parse-able by external tooling.
 	const xmlMatch = text.match(/^<pi_goal_continuation\s+goal_id="([^"]+)"/);
 	if (xmlMatch) return xmlMatch[1] ?? null;
 	return null;
@@ -222,15 +212,7 @@ export function isErrorAssistantMessage(message: unknown): boolean {
 	return raw?.role === "assistant" && raw.stopReason === "error";
 }
 
-/**
- * Transient provider failures are safe for goal-level recovery backoff:
- * Pi-declared network errors plus HTTP 429/5xx-style outages surfaced by
- * providers (429 rate limits, 503 server_error, HTTP/2 PROTOCOL_ERROR,
- * "Endpoint is unavailable", overloaded, gateway failures) and dropped connections
- * (Anthropic SDK "Connection error.", undici stream "terminated"). Deliberately excludes auth and
- * malformed-request failures (and quota/billing text), which retrying
- * cannot fix.
- */
+// external: provider quota, billing, authentication, and malformed-request failures are not transient.
 const TRANSIENT_PROVIDER_ERROR_RE = new RegExp(
 	[
 		"\\bnetwork[_\\s-]?error\\b",
@@ -253,7 +235,6 @@ const TRANSIENT_PROVIDER_ERROR_RE = new RegExp(
 	"i",
 );
 
-/** Quota/billing exhaustion is deterministic; retrying cannot fix it. */
 const NON_TRANSIENT_PROVIDER_ERROR_RE = new RegExp(
 	[
 		"\\binsufficient[_\\s]?quota\\b",
@@ -273,7 +254,6 @@ export function isNetworkErrorAssistantMessage(message: unknown): boolean {
 	const details = [raw?.rawStopReason, raw?.errorMessage]
 		.filter((value): value is string => typeof value === "string")
 		.join(" ");
-	// Quota/billing exhaustion is deterministic and must never be retried.
 	if (NON_TRANSIENT_PROVIDER_ERROR_RE.test(details)) return false;
 	return TRANSIENT_PROVIDER_ERROR_RE.test(details);
 }

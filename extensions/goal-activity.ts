@@ -1,18 +1,3 @@
-/**
- * Human-readable activity feed (plan §12).
- *
- * Maps the durable ledger into concise, readable activity items for the
- * unified dashboard, `/goal-status`, and archived records. Pure module: no
- * TUI imports; formatting lives here so every surface reads the same text.
- *
- * Rules (from the plan):
- * - Prefer the task title over the task id.
- * - Include completion evidence only when concise.
- * - Exclude low-value checkpoint noise.
- * - Deduplicate repeated lifecycle events.
- * - Default to the latest three to five useful entries; preserve full history
- *   for verbose status and archived records.
- */
 
 import { truncateText } from "./goal-core.ts";
 import type { GoalLedgerEvent } from "./goal-ledger.ts";
@@ -88,7 +73,6 @@ function mapEvent(event: GoalLedgerEvent, taskTitles: ReadonlyMap<string, string
 		case "task_complete": {
 			const title = titleFor(taskTitles, event.taskId);
 			const evidence = event.evidence ? oneLine(event.evidence) : undefined;
-			// Include evidence only when concise; never bloat the feed.
 			const suffix = evidence && evidence.length <= CONCISE_EVIDENCE_MAX ? ` — ${evidence}` : "";
 			return { at: event.at, kind: "task", marker: "done", text: `Completed ${quote(title)}.${suffix}` };
 		}
@@ -170,7 +154,6 @@ export function deriveGoalActivity(
 	const { taskTitles, limit = 5 } = options;
 	const items: GoalActivityItem[] = [];
 	if (indexedActivity.has(events)) {
-		// Runtime indexes already deduplicate and sort. Format only the requested tail.
 		for (let i = events.length - 1; i >= 0; i--) {
 			const event = events[i]!;
 			if (!("goalId" in event) || event.goalId !== goalId) continue;

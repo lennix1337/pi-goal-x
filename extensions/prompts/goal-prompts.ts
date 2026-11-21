@@ -62,7 +62,6 @@ export function promptProfile(env: NodeJS.ProcessEnv = process.env): "compact-v2
 	return env.PI_GOAL_PROMPT_PROFILE === "legacy-v1" ? "legacy-v1" : "compact-v2";
 }
 
-/** Render only PENDING nodes (depth-aware); completed/skipped collapse to counts. */
 function renderPendingTasks(tasks: GoalTask[], indent: number, rendered: { count: number; stop: boolean; skipId?: string }): string[] {
 	if (rendered.stop) return [];
 	const prefix = "  ".repeat(indent);
@@ -188,11 +187,6 @@ function lifecyclePolicyBlock(autonomous: boolean, strict: boolean): string {
 }
 
 export function goalPromptParts(goal: GoalRecord, settings?: GoalSettings, contextUsage?: GoalContextUsage): { state: string; counters: string } {
-	// The policy block changes only when the goal itself changes; the counters
-	// change nearly every turn. Splitting them lets request-only injection retain
-	// each at its own rate so consecutive provider requests stay prefix-stable.
-	// Scheduling instructions ride with the policy block: they are cleared by
-	// omission, so a retained copy would keep issuing a cancelled order.
 	const fixed = buildGoalPrompt(goal, settings);
 	const { runs, instructions } = schedulerSummaryParts(goal.scheduler, effectiveRunLimit(goal, settings?.maxAutonomousRuns), settings?.showAutonomousRuns);
 	const limits = `Limits: lifetime tokens=${goal.tokenBudget ?? "none"}; runs=${effectiveRunLimit(goal, settings?.maxAutonomousRuns) ?? "unlimited"}.`;
@@ -207,8 +201,6 @@ export function goalPrompt(goal: GoalRecord, settings?: GoalSettings): string {
 }
 
 function buildGoalPrompt(goal: GoalRecord, settings?: GoalSettings): string {
- // Stable policy comes first; changing counters are appended by goalPrompt.
- // Bound individual data fields so essential rules can never be sliced off.
  return [
   `[PI GOAL ACTIVE goalId=${goal.id}]`,
   lifecyclePolicyBlock(effectiveRunLimit(goal, settings?.maxAutonomousRuns) !== 0, settings?.strictExecutionContract === true || !!goal.scheduler?.wait), sisyphusDisciplineBlock(goal),
@@ -233,15 +225,6 @@ export function objectiveEditedPrompt(goal: GoalRecord): string {
 }
 
 
-/**
- * Deprecated compatibility wrapper (issue #30). The full continuation prompt
- * was the defect: every auto-continue turn persisted the whole objective/task/
- * contract/policy block as a custom session message, growing sessions by
- * ~6.4K chars per turn. The authoritative state is now injected at the request tail
- * by the context hook; the persisted follow-up is only a tiny trigger.
- *
- * Kept for one minor release so external call sites migrate explicitly.
- */
 /** @deprecated Use checkpointTriggerPrompt — full continuation prompts must not be persisted. */
 export function continuationPrompt(goal: GoalRecord, _settings?: GoalSettings): string {
 	return checkpointTriggerPrompt(goal.id);

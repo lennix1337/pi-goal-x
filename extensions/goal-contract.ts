@@ -1,8 +1,3 @@
-/**
- * Small record/input parser (Stage 5 of the hardening plan): verification
- * contract extraction and objective prompt-safety live here, outside the
- * (the historical goal-draft module was removed).
- */
 
 const VERIFICATION_CONTRACT_RE = /^Verification contract:\s*(.+)$/im;
 

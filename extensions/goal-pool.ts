@@ -55,9 +55,6 @@ export function resolveSessionFocus(args: {
 		args.pool.set(args.legacyGoal.id, cloneGoal(args.legacyGoal));
 		return args.legacyGoal.id;
 	}
-	// Auto-select single open goal only when explicitly enabled.
-	// Default (false): sessions start unfocused to prevent goals from
-	// bleeding across sessions that share the same .pi/goals/ directory.
 	if (args.autoSelectSingleGoal) {
 		const open = openGoalsFromPool(args.pool);
 		return open.length === 1 ? open[0]?.id ?? null : null;

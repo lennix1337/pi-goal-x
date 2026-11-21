@@ -55,7 +55,7 @@ export class GoalAccounting {
 		const elapsedSeconds = last === null
 			? 0
 			: Math.max(0, Math.floor((now - last) / 1000));
-		// A clock that steps back must not move the baseline back: the interval would be charged again.
+		// external: system clocks can move backward.
 		this.lastAccountedAt = last === null ? now : Math.max(last, now);
 		const tokens = Math.max(0, Math.trunc(opts.completedTurnTokens ?? 0));
 		return { tokens, seconds: elapsedSeconds };

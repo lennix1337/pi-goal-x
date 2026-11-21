@@ -56,9 +56,6 @@ function asThinkingLevel(value: unknown): ThinkingLevel | undefined {
 
 
 export function parseAuditorDecision(output: string): { approved: boolean; disapproved: boolean } {
-	// The prompt contract: the verdict marker must be the FINAL line of the
-	// report. Matching anywhere lets a prose mention of the marker (e.g. "I
-	// would only emit <approved/> if ...") be misread as the verdict.
 	const lines = output.split("\n").map((l) => l.trim()).filter(Boolean);
 	const marker = lines[lines.length - 1];
 	return { approved: marker === "<approved/>", disapproved: marker === "<disapproved/>" };
@@ -92,12 +89,7 @@ function taskSummaryBlock(taskList?: GoalTaskList | null): string {
 	return lines.join("\n");
 }
 
-/**
- * Escape operator/model-controlled payloads before interpolating them between
- * XML-ish delimiters in the auditor prompt, so a payload containing
- * `</objective>` (or other delimiter text) cannot close the block early and
- * have the remainder read as instructions. Entities stay human-readable.
- */
+// external: untrusted payloads can contain closing XML delimiters and inject instructions.
 function escapePromptPayload(value: string): string {
 	return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -240,8 +232,6 @@ export function resolveAuditorModel(ctx: ExtensionContext, config: GoalSettings)
 		return model ? { model } : { model: undefined, error: `Configured auditor model not found: ${config.provider}/${config.model}` };
 	}
 	if (config.provider) {
-		// Refuse provider-only config: silently picking the first available model
-		// hides misconfiguration. An explicit provider/model is required.
 		return {
 			model: undefined,
 			error: `Provider-only auditor configuration is refused; select an explicit model for provider: ${config.provider}`,
@@ -350,7 +340,6 @@ export async function runGoalCompletionAuditor(args: {
 					: String(event.args ?? "").slice(0, 120);
 				progress.currentToolStartedAt = Date.now();
 				progress.phase = "tool_executing";
-				// §60 derive the human label + estimate from the read-only tool.
 				progress.label = labelForReadOnlyTool(event.toolName);
 				progress.percentage = Math.max(progress.percentage ?? 0, estimateAuditProgress(event.toolName));
 				emitProgress();

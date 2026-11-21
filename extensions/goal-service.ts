@@ -131,11 +131,6 @@ export interface GoalTaskUpdateSpec {
 
 export type GoalTaskUpdateOutcome = { ok: true; goal: GoalRecord; task: GoalTask } | { ok: false; message: string };
 
-/**
- * §8 execution-focus resolution for a task update: an explicit start sets the
- * currentTaskId (replacing any previous); otherwise completing or skipping the
- * current task clears it; otherwise focus is untouched.
- */
 function resolveUpdatedCurrentTaskId(spec: GoalTaskUpdateSpec, current: string | undefined, updatedTask: GoalTask): string | undefined {
 	if (spec.setCurrentTaskId !== undefined) return spec.setCurrentTaskId;
 	const terminal = updatedTask.status === "complete" || updatedTask.status === "skipped";
@@ -163,8 +158,6 @@ export class GoalService {
 	beginTurn(ctx: GoalServiceContext, goalId: string | null): void {
 		if (this.turn.active) {
 			this.flushTurn(ctx);
-			// Lock contention must not discard the previous transaction. Keep it
-			// open so the next turn boundary retries the same buffered write.
 			if (this.turn.active) return;
 		}
 		this.turn = { active: true, goalId, goal: null, archive: false, ledger: [] };
@@ -194,7 +187,6 @@ export class GoalService {
    const expected = this.turnBase ?? goal;
    if (!freshDisk || (freshDisk.revision ?? 0) !== (expected.revision ?? 0)) {
     this.flushError = `Goal ${goal.id} changed in another process; buffered changes were rejected. Refresh and retry.`;
-    // Reject the speculative transaction, never overwrite another writer.
     this.turn.active = false;
     this.turn.goal = null;
     this.turn.ledger = [];
@@ -357,8 +349,6 @@ export class GoalService {
 	 * committed, and the lock is released in a finally block.
 	 */
 		apply(ctx: GoalServiceContext, spec: GoalMutationSpec): GoalMutationOutcome {
-		// 1. reconcile (unless the caller opts out — e.g. the tweak path, which
-		//    must not clobber the authoritative new objective with the old file).
 		if (spec.reconcile !== false && !this.reconcileFocused(ctx)) {
 			return { ok: false, message: "The focused goal was lost during reconciliation; the mutation was not applied." };
 		}
@@ -465,17 +455,6 @@ export class GoalService {
 
 
 
-/**
- * Disk-fresh single-task transaction. Pipeline:
- *  1. reconcile the focused record;
- *  2. validate focus token/id;
- *  3. load the fresh task from the cloned disk record;
- *  4. validate the requested transition against that fresh task;
- *  5. update only that task's path;
- *  6. write the active file, append the ledger, and commit.
- * Expected races (removed task, removed task list) return typed failures
- * instead of throwing.
- */
 		updateTask(ctx: GoalServiceContext, spec: GoalTaskUpdateSpec): GoalTaskUpdateOutcome {
 		if (this.turn.active) {
 			const current = this.turn.goal ?? this.ref.getFocused();
@@ -689,9 +668,6 @@ export class GoalService {
 			const freshDisk = this.readFreshDiskGoal(ctx, current);
 			if (!freshDisk) return null;
 			if ((freshDisk.revision ?? 0) !== capturedRevision) {
-				// Revision moved concurrently: merge only the additive usage
-				// delta from this session onto the disk record and advance its
-				// revision. All other fields stay authoritative from disk.
 				const { tokens, seconds } = this.usageDelta(current, freshDisk);
 				if (tokens === 0 && seconds === 0) return null;
 				const merged = mergeGoalPromptFromDisk(ctx, {

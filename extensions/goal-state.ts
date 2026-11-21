@@ -216,8 +216,6 @@ export function createGoalCore(
 			clearActiveAccounting();
 		},
 		onDiagnostic: (diagnostic) => {
-			// Non-fatal failure sink: ledger appends must never roll back the
-			// authoritative state write, but they stay observable.
 			console.warn(`[pi-goal] ${diagnostic.source} diagnostic: ${diagnostic.message}`);
 		},
 	});
@@ -251,9 +249,6 @@ export function createGoalCore(
 	let debugMode = false;
 	let dashboardExpanded = false;
 
-	// turn-stop guard, stale checkpoint, continuation scheduling, and one-time
-	// steering reminders live in `runtime` (extensions/goal-runtime.ts);
-	// token/time accounting lives in `accounting` (extensions/goal-accounting.ts).
 
 	let scheduler: GoalScheduler;
 	const runtime = new GoalRuntime({
@@ -271,7 +266,6 @@ export function createGoalCore(
 				{ triggerTurn: true, deliverAs: "followUp" },
 			);
 		},
-		// A pending self-reload must run before the next checkpoint, or the checkpoint's turn cancels it.
 		held: () => {
 			let reason: string | undefined;
 			pi.events.emit(CONTINUATION_HOLD_EVENT, { hold: (why: string) => { reason ??= why; } });
@@ -283,25 +277,9 @@ export function createGoalCore(
 	const accounting = new GoalAccounting();
 
 	let tasksEnabled = true;
-	// Which goal-tool profile is installed: none yet (before session start), the
-	// fixed execution profile, or the transient drafting profile. Focus changes
-	// re-install only the execution profile.
 	let toolProfile: "uninitialized" | "execution" | "drafting" = "uninitialized";
 
-	// Escape during an audit only aborts its controller (abortAudit); no ledger
-	// event is appended there. The completion flow appends exactly one canonical
-	// event after the user's dialog choice (follow-up Stage 2).
 
-	/**
-	 * Install the fixed three/five goal-tool profile. Called only after session
-	 * initialization and after a settings change that toggles disableTasks.
-	 * Lifecycle transitions, focus changes, status changes, and compaction never
-	 * add/remove/restore goal tools, and this never mutates the host's ordinary
-	 * work-tool selection. On success the module-level tasksEnabled tracker is
-	 * updated to the installed value, so callers can compare the effective
-	 * setting against the last profile actually installed (used by the settings
-	 * menu to detect repeated disableTasks toggles across one menu session).
-	 */
 	function installGoalToolProfile(tasksEnabledArg: boolean): void {
 		toolProfile = "execution";
 		try {
@@ -310,8 +288,6 @@ export function createGoalCore(
 			for (const goalTool of applicableGoalTools(state.goal, tasksEnabledArg)) current.add(goalTool);
 			const next = [...current].sort();
 			const before = [...pi.getActiveTools()].sort();
-			// Idempotent: never rebuild (or re-report) a profile that is already
-			// installed. Lifecycle transitions must not churn the tool surface.
 			if (next.length !== before.length || next.some((name, index) => name !== before[index])) {
 				pi.setActiveTools([...current]);
 			}
@@ -321,11 +297,6 @@ export function createGoalCore(
 		}
 	}
 
-	/**
-	 * Install the transient drafting profile. This is the sole permitted
-	 * exception to the fixed execution three/five profile: it is entered only
-	 * by an explicit user drafting command and is removed on confirm/cancel.
-	 */
 	function installDraftingToolProfile(): void {
 		toolProfile = "drafting";
 		try {
@@ -474,7 +445,6 @@ export function createGoalCore(
 			return;
 		}
 
-		// Serialized idempotent charge: never double-charges the same interval.
 		const { tokens, seconds } = accounting.charge({ completedTurnTokens: opts.completedTurnTokens });
 		if (tokens === 0 && seconds === 0) return;
 
@@ -493,15 +463,11 @@ export function createGoalCore(
 			if (crossed.length) {
 				try {
 					goalService.appendEvents(ctx, [{type: "goal_budget_warning", goalId: budgetGoal.id, budget: budgetGoal.tokenBudget, tokensUsed: budgetGoal.usage.tokensUsed, pct: Math.round(pct * 100), at: nowIso()}]);
-				} catch { /* Alert must never crash the turn. */ }
+				} catch { }
 				ctx.ui.notify(`Token budget ${Math.round(pct * 100)}% used (${budgetGoal.usage.tokensUsed}/${budgetGoal.tokenBudget} tokens). Use /goal-tweak to change or remove the budget.`, "warning");
 			}
 		}
 
-		// Token-budget transition: when accounted usage reaches the budget, mark the
-		// goal budget_limited exactly once (status no longer active, so accounting
-		// stops and the transition cannot re-fire), emit the ledger event, arm the
-		// one-time wrap-up steering, and cancel pending continuations.
 		if (budgetGoal && budgetGoal.status === "active" && typeof budgetGoal.tokenBudget === "number" && budgetReached(budgetGoal)) {
 			const transition = goalService.apply(ctx, {
 				reconcile: false,
@@ -550,9 +516,6 @@ export function createGoalCore(
 
 	const goalWidgetComponentRef: { current: GoalWidgetComponent | null } = { current: null };
 	const goalLineWidgetRef: { current: GoalLineWidget | null } = { current: null };
-	// "none": footer status only. "line": one extra line while a focused goal
-	// runs. "full": the whole dashboard, only while the user expanded it or an
-	// audit is on screen.
 	type WidgetMode = "none" | "line" | "full";
 	let widgetMode: WidgetMode = "none";
 	const EMPTY_STATUS: GoalStatusPayload = { text: "", focused: false, open: 0 };
@@ -577,28 +540,7 @@ export function createGoalCore(
 		goalLineWidgetRef.current = null;
 	}
 
-	/**
-	 * Live above-editor widget for the active goal. Inspired by rpiv-todo's
-	 * TodoOverlay: register the widget once with a factory, read live state
-	 * via the closure at render time, and call `tui.requestRender()` on every
-	 * state change so the overlay refreshes without re-registration. Normal pi
-	 * renders still read current values through the closure; do not request
-	 * periodic renders just to tick elapsed time because terminal redraws pull
-	 * users out of scrollback while they review long goals and earlier context.
-	 *
-	 * Layout (sisyphus, running):
-	 *   ◆ Sisyphus  [▰▰▰▱▱] 3/5
-	 *   ├─ ⟡ extract validator … wire it … update tests.
-	 *   ├─ Status: sisyphus running · auto-continue · 14m 21s · 24.3k tokens
-	 *   └─ .pi/goals/active_goal_xxx.md
-	 *
-	 * Layout (paused with blocker):
-	 *   ⊘ Goal paused
-	 *   ├─ ⟡ improve benchmark coverage for the parser
-	 *   ├─ Status: paused (agent) · 2m 14s · 12.4k tokens
-	 *   ├─ Blocker: cannot find the tests directory
-	 *   └─ Suggested: ask the user for the test location
-	 */
+	// external: terminal redraws can pull users out of scrollback.
 
 	let lastGoalActivityAt = Date.now();
 	let stallNotified = false;
@@ -625,7 +567,6 @@ export function createGoalCore(
 				at: nowIso(),
 			}]);
 		} catch {
-			// Stall detection must never crash the turn.
 		}
 		ctx.ui.notify(`Goal stalled: no activity for ${timeoutMinutes} minute${timeoutMinutes === 1 ? "" : "s"}.`, "warning");
 		return `\n\n[GOAL STALLED goalId=${goalId}]\nNo continuation or tool activity for ${timeoutMinutes} minute${timeoutMinutes === 1 ? "" : "s"}. Report your progress or ask the user to pause or resume the goal.`;
@@ -656,10 +597,6 @@ export function createGoalCore(
 			return;
 		}
 
-		// The footer status is the single home for goal state: one short line
-		// ("meta: ..."), also announced on pi.events for other footers. Nothing
-		// is drawn above the editor unless the goal is running with something
-		// the line cannot hold, or the user asked for the expanded dashboard.
 		const display = goalForDisplay() ?? state.goal;
 		const payload = goalStatusPayload({ goal: display, openCount: totalOpen, auditing: auditProgress !== null, stalled: stallNotified });
 		const published = JSON.stringify(payload);
@@ -821,8 +758,6 @@ export function createGoalCore(
 				: [],
 		});
 		if (result.ok) {
-			// setGoal() glue: a stopped goal can no longer queue continuations or
-			// accrue time, and the UI must reflect the new status immediately.
 			clearContinuationState();
 			clearActiveAccounting();
 			goalService.flushTurn(ctx);
@@ -833,19 +768,11 @@ export function createGoalCore(
 	function pauseActiveGoal(ctx: ExtensionContext): void {
 		if (!state.goal || state.goal.status !== "active") return;
 		const pausedGoalId = state.goal.id;
-		// User-initiated pause (Esc / aborted turn). Clear any stale agent pause reason.
 		state.goal = { ...state.goal, autoContinue: false, pauseReason: undefined, pauseSuggestedAction: undefined };
 		stopActiveGoal("paused", "user", ctx);
 		ctx.ui.notify("Goal paused.", "info");
 	}
 
-	/**
-	 * §auditor-toggle: flip the focused goal's independent-auditor setting.
-	 * Persisted per-goal (revision-safe via goalService.apply), recorded as an
-	 * auditor_toggled ledger event, reflected in the dashboard, and announced.
-	 * Inert when no goal is focused or the goal is complete; the widget's
-	 * modal-depth guard keeps it inert while a goal modal is open.
-	 */
 	function toggleGoalAuditor(ctx: ExtensionContext): void {
 		if (!state.goal) {
 			ctx.ui.notify("No focused goal to toggle the auditor for.", "info");

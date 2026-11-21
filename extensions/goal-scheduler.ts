@@ -106,12 +106,8 @@ export class GoalScheduler {
 			if (!goal || goal.status !== "active" || !goal.autoContinue || !goal.scheduler) return;
 			const s = goal.scheduler;
 			if (s.owner !== this.owner(ctx)) { ctx.ui.notify("Goal owned by another session. Use /goal-resume to take ownership.", "info"); return; }
-			// "idle" on an active goal means its last run ended without settling successfully (a
-			// provider error such as quota): every successful settlement leaves it ready or waiting.
-			// The failover extension drops its own wake on reload, so the goal must not wait for it.
+			// external: the failover extension drops its own wake on reload.
 			if (["idle", "claimed", "running", "interrupted"].includes(s.phase)) {
-				// The old dispatch is never replayed: one fresh recovery continuation replaces it
-				// and still passes the normal allowance and budget checks in schedule().
 				this.write(ctx, g => ({ ...g, scheduler: { ...g.scheduler!, generation: randomUUID(), phase: "ready", dispatch: undefined, decision: { kind: "ready", purpose: "recovery" } } }));
 			}
 			this.schedule(ctx);
@@ -224,7 +220,6 @@ export class GoalScheduler {
 			}
 			return;
 		}
-		// Genuine host work supersedes an old scheduling claim, but never resets used.
 		this.takeover(ctx);
 	}
 	takeover(ctx: ExtensionContext): void {
@@ -301,7 +296,6 @@ export class GoalScheduler {
 				}
 			}
 			this.cancelTimer();
-			// Runtime readiness polling cannot authorize: claim() is called again at delivery.
 			this.armedGeneration = s.generation;
 			this.core.runtime.queueContinuation(ctx, g, true);
 		});

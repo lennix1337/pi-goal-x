@@ -39,9 +39,6 @@ export function normalizeGoalScheduler(raw: unknown): GoalSchedulerState | undef
 	const integer = (n: unknown) => typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
 	const text = (v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 2000;
 	if (s.version !== 1 || !text(s.owner) || !text(s.generation) || !integer(s.used) || typeof s.repairUsed !== "boolean" || !["idle", "ready", "waiting", "claimed", "running", "interrupted"].includes(s.phase)) return invalid();
-	// Goals saved before next actions were removed still carry decision.nextAction.
-	// The field is stripped after validation and never makes a goal invalid:
-	// rejecting one would strand it as interrupted with spent allowance.
 	if (s.decision && (s.decision.kind !== "wait" && (s.decision.kind !== "ready" || !["ready", "repair", "kickoff", "recovery"].includes(s.decision.purpose)))) return invalid();
 	if (s.wait) {
 		const w = s.wait;
@@ -66,10 +63,6 @@ export function normalizeGoalScheduler(raw: unknown): GoalSchedulerState | undef
  * they belong with the reset-on-change state, never with retained counters.
  */
 export function schedulerSummaryParts(s: GoalSchedulerState | undefined, limit?: number, showRuns = true): { runs: string; instructions: string } {
-	// An unlimited allowance has no limit to report, so the runs line is left
-	// empty rather than rendered as "used/unlimited". A finite allowance is
-	// reported unless showAutonomousRuns is off. Enforcement reads the limit
-	// elsewhere; this is display only.
 	const runs = limit !== undefined && showRuns ? `Autonomous runs: ${s?.used ?? 0}/${limit}${limit === 0 ? " (automatic continuation disabled)" : ""}.` : "";
 	const lines: string[] = [];
 	if (s) {

@@ -121,7 +121,6 @@ export function validateTaskSkip(args: {
 	const task = findTaskInTree(args.goal.taskList.tasks, args.taskId);
 	if (!task) return { ok: false, message: `Task "${args.taskId}" not found.` };
 	if (task.status === "complete") return { ok: false, message: `Task "${args.taskId}" is already complete.` };
-	// Skipped tasks toggle via the executor; reason is only required for first-time skips.
 	if (task.status === "skipped") return { ok: true };
 	if (!args.reason.trim()) return { ok: false, message: "Skipping requires a non-empty reason." };
 	return { ok: true };
@@ -192,7 +191,6 @@ export function validateTaskListProposal(args: {
 			if (childErr) return { ok: false, message: childErr };
 		}
 	}
-	// Check subtask depth limit
 	const maxDepth = args.maxSubtaskDepth ?? 1;
 	const depthViolation = findSubtaskDepthViolation(args.tasks, maxDepth);
 	if (depthViolation) return { ok: false, message: depthViolation };

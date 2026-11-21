@@ -59,7 +59,6 @@ export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?
 		if (!title) return { ok: false, message: `Task "${id}" must have a non-empty title.` };
 	}
 
-	// Parent must exist and relationships must be acyclic.
 	const byId = new Map<string, FlatTaskInput>(flat.map((item) => [item.id.trim(), item]));
 	for (const item of flat) {
 		const parentId = typeof item.parent_id === "string" && item.parent_id.trim() ? item.parent_id.trim() : undefined;
@@ -67,7 +66,6 @@ export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?
 			return { ok: false, message: `Task "${item.id.trim()}" references missing parent "${parentId}".` };
 		}
 		if (parentId) {
-			// Walk up; if we return to the node itself, there is a cycle.
 			let cursor: FlatTaskInput | undefined = byId.get(parentId);
 			const seen = new Set<string>([item.id.trim()]);
 			while (cursor) {
@@ -112,7 +110,6 @@ export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?
 	}
 	const tasks = roots.map(buildNode);
 
-	// Lightweight placement: lightweight_subtasks must be on a task with children.
 	for (const item of flat) {
 		if (item.lightweight_subtasks === true) {
 			const children = childrenOf.get(item.id.trim());
@@ -308,8 +305,6 @@ pi.registerTool(defineTool({
 		const gateLabel = blockCompletion ? " (blockCompletion enabled)" : "";
 		const proposalText = [`Proposed task list${gateLabel}:`, "", ...taskLines].join("\n");
 		const taskListFocus = core.focusedOperationToken(core.state.goal.id);
-		// Task-only confirmation: the complete result is the user's decision.
-		// No auditor toggle and no goal-state mutation happen here.
 		core.enterGoalModal();
 		let dialogResult: TaskConfirmationResult;
 		try {
@@ -332,8 +327,6 @@ pi.registerTool(defineTool({
 			refreshFromDisk: true,
 			mutate: (g) => {
 				const merged = mergeTasksWithExisting(g.taskList?.tasks, converted.tasks);
-				// §7.5: preserve currentTaskId only when the same id remains pending;
-				// otherwise clear it. Dashboard state recomputes on the next render.
 				const currentTaskId =
 					g.currentTaskId && currentTaskIdIsPending(merged, g.currentTaskId) ? g.currentTaskId : undefined;
 				return { ...g, currentTaskId, taskList: { tasks: merged, blockCompletion, proposedAt: now }, updatedAt: now };
@@ -347,9 +340,6 @@ pi.registerTool(defineTool({
 			}],
 		});
 		if (!applyResult.ok) {
-			// A stale writer receives a typed conflict carrying the current
-			// revision; whole-tree replacement is authoritative and must not
-			// silently merge unknown new structure (follow-up Stage 4).
 			return {
 				content: [{ type: "text", text: `Task list not applied: ${applyResult.message ?? "the state mutation was rejected"}. Review the current goal and re-propose the task list.` }],
 				details: goalDetails(core.state.goal),
@@ -414,8 +404,6 @@ pi.registerTool(defineTool({
 				isError: true,
 			};
 		}
-		// update_goal_task applies only to an active goal with an existing task
-		// list; invalid lifecycle calls return a state-aware failure.
 		if (!core.state.goal) {
 			return { content: [{ type: "text", text: "No goal is focused." }], details: goalDetails(core.state.goal), isError: true };
 		}
@@ -456,8 +444,6 @@ pi.registerTool(defineTool({
 				return { content: [{ type: "text", text: result.message }], details: goalDetails(core.state.goal), isError: true };
 			}
 			core.updateUI(ctx);
-			// §8.1: surface the task contract so the next continuation prompt and
-			// the dashboard can show what starting this task requires.
 			const started = findTaskInTree(core.state.goal.taskList?.tasks ?? [], params.task_id);
 			const contract = started?.verificationContract ? ` Contract: ${started.verificationContract}` : "";
 			return {

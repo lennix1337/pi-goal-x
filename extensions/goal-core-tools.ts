@@ -71,9 +71,6 @@ pi.registerTool(defineTool({
 		if (core.state.goal) core.syncGoalPromptFromDisk(ctx);
 		const view = core.goalForDisplay() ?? core.state.goal;
 		const params = (_params ?? {}) as { verbose?: boolean; include_history?: boolean; section?: "summary" | GoalDetailSection; task_id?: string; cursor?: string };
-		// PR E profile: legacy-v1 keeps pre-optimization verbose-by-default output;
-		// compact-v2 (default) returns a concise state line set because the full
-		// policy already lives in the injected active-goal system block.
 		const verbose = promptProfile() === "legacy-v1" || params.verbose === true;
 		const includeHistory = params.include_history === true || verbose;
 		const otherCount = otherOpenGoalCount(core.goalsById, core.focusedGoalId);
@@ -254,8 +251,6 @@ pi.registerTool(defineTool({
 	}
 	if (!core.state.goal) throw new Error("Goal disappeared during blocked validation.");
 
-	// Issue #26: the blocker reason is now required for update_goal(blocked) —
-	// it feeds the fingerprint, the ledger event, and the user-facing report.
 	const reason = reasonInput?.trim() ?? "";
 	if (!reason) {
 		return {
@@ -311,7 +306,6 @@ pi.registerTool(defineTool({
 	const oracleSettings = settingsSnapshot.value.oracle;
 	if (!oracleSettings?.enabled) return commitBlocked();
 
-	// ── opt-in Oracle flow (issue #26) ───────────────────────────────────
 	const goalAtBlock = core.state.goal;
 	const focusToken = core.focusedOperationToken(goalAtBlock.id);
 	const fingerprint = buildBlockerFingerprint(goalAtBlock, reason);
@@ -523,8 +517,6 @@ pi.registerTool(defineTool({
 	}, { additionalProperties: false }),
 	executionMode: "sequential",
 	async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-		// P1-3: persist any buffered in-turn mutations now so the auditor and
-		// status transitions observe the current task/state, not the stale disk.
 		core.flushGoalTransaction(ctx);
 		if (!!params.continuation === !!params.status || (params.continuation && (params.reason !== undefined || params.attempted_actions !== undefined || params.suggested_action !== undefined || params.completion_summary !== undefined))) {
 			return { content: [{ type: "text", text: "Provide exactly one lifecycle status or continuation, without mixing their fields." }], details: {}, terminate: false, isError: true };

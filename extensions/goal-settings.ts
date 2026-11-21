@@ -1,28 +1,3 @@
-/**
- * Layered global goal settings (clean rewrite of PR #27).
- *
- * Resolution order (per leaf):
- *
- *     environment > project layer > global layer > defaults
- *
- * Files:
- *
- *     global:  ${PI_CODING_AGENT_DIR:-~/.pi/agent}/pi-goal-x-settings.json
- *     project: <cwd>/.pi/pi-goal-x-settings.json
- *
- * Overrides: PI_GOAL_GLOBAL_SETTINGS_FILE, PI_GOAL_SETTINGS_FILE, and the
- * per-setting PI_GOAL_* variables.
- *
- * Two distinct types (never one interface for both): GoalSettingsLayer is the
- * SPARSE file content (booleans tri-state, 0 meaningful); GoalSettings is the
- * RESOLVED runtime value with concrete defaults. Layer files are parsed into
- * diagnostics rather than rejected wholesale — unknown keys are reported, and
- * every valid known key still applies.
- *
- * Mutations go through mutateSettingsLayer(): fresh re-read under a filesystem
- * path lock, structured-clone apply, atomic same-dir temp+rename write with
- * mode preservation — concurrent processes never lose each other's keys.
- */
 
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
@@ -283,7 +258,6 @@ function invalidateSettingsCachePath(target: string): void {
 	resolvedSettingsCache.length = 0;
 }
 
-// ── leaf parsers (diagnostic-producing, never throwing) ─────────────────────
 
 function asBool(value: unknown): boolean | undefined {
 	if (value === true || value === "true") return true;
@@ -300,7 +274,6 @@ function asPositiveInt(value: unknown): number | undefined {
 	return undefined;
 }
 
-/** Positive-integer-or-zero parser (for settings where 0 = off / no limit). */
 function asNonNegativeInt(value: unknown): number | undefined {
 	if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
 	if (typeof value === "string") {
@@ -573,7 +546,6 @@ export function parseGoalSettings(raw: unknown): GoalSettings {
 
 
 function fingerprintOf(text: string): string {
-	// Cheap stable fingerprint: length + simple rolling sum (not security).
 	let hash = 2166136261;
 	for (let i = 0; i < text.length; i += 1) {
 		hash ^= text.charCodeAt(i);
@@ -778,7 +750,6 @@ function resolvedSettingsSnapshot(cwd: string, env: NodeJS.ProcessEnv): Settings
 		envValue: env.PI_GOAL_ROOT, envVar: "PI_GOAL_ROOT",
 		projectValue: project.layer.goalsRoot, globalValue: global.layer.goalsRoot, defaultValue: undefined,
 	}));
-	// Issue #26: Oracle leaves resolve per leaf like every other setting.
 	const oracleEnabled = track("oracle.enabled", resolveLeaf<boolean>({
 		projectValue: project.layer.oracle?.enabled,
 		globalValue: global.layer.oracle?.enabled,
@@ -933,7 +904,6 @@ export function loadGoalSettings(cwd: string, env: NodeJS.ProcessEnv = process.e
 	return copyResolvedSettings(resolvedSettingsSnapshot(cwd, env).value);
 }
 
-// ── conflict-safe scoped mutation ───────────────────────────────────────────
 
 export type SettingsMutation =
 	| { op: "set"; path: readonly string[]; value: unknown }
@@ -988,8 +958,7 @@ export function acquirePathLock(
 	const retryMs = opts.retryMs ?? 5;
 	const ttlMs = opts.staleTtlMs ?? 30_000;
 	fs.mkdirSync(path.dirname(lockPath), { recursive: true });
-	// The token identifies this holder: after a stale recovery the file at
-	// lockPath may belong to someone else, and release() must not delete it.
+	// external: a recovered lock path may already belong to another process.
 	const token = randomUUID();
 	const payload = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString(), token });
 	const readLockText = (): string | undefined => {
@@ -1012,7 +981,6 @@ export function acquirePathLock(
 					try {
 						fs.unlinkSync(lockPath);
 					} catch {
-						// Already removed by stale recovery elsewhere.
 					}
 				},
 			};
@@ -1029,8 +997,7 @@ export function acquirePathLock(
 				}
 				const stale = Date.now() - stat.mtimeMs > ttlMs || (typeof pid === "number" && !pidAlive(pid));
 				if (stale) {
-					// Only remove the exact stale file we observed: another writer may
-					// have recovered it and taken the lock since.
+					// external: another process may recover and reacquire a lock after inspection.
 					if (readLockText() !== observedText) continue;
 					try {
 						fs.unlinkSync(lockPath);
@@ -1039,8 +1006,7 @@ export function acquirePathLock(
 					continue;
 				}
 			} catch {
-				// Lock vanished between EEXIST and stat (holder released): brief
-				// backoff so we never busy-spin against the next holder.
+				// external: a lock can vanish between EEXIST and stat.
 				sleepMs(retryMs);
 				continue;
 			}
@@ -1091,9 +1057,10 @@ function atomicWriteJson(target: string, value: unknown, options: { defaultMode:
 		} catch { }
 		throw error;
 	}
+	// external: directory fsync support varies by platform.
 	try {
 		fs.fsyncSync(fs.openSync(parent, "r"));
-	} catch { /* directory fsync is platform-dependent; best effort */ }
+	} catch { }
 }
 
 function applyPathMutation(layer: GoalSettingsLayer, mutation: SettingsMutation): void {
@@ -1188,7 +1155,6 @@ export function saveGoalSettingsFileConfig(cwd: string, settings: GoalSettings):
 	const target = goalSettingsPath(cwd);
 	const lock = acquirePathLock(`${target}.lock`);
 	try {
-		// Fresh re-read under the lock: never persist a cached whole object.
 		const current = readSettingsLayerFresh(target, "project");
 		if (current.status === "invalid") {
 			throw new SettingsMutationError(`Refusing to overwrite invalid project settings at ${target}`, current.diagnostics);

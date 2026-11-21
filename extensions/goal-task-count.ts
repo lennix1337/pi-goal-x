@@ -1,14 +1,3 @@
-/**
- * Single task-counting implementation (P1-10).
- *
- * Previously ~5 copies of the same subtree walker lived in goal-policy,
- * goal-auditor, widgets/goal-widget, widgets/task-list-overlay, and
- * prompts/goal-prompts, with subtly different shapes. All call sites now use
- * this one walker. `doneIncludesSkipped` is explicit so "skipped counts as
- * done" semantics can never drift silently again: today every call site uses
- * false (skipped is tracked separately, matching prior behavior); the flag
- * exists for surfaces that deliberately want skipped folded into done.
- */
 
 import type { GoalTask } from "./goal-record.ts";
 
@@ -47,7 +36,6 @@ export function countTaskSubtree(
 		total,
 		complete: done,
 		skipped: rawSkipped,
-		// Pending is never skipped work: skipping a task resolves it for the completion gate.
 		pending: total - rawComplete - rawSkipped,
 		...(opts.collectPending ? { pendingTasks } : {}),
 	};

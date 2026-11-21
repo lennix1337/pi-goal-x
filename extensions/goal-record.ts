@@ -284,13 +284,6 @@ export function normalizeTaskList(value: unknown): GoalTaskList | undefined {
 }
 
 /**
- * Shared positive-safe-integer normalization for persisted numeric values such
- * as tokenBudget. Non-finite, fractional, zero, negative, and unsafe numbers
- * normalize to absent rather than silently changing meaning. Live tool input
- * is validated separately (rejected with a user-facing message); this handles
- * persisted legacy values.
- */
-/**
  * Live-input validation for token_budget (shared by slash-command parsing, tool
  * execution, and record creation). Tool callers are untrusted, so the schema
  * Type.Integer bound is double-checked at runtime with Number.isSafeInteger.
@@ -348,16 +341,11 @@ export function normalizeGoalRecord(value: unknown): GoalRecord | null {
 	if (!objective) return null;
 
 	const timestamp = nowIso();
-	// Persisted lifecycle status is authoritative. autoContinue is an execution
-	// preference only: it must never rewrite status during reads or migration.
 	const status = normalizeGoalStatus(raw.status);
 	const autoContinue = typeof raw.autoContinue === "boolean" ? raw.autoContinue : true;
 	const usage = normalizeUsage(raw.usage);
 	const sisyphus = raw.sisyphus === true;
 	const taskList = normalizeTaskList(raw.taskList);
-	// §7.4: accept a persisted currentTaskId only when it references an existing
-	// pending task; otherwise leave it absent. Historical files stay absent and
-	// are never rewritten just because the field is missing.
 	const currentTaskId =
 		typeof raw.currentTaskId === "string" && currentTaskIdIsPending(taskList?.tasks, raw.currentTaskId.trim())
 			? raw.currentTaskId.trim()

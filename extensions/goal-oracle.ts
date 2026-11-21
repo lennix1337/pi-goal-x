@@ -1,20 +1,4 @@
-/**
- * Issue #26 — opt-in read-only Blocker Oracle.
- *
- * A cheap executor can benefit from ONE stronger, read-only consultation
- * before giving up and asking the user. Hard safety properties (plan §64):
- *
- *   - disabled by default; requires an explicit resolvable provider/model;
- *   - invoked only through a valid update_goal({status:"blocked"}) request;
- *   - the nested session gets ONLY read/grep/find/ls + a structured submit
- *     tool — no write/edit/bash, ever;
- *   - one successful consultation per blocker fingerprint (usage, timestamps,
- *     and revision never change the fingerprint);
- *   - actionable advice keeps the goal ACTIVE and arms a follow-up marker;
- *     blocking is only permitted after a meaningful work attempt or when the
- *     Oracle concludes needs_human/insufficient_context;
- *   - every phase is durably recorded in the ledger with bounded payloads.
- */
+// external: untrusted Oracle sessions must not expose write, edit, or shell tools.
 
 import { Type } from "@earendil-works/pi-ai";
 import { createHash } from "node:crypto";
@@ -237,7 +221,6 @@ export async function runBlockerOracle(args: {
 
 	try {
 		const createSession = args.createSession ?? (await import("@earendil-works/pi-coding-agent")).createAgentSession as unknown as (...sessionArgs: unknown[]) => Promise<{ session: OracleSessionFactory }>;
-		// Read-only tool profile: NO bash/write/edit is exposed to the Oracle.
 		const { session } = await createSession({
 			cwd: args.ctx.cwd,
 			model: model.model,

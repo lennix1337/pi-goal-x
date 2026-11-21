@@ -16,12 +16,7 @@ import { showEscapeDialog, type EscapeDialogResult } from "./widgets/goal-escape
 import type { GoalCore } from "./goal-state.ts";
 import type { GoalMutationOutcome } from "./goal-service.ts";
 
-// update_goal(complete) execution path: validates the completable state,
-// runs the independent auditor (or the disabled/legacy-skip branches), and
-// commits through the single completion transaction. The auditor derives the
-// requirements from the objective and any verification contract and inspects
-// actual workspace evidence. An optional completion_summary is forwarded as an
-// UNTRUSTED executor claim — never evidence and never an approval bypass.
+// external: executor completion summaries are untrusted claims, not verification evidence.
 export async function runGoalCompletionFlow(core: GoalCore, ctx: ExtensionContext, completionSummary?: string): Promise<GoalToolResult> {
  const flushError = core.goalService.flushForAudit(ctx);
  if (flushError) return {content: [{type: "text", text: flushError}], details: goalDetails(core.state.goal), isError: true};
@@ -64,18 +59,6 @@ export async function runGoalCompletionFlow(core: GoalCore, ctx: ExtensionContex
 		? `${settings.provider ?? "default"}/${settings.model ?? "default"}${settings.thinkingLevel ? `:${settings.thinkingLevel}` : ""}`
 		: "default";
 
-/**
- * Single transaction for every successful completion commit — audit-approved,
- * globally disabled, legacy per-goal skipped, or user-bypassed via Escape.
- * Deferred archival: sets the goal complete in memory + writes the active
- * file WITHOUT archiving; archival happens at turn_end so the agent can
- * recognise the outcome before the goal is archived.
- *
- * Returns a discriminated result. When GoalService.apply fails (stale focus,
- * missing file, write failure, or invalid lifecycle state), it returns
- * { ok: false, message, terminate: false } — never a completed report and
- * never a termination request (follow-up Stage 3).
- */
 type CompletionCommitResult = GoalToolResult & { ok: boolean };
 
 function commitGoalCompletion(core: GoalCore, ctx: ExtensionContext, opts: {
@@ -94,9 +77,6 @@ function commitGoalCompletion(core: GoalCore, ctx: ExtensionContext, opts: {
 		completeResult = core.goalService.apply(ctx, {
 			reconcile: false,
 			focusToken: opts.completionFocus,
-			// Apply onto the goal as it is now: usage charged by accountProgress above
-			// and any change made during the audit must survive. Only the objective
-			// comes from the audited snapshot (merged from the goal file).
 			mutate: (current) => ({ ...current, objective: opts.goal.objective, status: "complete" as const, stopReason: "agent" as const, updatedAt: nowIso() }),
 		});
 	} catch (err) {
@@ -221,7 +201,7 @@ if (settings.disabled === true) {
 	}, 80);
 	core.auditAnimationTimer?.unref?.();
 
-	core.auditAbortController?.abort(); // Clean up any stale controller
+	core.auditAbortController?.abort();
 	const completionAuditController = new AbortController();
 	core.auditAbortController = completionAuditController;
 
@@ -253,8 +233,6 @@ if (settings.disabled === true) {
 			},
 		});
 	} catch (error) {
-		// An auditor that rejects must not leave the audit machine running:
-		// a stale progress record makes Escape abort a phantom audit forever.
 		if (core.auditAbortController === completionAuditController) core.auditAbortController = null;
 		core.stopAuditAnimation();
 		core.auditProgress = null;
@@ -269,11 +247,6 @@ if (settings.disabled === true) {
 		return core.focusedOperationCancelledResult("Goal completion", completionFocus);
 	}
 
-	// If the audit was aborted by the user (Esc), show a TUI dialog letting
-	// the user choose: mark complete without audit, or continue working.
-	// The low-level abort callback (core.abortAudit) only records transient
-	// runtime state; exactly one canonical ledger event is appended here after
-	// the user's choice (follow-up Stage 2).
 	if (auditor.error === "Auditor aborted.") {
 		core.auditProgress = null;
 		core.goalWidgetComponentRef.current?.invalidate();
