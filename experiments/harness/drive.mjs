@@ -1,30 +1,5 @@
 #!/usr/bin/env node
-/**
- * harness/drive.mjs
- *
- * Drive a pi AgentSession via the SDK so that:
- *   1. Slash commands fire and their queued continuation turn actually runs
- *      (which `pi -p "/slash"` does NOT wait for; -p exits as soon as the
- *      handler returns, leaving sendMessage-queued turns un-drained).
- *   2. We can chain multiple turns deterministically without --continue.
- *   3. The extension under test is the only loaded extension.
- *
- * NDJSON event stream is written to stdout, matching the `pi --mode json`
- * shape closely enough for extract.sh / grade.sh to consume.
- *
- * Usage:
- *   drive.mjs <case-dir> <run-dir>
- *
- * Required env:
- *   PI_GOAL_TEST_EXTENSION    abs path to extension file
- *   PI_GOAL_TEST_PROVIDER     provider id (e.g. openrouter, fireworks)
- *   PI_GOAL_TEST_MODEL        model id
- *   PI_GOAL_TEST_THINKING     off | low | medium | high
- *   PI_GOAL_TEST_TURN_TIMEOUT seconds (per session.prompt call), default 180
- *
- * INPUT.md format: lines that begin with "TURN: " are user prompts (one per line).
- * Lines beginning with "#" or empty are ignored.
- */
+// external: pi -p exits before queued continuation turns finish.
 
 import { readFileSync, mkdirSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
@@ -98,10 +73,7 @@ const modelRegistry = ModelRegistry.create(authStorage);
 
 let model = modelRegistry.find(provider, modelId);
 if (!model) {
-	// CLI behaviour: when --provider X --model Y but Y is not a known built-in or
-	// custom model under provider X, pi constructs a "custom model id" — taking
-	// the shape of any same-provider model and overriding id+name. We replicate
-	// that here for fireworks router IDs etc. See pi's buildFallbackModel().
+	// external: Pi uses a same-provider fallback for unknown model IDs.
 	const sameProvider = modelRegistry.getAll().filter((m) => m.provider === provider);
 	if (sameProvider.length === 0) {
 		console.error(`No models available for provider "${provider}". Cannot build fallback.`);
@@ -128,8 +100,7 @@ const settingsManager = SettingsManager.inMemory({
 	retry: { enabled: true, maxRetries: 2 },
 });
 
-// Custom agent dir to avoid leaking host's ~/.pi extensions/skills/themes.
-// Make it empty + isolated to this run.
+// external: the harness must isolate the host Pi configuration.
 const agentDir = join(runDir, "agent-dir");
 mkdirSync(agentDir, { recursive: true });
 
@@ -209,15 +180,7 @@ session.subscribe((e) => {
 	}
 });
 
-// Quiet-window for "no more chained activity". Slash commands (sendMessage with
-// triggerTurn) queue follow-up turns that fire-and-forget AFTER prompt() resolves.
-// autoContinue also fires another turn ~50ms after each turn_end. The window
-// must be large enough to capture LLM RTT before the next turn_start event,
-// otherwise the harness exits between an autoContinue chain's links. 400ms was
-// too tight for sisyphus goals where the schema forces turn-per-step
-// (step_complete) execution. We use a goal-aware policy: while a goal is
-// active+autoContinue, we keep waiting (with a generous ceiling); only when the
-// goal goes paused/complete/missing do we fall back to the short quiet window.
+// external: Pi can dispatch queued turns after prompt() resolves.
 const QUIET_MS = Number(process.env.PI_GOAL_QUIET_MS || "5000");
 const POLL_MS = 50;
 
@@ -272,8 +235,6 @@ const promptWithTimeout = async (text, idx, opts = {}) => {
 	}
 	try {
 		const promptResult = session.prompt(text);
-		// Race prompt completion against timeout; we also want to drain triggered
-		// turns even after prompt() resolves.
 		await Promise.race([
 			promptResult,
 			new Promise((_, rej) => setTimeout(() => rej(new Error("prompt timeout")), turnTimeoutMs)),

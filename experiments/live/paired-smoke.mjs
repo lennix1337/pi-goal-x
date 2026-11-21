@@ -48,7 +48,6 @@ async function run(caseId,phase) {
    const rejected=await tools.get('update_goal').execute('premature',{status:'complete'},controller.signal,undefined,context);
    rejectionVerified=JSON.stringify(rejected.content).includes('rejected')||JSON.stringify(rejected.content).includes('changes')||JSON.stringify(rejected.content).includes('disapproved');
    if(!rejectionVerified)errors.push('Independent auditor did not reject the missing artifact');
-   // User resumes after rejection; retain audit history, disable only auto-driving for the bounded harness.
    const current=capturedCore.state.goal;
    if(current){capturedCore.setGoal({...current,status:'active',autoContinue:false},context);}
   }

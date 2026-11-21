@@ -1,26 +1,3 @@
-// FULL emulator-level reproduction: pi's real frame (TuiMainScreen +
-// ScrollView transcript + VStack dock + real GoalWidgetComponent) writing
-// into a REAL terminal emulator (@xterm/headless — the same VT engine as
-// xterm.js/ghostty-class emulators), with a user who has scrolled up.
-//
-// Scenarios:
-//   A. Terminal BIGGER than the widget (widget fits) — the user's new
-//      finding: goal updates keep yanking the viewport to the bottom.
-//   B. Resize the terminal BELOW the widget's natural height (expanded),
-//      then goal updates.
-//   C. Resize below the widget (unexpanded), then goal updates.
-//   D. Scroll-up hold: with the user scrolled up, a goal update must not
-//      change the buffer's line count (the multiplexer/emulator yank
-//      trigger) and must not emit 2J/3J.
-//
-// Reported per update: widget rendered height, frame length, xterm buffer
-// length, baseY, viewportY, and whether the update (a) changed the buffer
-// line count [YANK TRIGGER], (b) wiped the scrollback [2J/3J].
-//
-// Usage:
-//   node experiments/scroll-repro/emulator-repro.mjs            # report
-//   node experiments/scroll-repro/emulator-repro.mjs --expect   # assertions
-//   node experiments/scroll-repro/emulator-repro.mjs --full     # dump streams
 
 import xtermPkg from "@xterm/headless";
 const { Terminal } = xtermPkg;

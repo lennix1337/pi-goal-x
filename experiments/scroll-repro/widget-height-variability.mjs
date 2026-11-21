@@ -1,16 +1,3 @@
-// Root-cause evidence (spec 2026-08-11-stable-widget-height): measure the
-// goal widget's NATURAL (unbounded) rendered height across goal-state
-// mutations and show how the terminal-cap rendering (min(natural, cap))
-// changes over time — the buffer line-count churn that makes the terminal
-// jump to the bottom and defeats scroll-up.
-//
-// Usage:
-//   node widget-height-variability.mjs [--compact] [--rows N]
-//
-// Pure renderer calls only (renderExpandedDashboard / renderCompactDashboard
-// / renderAuditorWidgetLines); no TUI. Each "state" is a goal mutation that
-// happens naturally while a goal runs: activity-feed growth, current-task
-// contract/evidence appearing, verification text, budget, task growth.
 
 import { renderExpandedDashboard, renderCompactDashboard } from "../../extensions/widgets/goal-dashboard-renderer.ts";
 import { renderAuditorWidgetLines } from "../../extensions/widgets/goal-widget.ts";

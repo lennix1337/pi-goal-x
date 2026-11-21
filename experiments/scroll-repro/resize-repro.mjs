@@ -1,19 +1,3 @@
-// Full reproduction: resize the terminal below the widget's height
-// (both unexpanded and expanded), then keep driving goal-state updates and
-// periodic re-renders (spinner-style), capturing the REAL byte stream from
-// the real TuiMainScreen and counting everything that could re-pin or wipe
-// the terminal:
-//   - \x1b[2J / \x1b[3J (full-render scrollback wipe)
-//   - frame length changes (buffer line-count churn -> emulator re-pin)
-//   - widget rendered height
-//   - "\r\n" sequences emitted while the cursor sits on the bottom row
-//     (emulator scroll-to-bottom)
-//   - pi's internal fullRender triggers (firstChanged < viewportTop, etc.)
-//
-// Usage:
-//   node experiments/scroll-repro/resize-repro.mjs            # report
-//   node experiments/scroll-repro/resize-repro.mjs --expect   # assertions
-//   node experiments/scroll-repro/resize-repro.mjs --full     # dump all streams
 
 import { ScrollView } from "../../node_modules/@earendil-works/pi-tui/dist/components/scroll-view.js";
 import { VStack } from "../../node_modules/@earendil-works/pi-tui/dist/components/v-stack.js";
@@ -66,12 +50,7 @@ function analyze(stream) {
 		if (s.startsWith("\x1b[?1049", i)) { alt1049++; i += 7; continue; }
 		i++;
 	}
-	// A "\r\n" pair that lands on the terminal's bottom row pushes a line and
-	// scrolls the viewport (the emulator's scroll-to-bottom trigger). We can't
-	// know the emulator's cursor position from bytes alone, but any
-	// differential write that ENDS a "\r\n" run on the frame's last line is a
-	// candidate; count every \r\n for now and flag streams that contain them
-	// after a widget-only update.
+	// external: CRLF at the bottom row scrolls a terminal viewport.
 	const rn = (s.match(/\r\n/g) ?? []).length;
 	return { clear2J, clear3J, alt1049, crlf: rn };
 }

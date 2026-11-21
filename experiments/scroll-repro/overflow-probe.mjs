@@ -1,13 +1,4 @@
-// PROBE: when the frame overflows the terminal (the user: "only the widget
-// is viewable"), does ANY widget content change trigger pi-tui's full render
-// (2J+3J wipe)? pi's condition: firstChanged < previousBufferLength - height
-// -> fullRender(true) -> the terminal clears scrollback + redraws -> the
-// user is forced to the bottom and N churns.
-//
-// Uses the same real stack as emulator-repro: TuiMainScreen + ScrollView
-// transcript + VStack dock (pending/status/widget/editor/footer) + real
-// GoalWidgetComponent into @xterm/headless. Mutates the active goal's usage
-// (the per-render "elapsed tick") and counts 2J/3J wipes per height.
+// external: pi-tui full renders clear terminal scrollback.
 import xtermPkg from "@xterm/headless";
 const { Terminal } = xtermPkg;
 import { ScrollView } from "../../node_modules/@earendil-works/pi-tui/dist/components/scroll-view.js";

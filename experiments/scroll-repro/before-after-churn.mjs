@@ -1,31 +1,4 @@
-// Headless before/after measurement for the goal questionnaire's viewport churn.
-//
-// Drives the REAL runGoalQuestionnaire through the REAL pi-tui differential
-// renderer with a fake terminal, mirroring pi's showExtensionCustom (editor
-// swap for non-overlay) and the REAL pi frame layout (header, chat, status
-// with working spinner, editor -> dialog, footer). For each scenario it
-// reports:
-//   - open / nav / close terminal scrolls (a \n feed on the bottom row scrolls)
-//   - \x1b[2J / \x1b[3J emissions (screen clear / SCROLLBACK ERASE)
-//   - post-close viewport position (a 2J+3J full render homes the cursor and
-//     wipes scrollback — the "~10s to scroll back to the bottom" delay)
-//   - scrollback content: dialog tail in the main buffer, chat visible above
-//   - SPINNER PHASE: pi's working spinner ticks every ~80ms and calls
-//     requestRender; with the dialog open and the user scrolled up reading the
-//     proposal, each tick's output snaps the terminal viewport back to the
-//     bottom ("terminal scrolls back down after X seconds"). The goal dialogs
-//     pause the spinner (setWorkingVisible(false)) for their duration, so the
-//     fixed harness asserts 0 bytes per tick -> no snap.
-//
-// Usage:
-//   node before-after-churn.mjs                 # report mode (measures current behavior)
-//   node before-after-churn.mjs 40              # report mode, rows=40
-//   node before-after-churn.mjs --expect-fixed  # assertion mode
-//
-// Report mode exits 0 always; --expect-fixed fails when any open/nav/close
-// step emits 2J/3J, when a post-close viewport is yanked, when the fits
-// scenario scrolls, or when a spinner tick emits output while the user is
-// scrolled up reading the dialog.
+// external: terminal scrollback is cleared by 2J/3J full renders.
 
 import { Container } from "../../node_modules/@earendil-works/pi-tui/dist/tui.js";
 import { TuiMainScreen } from "../../node_modules/@earendil-works/pi-tui/dist/index.js";
@@ -253,9 +226,6 @@ async function runScenario(chatLines, context, label, expectsFits) {
 	return failures;
 }
 
-// Scenario A: content fits -> must stay 0-churn, no clears, no periodic output.
-// Scenario B: proposal taller than the terminal -> the churn bug (2J+3J on close).
-// Scenario C: chat taller than the terminal + tall proposal -> same close bug.
 const scenarios = [
 	["A fits: short chat + short proposal", 10, SHORT_CONTEXT, true],
 	["B tall dialog: short chat + long proposal", 10, LONG_CONTEXT, false],

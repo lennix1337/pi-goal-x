@@ -1,6 +1,3 @@
-// Real managed Pi SDK + pi-goal-x + pi-multi-account; scripted providers, no external model calls.
-// Every account hits its quota while a goal runs; the goal must stay active, wait without
-// retrying, and resume exactly once by itself when an account comes back. No user message.
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -122,7 +119,6 @@ try {
   const created = results.find(row => row.tool === 'create_goal')?.goal;
   assert.ok(created, 'create_goal ran');
 
-  // Both accounts fail with quota; the goal must stay active and the session must stop asking.
   await waitFor(() => requests.filter(r => r.quota === 'exhausted').length >= providers.length, 'every account to hit its quota');
   await sleep(400);
   const exhaustedRequests = requests.filter(r => r.quota === 'exhausted').length;
@@ -134,7 +130,6 @@ try {
   assert.ok(failoverState.pendingFrom && failoverState.pendingReason, 'the wait is persisted, not only held in memory');
   let reload;
   if (reloadWhileWaiting) {
-    // A reload while waiting: the goal's own recovery continuation must carry the wait over.
     const before = requests.length;
     await session.reload();
     assert.deepEqual(loader.getExtensions().errors, []);

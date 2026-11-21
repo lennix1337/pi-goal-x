@@ -1,29 +1,3 @@
-// Headless validation for the goal widget terminal-height bound
-// (spec 2026-08-10-widget-height-bound-scrollback-fix) and the stable
-// rendered height (spec 2026-08-11-stable-widget-height).
-//
-// Drives the REAL pi-tui main-screen renderer (TuiMainScreen — pi's default
-// renderer) with pi's REAL frame layout (ScrollView transcript + VStack dock:
-// header, chat, status, widget, editor, footer — exactly as
-// interactive-mode.js mounts them in regular mode) and the REAL
-// GoalWidgetComponent, at the user's repro: terminal height == the goal
-// UI's natural height.
-//
-// Reports per scenario:
-//   - widget rendered lines (post-fix must be <= terminalRows - DOCK_RESERVE)
-//   - frame length + viewportTop (lines above the viewport live in terminal
-//     scrollback and are reachable by scrolling up)
-//   - whether the chat and the editor/footer are on screen or reachable
-//   - \x1b[2J / \x1b[3J emissions on a widget state update (a 3J wipes
-//     terminal scrollback — the bug)
-//   - sticky-cap scenarios (spec 2026-08-11): widget rendered height +
-//     buffer line count stay CONSTANT across goal-state changes once the
-//     widget is at the cap, the fits case is byte-identical, resizes adapt,
-//     and regime changes reset the latch.
-//
-// Usage:
-//   node widget-height-bound.mjs           # report mode
-//   node widget-height-bound.mjs --expect  # assertion mode (exit 1 on failure)
 
 import { ScrollView } from "../../node_modules/@earendil-works/pi-tui/dist/components/scroll-view.js";
 import { VStack } from "../../node_modules/@earendil-works/pi-tui/dist/components/v-stack.js";
@@ -256,8 +230,6 @@ function runFitsByteIdentical() {
 	const h2 = widgetSpan(frame2, widgetStart);
 	check(h2 === natural.length, `fits-case height unchanged after update (${h2} == ${natural.length})`);
 
-	// growth (activity feed + progress) must NOT change the rendered height —
-	// the fits case is latched at the first-render natural (spec revision)
 	eventsRef.current = [{ type: "task_complete", at: "2026-08-10T00:01:00Z", goalId: baseGoal.id, taskId: "t1" }];
 	currentRef.current = { ...currentRef.current, taskList: { tasks: [task("t1", "complete"), task("t2", "pending"), task("t3", "pending")] } };
 	component.invalidate();

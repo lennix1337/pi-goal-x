@@ -1,11 +1,4 @@
 #!/usr/bin/env node
-// Post-analyze a raw pi PTY capture with the real @xterm/headless emulator:
-// replay the byte stream, sampling the emulator's buffer length / baseY /
-// viewport over time, and report buffer-line-count churn (the thing that
-// drives a multiplexer's "0/XXXX" scrollback indicator to change) plus
-// 2J/3J/1049 wipes.
-//
-// Usage: node experiments/scroll-repro/pi-pty-analyze.mjs /tmp/pi-run.bin [rows]
 import xtermPkg from "@xterm/headless";
 import fs from "node:fs";
 

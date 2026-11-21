@@ -1,16 +1,4 @@
-// Headless reproduction of the TUI differential renderer around the
-// goal confirmation dialog (non-overlay ctx.ui.custom replacing the editor).
-//
-// Correct scroll signal: the differential render writes lines from
-// firstChanged..lastChanged at screen rows [firstChanged - viewportTop ..
-// lastChanged - viewportTop]. If the LAST written line lands at/below the
-// terminal's bottom row AND a trailing feed pushes past it, the terminal
-// scrolls (viewport yanks). A trailing "\r\n" before each subsequent line
-// scrolls whenever the cursor is on the bottom row. We approximate the real
-// effect by tracking the cursor's screen row after the write: if the write
-// region extends past the screen bottom, the terminal MUST have scrolled.
-//
-// Usage: node repro-dialog-render.mjs [chatLines] [dialogLines] [rows]
+// external: writing past a terminal bottom row scrolls its viewport.
 
 import { Container } from "../../node_modules/@earendil-works/pi-tui/dist/tui.js";
 import { TuiMainScreen } from "../../node_modules/@earendil-works/pi-tui/dist/index.js";
@@ -65,7 +53,7 @@ function emulateTerminal(stream, rows, startRow) {
 				switch (m[2]) {
 					case "A": cursorRow = Math.max(0, cursorRow - (Number.isNaN(n) ? 1 : n)); break;
 					case "B": cursorRow = Math.min(rows - 1, cursorRow + (Number.isNaN(n) ? 1 : n)); break;
-					case "G": break; // column only
+					case "G": break;
 					case "K": case "J": case "H": break;
 					default: break;
 				}
