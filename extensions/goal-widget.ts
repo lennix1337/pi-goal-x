@@ -109,19 +109,7 @@ export function syncTerminalInputPause(core: GoalCore, ctx: ExtensionContext): v
 		core.terminalInputUnsubscribe?.();
 		const goalCwd = typeof ctx.cwd === "string" ? ctx.cwd : process.cwd();
 		core.terminalInputUnsubscribe = ctx.ui.onTerminalInput((data) => {
-			// If an audit is running, Escape aborts the audit instead of pausing.
-			// Must return { consume: true } so the TUI doesn't also process the key
-			// and abort the running tool execution, which would cascade into pausing
-			// the entire goal (agent_end sees ctx.signal?.aborted and calls pauseActiveGoal).
-			// By contrast, the live-goal pause branch below deliberately does NOT
-			// consume: Escape must pass back to pi so it aborts the running tool
-			// execution and stops the current turn — pausing without stopping the
-			// "working" is exactly the reported bug.
-			// Any goal-owned modal (questionnaire, task confirmation, settings,
-			// goal picker, task-list overlay, escape dialog) owns every key while
-			// it is open: never intercept — otherwise Escape would pause the goal
-			// before the dialog could process it (bn-l pattern). Depth counter so
-			// nested goal modals remain guarded.
+			// external: consuming Escape prevents Pi from aborting the running tool.
 			if (core.goalModalDepth > 0) return undefined;
 			const keybindings = loadGoalSettings(goalCwd).keybindings?.dashboard ?? DEFAULT_GOAL_KEYBINDINGS.dashboard;
 			if (isKittyRepeatOrRelease(data)) {
@@ -136,25 +124,11 @@ export function syncTerminalInputPause(core: GoalCore, ctx: ExtensionContext): v
 				core.abortAudit(ctx);
 				return { consume: true };
 			}
-			// §10: Escape collapses the expanded dashboard before it can pause the
-			// goal; Ctrl+Shift+T toggles compact/expanded (§19.5). While the
-			// expanded dashboard is open it owns the plain arrow keys; the
-			// compact widget scrolls with Ctrl+Shift chords that pi never binds
-			// (the editor owns ↑/↓/PgUp/PgDn), so no focus state is needed and
-			// editor keybindings are untouched whenever the dashboard is not
-			// focused.
+			// external: the Pi editor owns the plain arrow and paging keys.
 			if (matchesKey(data, "escape") && core.isDashboardExpanded()) {
 				core.toggleDashboardExpanded();
 				return { consume: true };
 			}
-			// Escape on a live goal: pause it, then pass the key back to pi by
-			// returning undefined (not { consume: true }) so pi aborts the running
-			// tool execution / current turn too — Escape must stop the working as
-			// well as flip the state. The abort cascade (agent_end / turn_end call
-			// pauseActiveGoal again) is a no-op because the goal is already paused.
-			// When the goal is already paused this branch is skipped and Escape
-			// falls through to pi, which stops the current turn without any goal
-			// state change.
 			if (matchesKey(data, "escape") && core.state.goal?.status === "active" && core.state.goal.autoContinue) {
 				core.pauseActiveGoal(ctx);
 				return undefined;
@@ -165,20 +139,12 @@ export function syncTerminalInputPause(core: GoalCore, ctx: ExtensionContext): v
 				return { consume: true };
 			}
 
-			// Ctrl+Shift+A — toggle the focused goal's independent auditor.
-			// Persisted per-goal (revision-safe), ledger event, dashboard
-			// refresh, notification; inert with no focused goal or a complete
-			// goal (the modal-depth guard above covers goal modals).
 			if (matchesKey(data, "ctrl+shift+a")) {
 				core.toggleGoalAuditor(ctx);
 				core.goalWidgetComponentRef.current?.invalidate();
 				return { consume: true };
 			}
 
-			// Navigation keys: plain arrows scroll the expanded dashboard (it is
-			// modal while open); Ctrl+Shift+↑/↓/PgUp/PgDn/Home/End scroll the
-			// compact task list — free chords, consumed only when the compact
-			// list overflows (§9.6).
 			if (matchesKey(data, "up") || matchesKey(data, "down") || matchesKey(data, "pageUp") || matchesKey(data, "pageDown") || matchesKey(data, "home") || matchesKey(data, "end")) {
 				const key = matchesKey(data, "up") ? "up" : matchesKey(data, "down") ? "down" : matchesKey(data, "pageUp") ? "pageUp" : matchesKey(data, "pageDown") ? "pageDown" : matchesKey(data, "home") ? "home" : "end";
 				if (core.goalWidgetComponentRef?.current?.handleNavigationKey(key)) {
@@ -201,7 +167,6 @@ export function syncTerminalInputPause(core: GoalCore, ctx: ExtensionContext): v
 				return { consume: true };
 			}
 
-			// Only process the following debug keybindings when debug mode is active
 			if (!core.debugMode) return undefined;
 
 			if (matchesKey(data, "ctrl+shift+n")) {
@@ -440,9 +405,6 @@ Verification contract:
 				{ id: "t4", title: "Manual TUI verification", status: "pending" },
 			];
 			goal.taskList = { tasks, blockCompletion: false, proposedAt: now };
-			// Development-only diagnostic: the legacy proposal dialog is
-			// gone; the injected sample task list is inspected through the goal
-			// file and the debug task overlay (Ctrl+Shift+T).
 			ctx.ui.notify(
 				`Injected sample task list into debug goal ${goal.id}; inspect the goal file or use the debug task overlay.`,
 				"info",
