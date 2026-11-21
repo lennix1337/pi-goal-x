@@ -42,10 +42,7 @@ export interface GoalRefreshState {
 	settings: string;
 }
 
-/**
- * Pure diff of a goal-refresh cycle (before invalidation vs after re-read).
- * Unit-testable without the command harness; the command renders the changes.
- */
+/** Compare goal state before and after refresh. */
 export function diffGoalRefreshState(before: GoalRefreshState, after: GoalRefreshState): string[] {
 	const changes: string[] = [];
 	const beforeIds = new Set(before.poolIds);
@@ -76,11 +73,7 @@ import {
 } from "./auditor-selector.ts";
 import type { GoalCore } from "./goal-state.ts";
 
-/**
- * The curated twelve-command palette. /goal and /sisyphus begin guided
- * drafting; -direct commands are the explicit bypass. Every frequent lifecycle action is independently
- * registered so it appears in slash-command tab completion. No aliases.
- */
+/** Registered goal commands. */
 export function registerGoalCommands(core: GoalCore): void {
 	const { pi } = core;
 
@@ -329,13 +322,6 @@ export function registerGoalCommands(core: GoalCore): void {
 		ctx.ui.notify(result.message, result.ok ? "info" : "warning");
 	}
 
-	/**
-	 * One declarative row table for the settings menu (follow-up Stage 1).
-	 * Rendering and dispatch both derive from SETTING_ROWS so the displayed
-	 * fields and the selectable fields can never drift apart. Rows are grouped
-	 * into sections (Goal behavior / Task tracking / Completion auditor). All
-	 * eight persisted fields are present and operable.
-	 */
 	type SettingRow = {
 		key: keyof GoalSettings | string;
 		label: string;

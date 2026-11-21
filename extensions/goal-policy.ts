@@ -325,12 +325,7 @@ export function countOrderedSteps(objective: string): number {
 	return Math.max(numbered, stepMarkers);
 }
 
-/**
- * E6/F4: where the goal is in its ordered sisyphus sequence. M = ordered steps
- * in the objective; N = completed top-level tasks + 1 (clamped), falling back
- * to 1 when no task tracking exists. Returns null for non-sisyphus goals or
- * objectives without ordered markers.
- */
+/** Return ordered Sisyphus progress, or null when no ordered sequence exists. */
 export function sisyphusStepProgress(goal: { sisyphus: boolean; objective: string; taskList?: { tasks?: Array<{ status: string }> } | null }): { current: number; total: number } | null {
 	if (!goal.sisyphus) return null;
 	const total = countOrderedSteps(goal.objective);

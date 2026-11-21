@@ -53,13 +53,7 @@ export function compactGoalCheckpointContext(
  return output;
 }
 
-/**
- * The goal extension's lifecycle event handlers (context, turn_start,
- * tool_call, tool_execution_end, turn_end, message_end, session_start,
- * session_before_compact, session_compact, session_tree, before_agent_start,
- * agent_end, agent_settled, session_shutdown). All state flows through the
- * GoalCore.
- */
+/** Register goal lifecycle event handlers. */
 export function registerGoalEvents(core: GoalCore): void {
 	const { pi } = core;
 	const liveRetention = new LiveTailRetention();

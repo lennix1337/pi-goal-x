@@ -19,13 +19,7 @@ import {
 import { acquireGoalLock, type GoalLock } from "./storage/goal-lock.ts";
 import { mergeFocusedGoalWithDisk } from "./goal-pool.ts";
 
-/**
- * Session state access + runtime glue hooks that the GoalService needs.
- * The extension (`extensions/goal.ts`) wires these to its closure state so the
- * service stays the sole mutation boundary while the runtime effects
- * (continuation queue, accounting, nudge state, tools, UI) remain in the
- * extension's event handlers.
- */
+/** Session state access and runtime hooks for GoalService. */
 export interface GoalDiagnostic {
 	severity: "warning";
 	source: "ledger" | "storage";

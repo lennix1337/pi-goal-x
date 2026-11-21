@@ -136,12 +136,6 @@ export class GoalRuntime {
 		this.networkErrorRetryAttempt = 0;
 	}
 
-	/**
-	 * Issue #30: the delivered follow-up must trigger the turn, but it no longer
-	 * carries goal state. The persisted content is a tiny v2 marker and the
-	 * details are a bounded structured record; before_agent_start injects the
-	 * authoritative full prompt once per turn.
-	 */
 	/** 0 when the checkpoint may go now, the wait before the next try otherwise, null once the context is gone. */
 	private retryDelay(ctx: ExtensionContext): number | null {
 		try {

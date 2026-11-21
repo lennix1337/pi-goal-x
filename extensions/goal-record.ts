@@ -80,12 +80,7 @@ export interface GoalFocusEntry {
 	reason: GoalFocusReason;
 }
 
-/**
- * Issue #30 v2 checkpoint details: a tiny structured trigger record. Never
- * contains objective text, task text, verification contracts, budget strings,
- * or policy text — the authoritative state is injected once per turn by
- * before_agent_start from goal storage.
- */
+/** Bounded checkpoint details without objective, task, contract, budget or policy text. */
 export interface GoalCheckpointDetailsV2 {
 	version: 2;
 	kind: "checkpoint";
@@ -283,11 +278,8 @@ export function normalizeTaskList(value: unknown): GoalTaskList | undefined {
 	};
 }
 
-/**
- * Live-input validation for token_budget (shared by slash-command parsing, tool
- * execution, and record creation). Tool callers are untrusted, so the schema
- * Type.Integer bound is double-checked at runtime with Number.isSafeInteger.
- */
+// external: tool callers are untrusted, including callers bypassing the schema.
+/** Validate token budgets as safe integers. */
 export function validateTokenBudgetInput(value: unknown): { ok: true; value: number } | { ok: false; message: string } {
 	if (typeof value !== "number" || !Number.isFinite(value)) {
 		return { ok: false, message: "token_budget must be a number." };

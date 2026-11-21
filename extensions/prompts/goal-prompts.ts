@@ -10,11 +10,7 @@ import { modelBudgetLine, contextUsageLine, type GoalContextUsage } from "../goa
 /** Hard cap for the complete injected prompt fragment (TECH Stage 6). */
 export const MAX_PROMPT_FRAGMENT_CHARS = 10_000;
 
-/**
- * Issue #30: a persisted continuation checkpoint is a tiny trigger record, not
- * a full prompt. The authoritative goal state is injected at the request tail by
- * the context hook; the persisted marker only needs to carry the goal id.
- */
+/** Maximum length of a persisted continuation checkpoint marker. */
 export const CHECKPOINT_TRIGGER_MAX_CHARS = 160;
 
 function escapeXmlAttribute(value: string): string {
@@ -52,12 +48,7 @@ export const MAX_OBJECTIVE_BLOCK_CHARS = 1_500;
 
 const MAX_PENDING_RENDERED = 3;
 
-/**
- * PR E prompt profile: compact-v2 (default) removes duplicate renderings;
- * legacy-v1 is the emergency A/B fallback for one minor release. It restores
- * ONLY pre-optimization active-prompt wording — never full checkpoint
- * persistence (issue #30 stays fixed in both profiles).
- */
+/** Select the active-prompt profile without changing checkpoint persistence. */
 export function promptProfile(env: NodeJS.ProcessEnv = process.env): "compact-v2" | "legacy-v1" {
 	return env.PI_GOAL_PROMPT_PROFILE === "legacy-v1" ? "legacy-v1" : "compact-v2";
 }
@@ -92,12 +83,7 @@ function renderPendingTasks(tasks: GoalTask[], indent: number, rendered: { count
 	return lines;
 }
 
-/**
- * Bounded, trimmed task-list block (P1-4): pending tasks first with depth-aware
- * indentation and contract snippets; completed/skipped are collapsed to the
- * header counts. Previously the ENTIRE tree (up to 50 tasks + subtrees) was
- * injected into every continuation prompt — most of it already-completed work.
- */
+/** Render pending tasks with bounded contract snippets and completion counts. */
 export function taskListBlock(goal: GoalRecord, settings?: GoalSettings): string {
 	if (settings?.disableTasks) return "";
 	if (!goal.taskList || goal.taskList.tasks.length === 0) return "";

@@ -301,10 +301,7 @@ export function isMeaningfulProgressToolCall(toolName: string, args: unknown): b
 	return true;
 }
 
-/**
- * E1: per-goal history block (last audit verdict + recent lifecycle events)
- * surfaced by get_goal and /goal-status; the ledger already records it.
- */
+/** Render audit and lifecycle history for a goal. */
 export function buildGoalHistoryBlock(goal: GoalRecord | null, ledgerEvents: GoalLedgerEvent[]): string {
 	if (!goal) return "";
 	const lines: string[] = [];
@@ -322,10 +319,7 @@ export function buildGoalHistoryBlock(goal: GoalRecord | null, ledgerEvents: Goa
 	return lines.join("\n");
 }
 
-/**
- * F1: task-detail block mirroring the widget — counts, next pending with
- * contracts, recent completions with evidence. Used by get_goal.
- */
+/** Render task counts, pending contracts and completion evidence. */
 export function buildGoalTaskDetailBlock(goal: GoalRecord): string {
 	if (!goal.taskList || goal.taskList.tasks.length === 0) return "";
 	const { total, complete, skipped } = countTaskSubtree(goal.taskList.tasks);

@@ -85,12 +85,7 @@ export function appendGoalEvent(ctx: GoalLedgerContext, event: GoalLedgerEvent):
   return result;
 }
 
-/**
- * Append several ledger events as one line block with the existing
- * temp-write→read→append durability (P1-8): one mkdir, one temp write, one
- * append, one unlink instead of N× the same sequence. NAF: extends the
- * in-memory ledger cache in one step too.
- */
+/** Append multiple ledger events as one block. */
 export function appendGoalEvents(ctx: GoalLedgerContext, events: GoalLedgerEvent[]): GoalLedgerAppendResult {
   if (events.length === 0) return { ok: true };
   return appendLedgerLines(ctx, events);

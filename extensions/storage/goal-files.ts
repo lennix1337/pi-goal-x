@@ -389,10 +389,7 @@ export function parseGoalFile(filePath: string): GoalRecord | null {
 	return parseGoalContentCached(filePath, stat.mtimeMs, stat.size, content);
 }
 
-/**
- * Parse goal-file content and seed the P1-1 parse cache (shared by the sync
- * and the parallel async readers). Returns null for malformed content.
- */
+/** Parse goal-file content, returning null for malformed input. */
 export function parseGoalContentCached(filePath: string, mtimeMs: number, size: number, content: string): GoalRecord | null {
 	const end = findJsonObjectEnd(content);
 	if (end < 0) return null;
@@ -548,13 +545,7 @@ function activeGoalNamesMatch(names: string[], snapshot: PoolSnapshot): boolean 
 	return remaining.size === 0;
 }
 
-/**
- * Parallel pool read (P1-7): fs.promises-based readdir + per-file stat/read
- * in parallel, seeding the P1-1 parse cache so subsequent sync reads hit it.
- * Used by session startup rehydration (loadState). NAF: serves the zero-op
- * pool cache when present; a cold read populates it so subsequent sync reads
- * (reconcile, get_goal, prompts) are zero-op.
- */
+/** Read the goal pool asynchronously. */
 export async function readActiveGoalPoolAsync(ctx: GoalFileContext): Promise<Map<string, GoalRecord>> {
 	const root = goalStoragePath(ctx, GOALS_DIR);
 	const cachedPool = goalPoolCache.get(root);

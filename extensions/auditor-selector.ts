@@ -1,12 +1,3 @@
-/**
- * Auditor model/thinking selector helpers (ll01 cb6760b pattern).
- *
- * `/goal-settings` provider/model rows open a searchable selector: the
- * current-session/default choice (which clears the explicit provider/model),
- * authenticated models from the model registry (with a ✓ marker on the exact
- * current selection), and an advanced manual `provider/model` entry. The
- * thinking-level row offers the six levels or `(default)`.
- */
 
 export type AuditorModelSummary = { provider: string; id: string; name?: string };
 

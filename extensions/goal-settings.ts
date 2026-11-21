@@ -108,10 +108,7 @@ export interface GoalSettingsResolvedShape {
 }
 
 
-/**
- * Issue #26: sparse per-leaf Oracle settings. Every leaf inherits
- * independently (project > global > default); enabled defaults false.
- */
+/** Sparse Oracle settings; each leaf inherits independently and enabled defaults to false. */
 export interface GoalOracleSettingsLayer {
 	enabled?: boolean;
 	provider?: string;
@@ -1145,12 +1142,7 @@ export function mutateSettingsLayer(input: MutateSettingsInput): SettingsSnapsho
 }
 
 
-/**
- * Save settings to the PROJECT file. Kept for compatibility; internally uses
- * the conflict-safe locked mutation path (replace semantics via unset+set is
- * not needed here: the whole-object replace happens under the same lock with
- * a fresh re-read, so no cached stale object is ever written).
- */
+/** Replace project settings using a conflict-safe locked mutation. */
 export function saveGoalSettingsFileConfig(cwd: string, settings: GoalSettings): GoalSettings {
 	const target = goalSettingsPath(cwd);
 	const lock = acquirePathLock(`${target}.lock`);
@@ -1233,10 +1225,7 @@ export function envOverrideFor(key: keyof GoalSettings | "settingsFile", env: No
 	return null;
 }
 
-/**
- * E2: effective-settings report with per-leaf provenance
- * (environment > project > global > default), surfaced by /goal-status.
- */
+/** Render effective settings with per-leaf provenance. */
 export function effectiveSettingsReport(cwd: string, env: NodeJS.ProcessEnv = process.env): string[] {
 	const snapshot = loadSettingsSnapshot(cwd, env);
 	const lines = ["Settings (provenance):"];

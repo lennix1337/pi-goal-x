@@ -53,11 +53,7 @@ export interface GoalWidgetRecord extends GoalDisplayRecordLike {
 
 export const GOAL_WIDGET_KEY = "goal";
 
-/**
- * Live display record for the widget/status line: the accounted usage view
- * (clone with live elapsed seconds) when accounting is active for the goal,
- * otherwise the goal as-is (P1-12 extraction from goal-state).
- */
+/** Return a live usage view when accounting is active, otherwise the goal. */
 export function liveDisplayGoal(goal: GoalRecord | null, accounting: { isActiveFor(goalId: string): boolean; liveSeconds(): number }): GoalRecord | null {
 	if (!goal || goal.status !== "active" || !accounting.isActiveFor(goal.id)) return goal;
 	const liveSeconds = accounting.liveSeconds();
@@ -68,11 +64,7 @@ export function liveDisplayGoal(goal: GoalRecord | null, accounting: { isActiveF
 	};
 }
 
-/**
- * The above-editor widget registration factory (P1-12 extraction): builds the
- * GoalWidgetComponent factory the host UI calls at render time. Reads live
- * state through getters so renders always see the current goal.
- */
+/** Create the above-editor widget using live state getters. */
 export function makeGoalWidgetFactory(opts: {
 	getGoal: () => GoalWidgetRecord | null;
 	getOpenGoalCount: () => number;

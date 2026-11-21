@@ -203,13 +203,7 @@ export interface ProposalSummaryArgs {
 	auditorEnabled: boolean;
 }
 
-/**
- * Durable proposal summary written to the terminal transcript (plan §14):
- * proposed objective, proposed plan (numbered top-level tasks), verification,
- * automatic-continuation state, and auditor state. Produced for every proposal
- * outcome (confirm / continue refining / cancel) so the summary is always part
- * of the conversation, not only the confirmation dialog.
- */
+/** Render a durable proposal summary for every proposal outcome. */
 export function buildProposalSummary(args: ProposalSummaryArgs): string {
 	const lines: string[] = ["Proposed objective:", args.objective.trim()];
 	if (args.taskList && args.taskList.tasks.length > 0) {

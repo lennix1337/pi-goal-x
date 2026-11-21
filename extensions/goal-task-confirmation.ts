@@ -20,14 +20,7 @@ export function renderConfirmationTasks(tasks: readonly GoalTask[], indent: numb
 	return lines;
 }
 
-/**
- * Task-only confirmation boundary (follow-up Stage 2). The complete result is
- * the user's {decision: confirm | cancel} — no auditor toggle, no
- * goal-creation wording, and no questionnaire state. `set_goal_tasks` confirms
- * the STRUCTURAL input here and merges progress only inside GoalService.apply
- * against the disk-refreshed clone. The dialog is a small self-contained
- * component with neutral, task-specific labels.
- */
+/** User decision on structural task input. */
 export interface TaskConfirmationResult {
 	decision: "confirm" | "cancel";
 }

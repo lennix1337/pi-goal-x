@@ -154,13 +154,7 @@ export function buildCompactionSummary(args: {
   return lines.join("\n");
 }
 
-/**
- * PR E §62: post-compaction DELTA for the focused goal. The active system
- * goal block already contains the objective, full policy, task gate, and
- * verification contract — this delta adds only what compaction may have
- * lost: the execution focus, a bounded recent-events tail, the latest
- * unresolved auditor finding, and the other-open-goals count.
- */
+/** Render post-compaction execution focus, recent events and unresolved findings. */
 export function buildPostCompactionGoalDelta(args: {
   goal: GoalRecord;
   ledgerEvents: GoalLedgerEvent[];

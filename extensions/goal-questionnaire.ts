@@ -279,11 +279,7 @@ export function proposalDialogFailureMessage(error: unknown): string {
 	return `Goal draft confirmation failed: ${detail}. The goal was NOT created; drafting remains active.`;
 }
 
-/**
- * Shared question UI used by both the agent-callable goal_questionnaire tool and
- * the internal draft-confirm prompt. This keeps pi-goal self-contained and
- * avoids depending on external question/questionnaire packages.
- */
+/** Present the shared goal questionnaire. */
 export async function runGoalQuestionnaire(ctx: ExtensionContext, rawQuestions: GoalQuestionnaireQuestion[], auditorToggleInit?: { defaultEnabled: boolean }): Promise<GoalQuestionnaireResult> {
 	if (!ctx.hasUI) {
 		return { questions: [], answers: [], cancelled: true };
