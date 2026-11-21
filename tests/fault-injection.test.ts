@@ -1,10 +1,3 @@
-/**
- * Fault-injection persistence tests (reliability campaign 2026-08-09).
- *
- * Simulates crash/interruption states and multi-process contention without
- * live agents: torn writes, torn ledger tails, stale locks, and cross-process
- * appends exercised through the extension's own persistence layer.
- */
 
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
@@ -49,10 +42,6 @@ test("fault: torn goal-file write is never observed as partial content", () => {
 		const filePath = path.join(cwd, goal.activePath ?? "");
 		const before = fs.readFileSync(filePath, "utf8");
 
-		// Simulate a crash between the temp write and the rename: a partial
-		// temp file is left next to the goal file, and the goal file itself is
-		// truncated (a torn rename target). Readers must ignore the temp file
-		// and never observe a hybrid.
 		const dir = path.dirname(filePath);
 		const tmpName = `${path.basename(filePath)}.tmp-${process.pid}`;
 		fs.writeFileSync(path.join(dir, tmpName), before.slice(0, 40), "utf8");
@@ -99,7 +88,6 @@ test("fault: torn ledger tail is counted malformed and never breaks reads or tai
 test("fault: stale lock (dead pid) is reclaimed promptly; live-holder lock fails fast", async () => {
 	const cwd = tempCwd();
 	try {
-		// Stale lock: dead pid + old mtime.
 		fs.mkdirSync(path.join(cwd, ".pi", "goals", ".locks"), { recursive: true });
 		const lockPath = path.join(cwd, ".pi", "goals", ".locks", "g1.lock");
 		fs.writeFileSync(lockPath, JSON.stringify({ pid: 999_999_999, startedAt: new Date(Date.now() - 120_000).toISOString() }), "utf8");
@@ -113,8 +101,6 @@ test("fault: stale lock (dead pid) is reclaimed promptly; live-holder lock fails
 		assert.ok(elapsed < 5_000, `staleness recovery is prompt (${elapsed}ms)`);
 		lock.release();
 
-		// Live holder: a child process acquires the lock and holds it; the
-		// parent's acquisition must fail fast (bounded), not block.
 		const holderScript = `
 			const { acquireGoalLock } = require(${JSON.stringify(path.join(EXT_ROOT, "storage/goal-lock.ts"))});
 			const lock = acquireGoalLock({ cwd: process.env.FAULT_CWD }, "g2");
@@ -155,9 +141,6 @@ test("fault: stale lock (dead pid) is reclaimed promptly; live-holder lock fails
 test("fault: multi-process goal-file writes never tear (one complete writer wins)", () => {
 	const cwd = tempCwd();
 	try {
-		// Two children write the same goal id concurrently via the extension's
-		// own atomic writer; the final file must be one of the two complete
-		// versions — never a hybrid.
 		const writer = (objective: string) => `
 			const { createGoal } = require(${JSON.stringify(path.join(EXT_ROOT, "goal-record.ts"))});
 			const { writeActiveGoalFile } = require(${JSON.stringify(path.join(EXT_ROOT, "storage/goal-files.ts"))});

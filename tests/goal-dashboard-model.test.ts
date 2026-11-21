@@ -1,11 +1,3 @@
-/**
- * Dashboard model tests (plan §19.1): pure derivation of the unified
- * dashboard view model from persisted goal state and the durable ledger.
- *
- * The model module must stay free of TUI imports; these tests exercise the
- * derivation rules only (status codes, top-level progress, tree flattening,
- * current-task resolution, subtask progress, budget, activity, formatting).
- */
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -248,7 +240,6 @@ test("latestCompletedNodeIndex returns -1 without completed/timestamped tasks", 
 	assert.equal(latestCompletedNodeIndex(nodesWithCompletions([])), -1);
 	const legacy = [{ id: "t1", title: "A", status: "complete" as const, depth: 0, isCurrent: false, totalSubtasks: 0, completedSubtasks: 0 }];
 	assert.equal(latestCompletedNodeIndex(legacy), -1);
-	// skipped tasks never qualify
 	const skipped = [
 		{ id: "t1", title: "A", status: "skipped" as const, depth: 0, isCurrent: false, completedAt: "2026-01-01T10:00:00.000Z", totalSubtasks: 0, completedSubtasks: 0 },
 	];

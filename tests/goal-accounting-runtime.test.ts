@@ -1,8 +1,3 @@
-/**
- * Unit tests for GoalAccounting (serialized idempotent accounting + budget
- * helpers) and GoalRuntime (continuation scheduling, turn-stop guard, stale
- * checkpoint, one-time reminders) — Stage 2 extraction.
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

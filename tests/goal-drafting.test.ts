@@ -1,10 +1,3 @@
-/**
- * Handler-level guided-drafting coverage (follow-up Stage 5, TECH §6):
- * confirmation decisions (confirm / continue / cancel), atomic creation with
- * verification contract and nested task tree, Sisyphus mode fidelity and
- * structural sufficiency, tasks/contracts-disabled variants, /goal-tweak
- * guided refinement under focus races, and headless auto-confirm semantics.
- */
 
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -175,12 +168,7 @@ test("dialog cancel is a durable no-op and clears the draft", async () => {
 });
 
 test("regression: the proposal emits the complete goal presentation to the transcript before the dialog decision", async () => {
-	// Reported repro: the goal draft was not presenting tasks. The complete
-	// goal — every objective contract section and every task line — must be in
-	// the terminal buffer while the confirmation dialog is open, so the user
-	// can scroll up and read it ("the user can just scroll"). propose_goal_draft
-	// renders this via renderCall, which pi displays in the transcript as soon
-	// as the tool call starts — before the dialog opens.
+	// external: Pi displays the tool call in the transcript before opening its dialog.
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-draft-present-"));
 	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });
 	try {
@@ -243,11 +231,6 @@ test("regression: the proposal emits the complete goal presentation to the trans
 });
 
 test("renderCall for a tweak without explicit tasks shows the retained current list, never a derived phantom", async () => {
-	// §single-task-set regression: the scrollback presentation derived tasks
-	// from the objective without knowing the draft mode, so a tweak without an
-	// explicit task list showed a phantom "derived from the objective" set
-	// that is never persisted (the apply retains the current list). The
-	// presentation must mirror the dialog preview: the retained current list.
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-draft-tweak-render-"));
 	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });
 	try {
@@ -283,10 +266,6 @@ test("renderCall for a tweak without explicit tasks shows the retained current l
 });
 
 test("renderCall for a new draft derives from the same objective text the apply path persists (shown == persisted)", async () => {
-	// §single-task-set regression: the derived preview must equal the persisted
-	// task list. The apply path derives from the extracted objective (the
-	// Verification contract line removed); the presentation must derive from
-	// the same input so the shown set is the persisted set.
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-draft-derived-equal- "));
 	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });
 	try {
@@ -374,13 +353,6 @@ test("confirmed proposal persists verification contract and nested tasks, then r
 
 
 test("an unrequested token budget is never created: no guideline invites one, and omitting it stores no budget", async () => {
-	// A drafted goal must carry no token budget unless the user explicitly asked
-	// for one. Two independent guards are asserted here:
-	//   1. the tool's promptGuidelines tell the model to omit token_budget unless
-	//      the user asked, so the model does not invent one from objective size;
-	//   2. omitting token_budget persists a goal with no budget at all.
-	// Budgets stay an opt-in, user-supplied lever (see the budget provenance
-	// note in specs/2026-10-01-pi-1-0-0-compatibility/MILESTONES.md).
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-draft-no-budget-"));
 	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });
 	try {
@@ -396,7 +368,6 @@ test("an unrequested token budget is never created: no guideline invites one, an
 		assert.match(budgetGuideline, /only when the user explicitly asked/i, "guideline must scope budgets to explicit user requests");
 		assert.match(budgetGuideline, /never invent|never.*infer/i, "guideline must forbid inventing a budget");
 
-		// A large-sounding objective with no budget request must stay budgetless.
 		const objective = "Rewrite the entire scheduling subsystem.\nSuccess criteria: behavior is preserved.";
 		const pending = runProposal(h, proposalParams(objective));
 		h.dialogResult({ questions: [], answers: [{ id: "confirm", question: "Confirm Goal Draft", answer: CONFIRM_ANSWER, wasCustom: false }], cancelled: false });
@@ -482,8 +453,6 @@ test("contracts-disabled settings strip the verification contract from a confirm
 		await runProposal(h, proposalParams("Polish the docs.\nVerification contract: Run npm test (0 failures)"));
 		const goal = firstGoal(cwd);
 		assert.equal(goal.verificationContract, undefined, "contract not persisted when contracts disabled");
-		// The line is left as plain objective prose; it is never promoted to
-		// the structured contract field.
 		assert.ok(goal.objective.includes("Verification contract: Run npm test"), "contract line retained as prose");
 	} finally {
 		try { rmSync(cwd, { recursive: true, force: true }); } catch {}
@@ -668,7 +637,6 @@ test("an unconfirmed draft survives session_tree rehydration", async () => {
 		const h = createHarness(cwd);
 		await h.sessionStart();
 		await h.commands.get("goal")!.handler("Migrate the database", h.ctx);
-		// Tree navigation reloads state; the durable draft must come back.
 		await h.sessionTree();
 		assert.ok(h.activeTools().includes("goal_questionnaire"), "drafting profile restored after rehydration");
 		assert.ok(h.activeTools().includes("propose_goal_draft"), "proposal tool restored");
@@ -739,7 +707,6 @@ test("a stale tweak draft is invalidated on rehydration when its target is unfoc
 		assert.ok(tools.includes("create_goal") && tools.includes("get_goal") && !tools.includes("update_goal"), "unfocused execution profile after stale tweak invalidation");
 		assert.equal(tools.includes("goal_questionnaire"), false, "stale tweak draft not restored");
 		assert.ok(h.notifications.some((n) => n.includes("stale")), "stale draft warning");
-		// The stale tweak draft cannot confirm anything.
 		const result = await runProposal(h, proposalParams("Changed objective", { sisyphus: false }));
 		assert.match(result.content[0].text, /No guided goal draft is active/);
 	} finally {
@@ -761,7 +728,6 @@ test("direct goal creation interrupts and clears an active draft", async () => {
 		const tools = h.activeTools();
 		assert.ok(tools.includes("update_goal"), "active execution profile restored after direct creation");
 		assert.equal(tools.includes("goal_questionnaire"), false, "draft cleared by direct creation");
-		// The tombstoned draft must not resurrect across rehydration.
 		await h.sessionTree();
 		assert.equal(h.activeTools().includes("goal_questionnaire"), false, "draft stays cleared after rehydration");
 	} finally {
@@ -1027,7 +993,6 @@ test("tweak drafting falls back to global settings when the goal has no per-goal
 	}
 });
 
-// ── §objective-limit: the objective length limit is a configurable setting ─
 
 test("propose_goal_draft accepts long objectives by default (no hard 4000 limit)", async () => {
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-draft-long-objective-"));
@@ -1061,7 +1026,6 @@ test("propose_goal_draft enforces the configured max objective length setting", 
 		const result = await pending;
 		assert.match(result.content[0].text, /at most 20 characters \(21 given\)/);
 		assert.equal(firstGoal(cwd).objective, "Initial objective", "oversized proposal must not mutate the goal");
-		// An at-limit objective is accepted.
 		const okPending = runProposal(h, proposalParams("y".repeat(20), { sisyphus: false }));
 		h.dialogResult({ questions: [], answers: [{ id: "confirm", question: "Confirm Goal Draft", answer: CONFIRM_ANSWER, wasCustom: false }], cancelled: false });
 		const ok = await okPending;
@@ -1206,10 +1170,6 @@ function currentGoal(objective: string, tasks: Array<{ id: string; title: string
 }
 
 test("a numbered-step objective with no explicit tasks previews the derived task list in the confirmation", () => {
-	// Regression: the F2 preview derived from the boxed confirmation text
-	// (every line prefixed with "│   ") so the ordered-marker regex never
-	// matched and numbered objectives showed NO task list. Deriving from the
-	// raw objective must surface the derived tree in the confirmation.
 	const objective = "Ship the release.\n1) Implement core\n2) Add tests\n3) Write docs";
 	const text = proposalText(testDraft("goal", "Ship the release"), objective, true, undefined, undefined);
 	assert.match(text, /Tasks derived from the objective \(confirm or ask the agent to adjust\):/);
@@ -1258,7 +1218,6 @@ test("a tweak without explicit tasks previews the retained current list exactly 
 	assert.doesNotMatch(text, /Tasks derived from the objective/);
 });
 
-// ── §7.5 regression: a tweak never changes the status of persisting steps ─
 
 test("a tweak merges the proposed task list by id, preserving statuses of surviving steps", async () => {
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-tweak-merge-"));
@@ -1570,7 +1529,6 @@ test("failure contract: a goal that cannot be saved rejects natively and draftin
 		writeFileSync(path.join(cwd, ".pi", "goals"), "not a directory", "utf8");
 		const pending = runDraftingTool(h, "propose_goal_draft", proposalParams(VALID_OBJECTIVE));
 		answerConfirmation(h, CONFIRM_ANSWER);
-		// A thrown storage error is the native tool-error path; the draft must not be consumed.
 		await assert.rejects(pending, /EEXIST|ENOTDIR/);
 		assert.ok(h.activeTools().includes("goal_questionnaire"), "drafting remains active after a failed save");
 		assert.equal(activeGoalFiles(cwd).length, 0, "no goal file exists after a failed save");

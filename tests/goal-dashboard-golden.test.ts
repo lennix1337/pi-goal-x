@@ -61,9 +61,6 @@ function fiveTaskTree(): GoalTask[] {
 	];
 }
 
-/** 30 top-level tasks; t5 and t20 completed (t20 latest) — the anchored
- * viewport lands mid-list so both compact and expanded windows scroll in
- * both directions. */
 function manyTaskTree(): GoalTask[] {
 	const tasks: GoalTask[] = Array.from({ length: 30 }, (_, i) => ({
 		id: `t${i + 1}`,
@@ -103,9 +100,6 @@ function auditorProgress(): AuditorWidgetProgress {
 	};
 }
 
-// ---------------------------------------------------------------------------
-// Width-safety helper
-// ---------------------------------------------------------------------------
 
 function assertWidthSafe(lines: string[], width: number): void {
 	for (let i = 0; i < lines.length; i++) {
@@ -146,9 +140,6 @@ for (const width of WIDTHS) {
 			assertWidthSafe(renderExpandedDashboard(model, theme, width), width);
 		}
 
-		// Scrolled viewports: a long list with completion timestamps at
-		// several window positions (anchored default, top, middle, off-scale)
-		// must stay width-safe — the ↑/↓ indicator rows count toward width.
 		const scrolled = withTasks(manyTaskTree(), { currentTaskId: "t21" });
 		const scrolledModel = modelFor(scrolled);
 		if (scrolledModel) {
@@ -188,9 +179,6 @@ test("palette: neutral-gray chrome, colour-coded content (§5)", () => {
 		assert.ok(muted.includes(glyph), `${glyph} corner is neutral gray`);
 	}
 	assert.ok(muted.some((v) => v.startsWith("─ Tasks")), "section-rule label is part of the frame tone");
-	// Frame lines are one tone: the gray must appear on BOTH the left and the
-	// right of every frame line (regression: it used to read muted on one
-	// side and mdLink on the other).
 	assert.ok(muted.some((v) => v === "─"), "header leading dash is frame-colored (LHS)");
 	assert.ok(muted.some((v) => v.includes("Ctrl+Shift+T: expand tasks")), "footer hint is part of the frame tone");
 	assert.ok(muted.some((v) => v.includes("12m47s")), "header usage meta is part of the frame tone");
@@ -280,8 +268,6 @@ test("compact: the auditor indicator is a bottom-right border dot, green on / gr
 	assert.ok(seen.some(([c, v]) => c === "muted" && v === "●"), "auditor off renders a muted gray dot");
 	assert.equal(seen.some(([c, v]) => c === "success" && v === "●"), false, "off state never renders the green dot");
 
-	// The expanded dashboard is byte-identical with the auditor indicator: it
-	// never renders it (compact-only per spec).
 	const expanded = renderExpandedDashboard(model, theme, 100).join("\n");
 	assert.doesNotMatch(expanded, /Auditor/, "expanded dashboard does not render the compact auditor indicator");
 	for (const width of WIDTHS) {
@@ -499,8 +485,6 @@ test("compact: custom dashboard keybindings render in the footer hints", () => {
 	assert.match(wideOverflow, /↑ 1 more task\b/, "six tasks overflow five rows");
 	const defaults = renderCompactDashboard(six, theme, 100).join("\n");
 	assert.match(defaults, /Ctrl\+Shift\+T: expand · Ctrl\+Shift\+↑↓: scroll/);
-	// Long custom key names are tolerated: the hint ellipsizes inside the box
-	// instead of widening it (width safety preserved).
 	const longKeys = { toggleExpand: "ctrl+alt+shift+super+t", scrollUp: "ctrl+alt+pageUp", scrollDown: "ctrl+alt+pageDown" } as const;
 	const longLines = renderCompactDashboard(model, theme, 80, { keybindings: longKeys });
 	for (const line of longLines) assert.ok(visibleWidth(line) <= 80, `custom long-key footer stays within width: ${JSON.stringify(line)}`);

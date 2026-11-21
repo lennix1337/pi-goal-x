@@ -120,7 +120,6 @@ test("budget reached marks the goal budget_limited exactly once with ledger + on
 		assert.ok(promptText.includes("BUDGET LIMITED"), "budget-limited block injected");
 		assert.ok(promptText.includes("TOKEN BUDGET REACHED"), "one-time wrap-up steering injected");
 
-		// A second agent start must NOT re-inject the one-time steering.
 		await handlers.get("before_agent_start")?.({
 			systemPrompt: "base",
 			prompt: "",
@@ -129,7 +128,6 @@ test("budget reached marks the goal budget_limited exactly once with ledger + on
 		const second = await handlers.get("context")?.({ messages: [] }, ctx);
 		assert.ok(!(second?.messages?.at(-1)?.content ?? "").includes("TOKEN BUDGET REACHED"), "steering fires exactly once");
 
-		// A further turn_end cannot re-fire the transition (status not active).
 		await handlers.get("turn_end")?.({ message: turnEndMessage(50) }, ctx);
 		const budgetEvents2 = ledgerEvents(f.cwd).filter((e) => e.type === "goal_budget_limited");
 		assert.equal(budgetEvents2.length, 1, "transition fires exactly once");

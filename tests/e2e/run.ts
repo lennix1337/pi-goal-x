@@ -1,22 +1,5 @@
 #!/usr/bin/env node
 
-/**
- * pi-goal deterministic e2e test runner.
- *
- * Tests:
- * 1. File-validity checks (agent file bootstrapping, chain docs)
- * 2. Handler-level integration coverage lives in tests/integration/extension.test.ts
- * 3. Real pi fork test using --mode json: reads tool_execution_start/end events
- *    from JSONL output for deterministic assertions on tool name, parameters,
- *    and result fields. Uses --append-system-prompt + --tools to ensure the AI
- *    model always calls the required tools (no non-determinism).
- *
- * Tests 1-2 are always available and deterministic. Test 3 requires the `pi`
- * CLI on PATH (skipped if unavailable) and uses the current five-tool surface:
- * the forced completion call is update_goal({status:"complete"}) with no
- * bypass fields (the real auditor runs; settings disabled:true is used only
- * in the fixture to keep the fork deterministic).
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -214,9 +197,6 @@ describe("Subagent E2E", () => {
 					"result must show complete status");
 			});
 
-			// Filesystem verification: the goal file must exist on disk after the fork.
-			// The fork session may have archived it via turn_end, so check both
-			// active and archived directories.
 			const activeFile = path.join(f.cwd, f.activePath);
 			const archivedDir = path.join(f.cwd, ".pi", "goals", "archived");
 			let fileFound = false;

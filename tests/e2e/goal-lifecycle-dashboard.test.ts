@@ -297,8 +297,6 @@ test("archive failure never reports success; the complete record stays recoverab
 
 		await h.turnEnd();
 
-		// Failure behavior (§16.6): never claim success, keep the record
-		// recoverable at its active path, and write a diagnostic ledger event.
 		assert.equal(h.notifications.some((n) => n.includes("Goal archived.")), false, "failure must never report success");
 		assert.ok(
 			h.notifications.some((n) => n.includes("Failed to archive completed goal") && n.includes("remains at")),

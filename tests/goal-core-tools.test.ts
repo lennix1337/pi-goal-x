@@ -1,19 +1,4 @@
 import { appendGoalEvent } from "../extensions/goal-ledger.ts";
-/**
- * Stage 3 core-tools tests: create_goal / get_goal / update_goal.
- *
- * Verifies:
- *  - exactly three advertised goal tools when tasks are disabled;
- *  - create_goal is real, objective-explicit, focuses, reports other-open goals,
- *    honors the configurable max objective length setting (no limit by default),
- *    and accepts token_budget;
- *  - get_goal returns the complete stable snapshot;
- *  - update_goal(complete) runs the audit WITHOUT a verification-summary
- *    parameter (audit from actual evidence); approval archives, rejection stays
- *    open;
- *  - update_goal(blocked) records a distinct agent-blocked state only from
- *    active, with the goal_blocked ledger event.
- */
 
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -263,8 +248,6 @@ test("get_goal returns the complete stable snapshot", async () => {
 		});
 		await start(h);
 		const get = h.tools.get("get_goal")!;
-		// PR E: the concise default omits verbose-only sections; pass verbose to
-		// pin the complete stable snapshot.
 		const result = await (get.execute as any)("get-1", { verbose: true }, undefined, undefined, h.ctx);
 		const text = result.content?.[0]?.text ?? "";
 		assert.ok(text.includes("Snapshot goal"), "objective present");
@@ -480,7 +463,6 @@ test("update_goal(paused) surfaces an apply failure instead of claiming success 
 test("legacy paused record with autoContinue:true stays paused after session restore", async () => {
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-core-pausedrestore-"));
 	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });
-	// Legacy on-disk record: paused status with a stale true continuation flag.
 	const legacy = normalizeGoalRecord({
 		id: "legacy-paused",
 		objective: "=== Goal ===\nObjective: Legacy paused goal",
@@ -502,7 +484,6 @@ test("legacy paused record with autoContinue:true stays paused after session res
 		const text = result.content?.[0]?.text ?? "";
 		assert.ok(text.includes("paused"), `restored legacy goal must be paused, got: ${text.slice(0, 120)}`);
 		assert.ok(!text.includes("running"), "paused goal must not read as running");
-		// The on-disk file must also still say paused after the restore reads.
 		const parsed = parseGoalFile(path.join(cwd, written.activePath ?? "missing"));
 		assert.equal(parsed?.status, "paused", "disk record must stay paused after restore");
 		assert.equal(parsed?.autoContinue, true, "autoContinue flag survives as data");
@@ -821,7 +802,6 @@ test("completion task gates are native errors and never invoke the auditor", asy
  } finally { f.cleanup(); }
 });
 
-// Oracle blocked flow decided from durable ledger state: no consultation runs, so no provider is reachable.
 async function withOutboundRejected<T>(body: () => Promise<T>): Promise<T> {
 	const originalFetch = globalThis.fetch;
 	globalThis.fetch = (() => { throw new Error("outbound request attempted"); }) as typeof fetch;
@@ -887,7 +867,6 @@ test("Oracle failure limit blocks with a durable failure annotation instead of c
 });
 
 const adviceFor = (disposition: "actionable" | "needs_human" | "insufficient_context") => ({ diagnosis: "Stale pool holds the lock.", alternatives: [{ title: "Drain the pool", rationale: "Lock clears.", steps: ["Close connections"], expectedEvidence: ["migration OK"] }], recommendedIndex: 0, unresolvedQuestions: [], disposition });
-// Delegates to the REAL runBlockerOracle with a scripted session; no provider is launched.
 const scriptedOracle = (script: (submit: (advice: unknown) => Promise<unknown>) => Promise<void>) => (args: any) => runBlockerOracle({
 	...args,
 	ctx: { ...args.ctx, modelRegistry: { find: () => ({ provider: "stub", id: "stub" }) } },
@@ -973,7 +952,7 @@ for (const disposition of ["needs_human", "insufficient_context"] as const) {
 test("update_goal blocked: provider and invalid-output failures are native errors that stay active, and the retry limit then blocks without consulting", async () => {
 	const outcomes = [
 		async () => ({ ok: false, errorCode: "provider", message: "provider unavailable" }),
-		scriptedOracle(async () => {}), // real runner whose session never submits advice -> invalid_output
+		scriptedOracle(async () => {}),
 	];
 	let calls = 0;
 	await oracleToolFlow((args) => outcomes[calls++]!(args), async ({ goalId, block, goalFile, events }) => {

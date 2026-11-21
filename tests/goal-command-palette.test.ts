@@ -191,9 +191,6 @@ test("goal-settings renders sectioned rows with clearer auditor wording", async 
 	}
 });
 
-// ── #19: positive-integer rows use a row-driven lower bound ──────────────────
-// The stall timeout row defaults to 0 ("no stall timeout") and must accept 0;
-// subtaskDepth is a nesting depth and must keep rejecting 0 and non-integers.
 
 test("goal-settings: stall timeout row accepts 0 (row-driven lower bound)", async () => {
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-settings-bound-"));
@@ -298,7 +295,6 @@ test("goal-settings: subtaskDepth rejects 0 (min 1) and never saves it", async (
 		assert.ok(h.notifications.some((n) => n.includes("subtaskDepth must be an integer >= 1")),
 			`expected subtaskDepth bound warning, got notifications: ${h.notifications.join(" | ")}`);
 		const settingsPath = path.join(cwd, ".pi", "pi-goal-x-settings.json");
-		// A rejected input never persists: the file is either absent or lacks the key.
 		if (readFileSyncSafe(settingsPath)) {
 			assert.ok(!readFileSyncSafe(settingsPath)!.includes("subtaskDepth"), "subtaskDepth must not be written");
 		}
@@ -339,7 +335,6 @@ test("goal-settings: max objective length row defaults to 0 and accepts a config
 		let saved = JSON.parse(readFileSync(path.join(cwd, ".pi", "pi-goal-x-settings.json"), "utf8"));
 		assert.equal(saved.objectiveMaxChars, 0, "0 = no limit persists explicitly");
 
-		// A configured limit persists too.
 		inputValue = "6000";
 		selectCalls = 0;
 		await h.commands.get("goal-settings")!.handler("", h.ctx);

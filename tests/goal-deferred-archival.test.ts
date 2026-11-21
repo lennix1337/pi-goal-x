@@ -111,7 +111,6 @@ test("disabled-bypass path: buildCompletionReport includes auditSkippedReason", 
 	assert.ok(report.includes("Goal audit skipped."), "disabled-bypass path must say 'Goal audit skipped.'");
 	assert.ok(report.includes("auditor disabled in settings"), "disabled-bypass must include the skip reason");
 	assert.ok(report.includes("Goal complete."), "disabled-bypass path must conclude with 'Goal complete.'");
-	// Must NOT include any approval markers
 	assert.ok(!report.includes("<approved/>"), "disabled-bypass must NOT include approval marker");
 	assert.ok(!report.includes("Auditor approval:"), "disabled-bypass must NOT include auditor approval section");
 });
@@ -143,7 +142,6 @@ test("all three paths produce distinct tool output text", () => {
 		auditSkippedReason: "auditor bypassed (user pressed Escape during audit)",
 	});
 
-	// Each path must have distinct content
 	assert.ok(approval.includes("Goal audit approved."), "approval: header must be 'Goal audit approved.'");
 	assert.ok(disabled.includes("Goal audit skipped."), "disabled-bypass: header must be 'Goal audit skipped.'");
 	assert.ok(esc.includes("Goal audit skipped."), "esc-skip: header must be 'Goal audit skipped.'");
@@ -151,7 +149,6 @@ test("all three paths produce distinct tool output text", () => {
 	assert.ok(esc.includes("auditor bypassed (user pressed Escape during audit)"), "esc-skip: reason must be specific");
 	assert.ok(!approval.includes("Goal audit skipped."), "approval must not say 'skipped'");
 
-	// Both skip paths must NOT include approval markers
 	assert.ok(!disabled.includes("<approved/>"), "disabled-bypass must not include approval marker");
 	assert.ok(!esc.includes("<approved/>"), "esc-skip must not include approval marker");
 });

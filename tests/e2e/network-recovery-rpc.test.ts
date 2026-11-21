@@ -1,20 +1,3 @@
-/**
- * Real-runtime e2e: unbounded network-error recovery against a live pi process.
- *
- * Repro for the field report "unlimited retry + backoff is not working":
- * spawns an actual `pi --mode rpc` subprocess with this repo's goal extension,
- * points it at a local HTTP server that always returns
- *
- *     503 {"error":{"type":"server_error","message":"Error from provider
- *     (Console): Upstream request failed: Endpoint is unavailable."}}
- *
- * and asserts that, after Pi's built-in retries exhaust, the extension emits
- * escalating "Retrying the goal in Ns (recovery M, unbounded)" notifications
- * and delivers checkpoint continuations that restart the turn — i.e. the full
- * unbounded backoff loop runs against real provider-failure event shapes.
- *
- * Skipped when the `pi` CLI is not on PATH. Runtime ~30s (bounded).
- */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -77,7 +60,6 @@ const SCENARIO_429: OutageScenario = {
 };
 
 async function runOutageScenario(t: import("node:test").TestContext, scenario: OutageScenario): Promise<Notify[]> {
-	// ── Mock provider: always fails with the scenario payload ──────────────
 	const http = await import("node:http");
 	const server = http.createServer((req, res) => {
 		req.resume();
@@ -99,7 +81,6 @@ async function runOutageScenario(t: import("node:test").TestContext, scenario: O
 	mkdirSync(agentDir, { recursive: true });
 	mkdirSync(path.join(projectDir, ".pi", "goals"), { recursive: true });
 
-	// pi settings: tiny provider-retry delays so each failing turn is fast.
 	writeFileSync(
 		path.join(agentDir, "settings.json"),
 		JSON.stringify({
@@ -108,7 +89,6 @@ async function runOutageScenario(t: import("node:test").TestContext, scenario: O
 			retry: { maxRetries: 3, baseDelayMs: 10 },
 		}),
 	);
-	// Custom provider pointing at the always-503 mock.
 	writeFileSync(path.join(agentDir, "models.json"), JSON.stringify({
 		providers: {
 			mock503: {

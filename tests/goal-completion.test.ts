@@ -44,8 +44,6 @@ function createHarness(cwd: string, sessionEntries: unknown[], runCompletionAudi
 	return { handlers, tools, ctx, core: (pi as unknown as { _goalCore: any })._goalCore };
 }
 
-// Machine: goal status active -> complete (docs/state-machines.md, "Goal lifecycle").
-// The completion commit must apply onto the goal as it is when the audit ends.
 test("update_goal(complete) keeps the usage accrued while the auditor ran", async () => {
 	const cwd = mkdtempSync(path.join(tmpdir(), "goal-completion-usage-"));
 	mkdirSync(path.join(cwd, ".pi", "goals", "archived"), { recursive: true });

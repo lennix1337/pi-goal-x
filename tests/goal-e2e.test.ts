@@ -47,10 +47,6 @@ function readArchivedFile(ctx: TestContext, goal: GoalRecord): string {
 	return readFileSync(path.join(ctx.cwd, goal.archivedPath ?? "missing"), "utf8");
 }
 
-// ── 1. Sequential quick-syncs ────────────────────────────────────────────────
-// Simulates: agent detects drift, calls update_goal (deprecated),
-// then detects more drift, calls update_goal again.
-// Only the latest objective should be on disk.
 
 test("sequential quick-syncs: two updates, only latest objective on disk", () => {
 	const ctx = tempCtx();
@@ -71,7 +67,6 @@ test("sequential quick-syncs: two updates, only latest objective on disk", () =>
 		assert.equal(after2.objective, obj3);
 		assert.equal(after2.status, "active");
 
-		// Only obj3 on disk
 		const disk = readGoalFile(ctx, after2);
 		assert.ok(!disk.includes(obj1), "obj1 should not be on disk");
 		assert.ok(!disk.includes(obj2), "obj2 should not be on disk");
@@ -166,9 +161,6 @@ test("sync + Esc bypass: report includes new objective and Esc reason", () => {
 	assert.ok(!report.includes("<approved/>"));
 });
 
-// ── 6. Multiple syncs → complete ─────────────────────────────────────────────
-// Simulates: three sequential objective updates, then complete.
-// Final archived file must have the third (latest) objective.
 
 test("multiple syncs then complete: final objective in archived file", () => {
 	const ctx = tempCtx();
@@ -194,7 +186,6 @@ test("multiple syncs then complete: final objective in archived file", () => {
 		const archived = archiveGoalFile(ctx, completed);
 		const archivedContent = readArchivedFile(ctx, archived);
 
-		// Only the last objective
 		assert.ok(archivedContent.includes(objs[2]!), "archived must have the final objective");
 		assert.ok(!archivedContent.includes(objs[0]!), "archived must NOT have obj1");
 		assert.ok(!archivedContent.includes(objs[1]!), "archived must NOT have obj2");
@@ -322,5 +313,3 @@ test("all three bypass paths produce correct distinct reports", () => {
 		}
 	}
 });
-
-// ── 10. Edge: Cannot update complete goal (handler gate test) ─────────────────
