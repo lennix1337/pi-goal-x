@@ -191,9 +191,9 @@ function recoverSession(inputPath, apply) {
 		fs.renameSync(temp, absolute);
 	} catch (error) {
 		if (fd !== undefined) {
-			try { fs.closeSync(fd); } catch { }
+			try { fs.closeSync(fd); } catch { /* external: ESLint requires a comment for intentionally empty blocks. */ }
 		}
-		try { fs.unlinkSync(temp); } catch { }
+		try { fs.unlinkSync(temp); } catch { /* external: ESLint requires a comment for intentionally empty blocks. */ }
 		throw error;
 	}
 

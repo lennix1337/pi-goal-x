@@ -120,6 +120,7 @@ test("golden: fixture v3 goal file parses to the pinned record", () => {
 		assert.ok(parsed, "fixture goal file must parse");
 		assert.deepEqual(parsed, expectedFixtureRecord(nowIso()));
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -141,6 +142,7 @@ test("golden: prompt body is authoritative over the JSON header objective", () =
 		assert.equal(parsed.status, "active");
 		assert.equal(parsed.verificationContract, "Run npm test (0 failures) and confirm every requirement is addressed.");
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -160,6 +162,7 @@ test("golden: serialize -> parse round-trips the fixture record", () => {
 		assert.deepEqual(reparsed.usage, parsed.usage);
 		assert.deepEqual(reparsed.taskList, parsed.taskList);
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -258,6 +261,7 @@ test("golden: fixture ledger reads every event type and counts malformed lines",
 			"task_skipped",
 		]);
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -280,6 +284,7 @@ test("golden: ledger reconstruction yields stable terminal and focus state", () 
 		assert.equal(terminalGoals.get("goal-b")?.latestStatus, "aborted");
 		assert.equal(terminalGoals.get("goal-b")?.abortedAt, "2026-08-03T09:07:00.000Z");
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -304,6 +309,7 @@ test("golden: focus restores from a focus entry against the on-disk pool", () =>
 
 		assert.equal(resolveSessionFocus({ pool, focusEntry: null, autoSelectSingleGoal: true }), "golden_fixture_goal");
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -332,6 +338,7 @@ test("golden: compaction summary text for a focused active goal", () => {
 			"Do not rely on chat memory for goal state; use the facts above.",
 		].join("\n"));
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -357,6 +364,7 @@ test("golden: compaction summary with ledger terminal goals", () => {
 		assert.match(summary, /^\[FOCUSED GOAL\]\nGoal golden_fixture_goal — running\n/);
 		assert.match(summary, /\[TERMINAL GOALS — 2 completed or aborted\]\n- goal-a — completed at 2026-08-03T09:06:00\.000Z\n- goal-b — aborted at 2026-08-03T09:07:00\.000Z/);
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -400,6 +408,7 @@ test("golden: serializeGoalFile emits the same header/body structure the fixture
 		assert.match(serialized, /- \[x\] task-1: Implement core — evidence: npm run check passes/);
 		assert.match(serialized, /- \[~\] task-2: Docs — skipped: User cancelled docs work/);
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 

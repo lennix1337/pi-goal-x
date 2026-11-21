@@ -174,6 +174,7 @@ test("Escape while a goal modal is open never pauses the goal; Escape after it c
 		h.terminalInput(ESCAPE);
 		assert.ok(h.notifyCalls.includes("Goal paused."), "Escape without a goal modal pauses the goal");
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -186,6 +187,7 @@ test("Escape with no goal modal open pauses the goal (regression guard)", async 
 		h.terminalInput(ESCAPE);
 		assert.ok(h.notifyCalls.includes("Goal paused."), "Escape must pause the goal when no modal is open");
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -199,6 +201,7 @@ test("Escape on a live goal pauses AND passes the key back to pi (stops the work
 		assert.equal(result, undefined, "Escape on a live goal must pass back to pi so the current turn stops");
 		assert.ok(h.notifyCalls.includes("Goal paused."), "Escape on a live goal must still pause the goal");
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -219,5 +222,6 @@ test("Escape while the goal is paused passes through to pi without any goal stat
 			"Escape while paused must not re-pause or otherwise change goal state",
 		);
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });

@@ -142,6 +142,7 @@ test("golden: stale checkpoint for a non-focused goal aborts the turn and inject
 		assert.match(systemPrompt, /\[GOAL STALE goalId=ghost-goal\]/);
 		assert.match(systemPrompt, /Do not perform task work for this stale checkpoint/);
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -165,6 +166,7 @@ test("golden: matching checkpoint proceeds without stale handling", async () => 
 		const systemPrompt = (result as { messages?: {content: string}[] } | undefined)?.messages?.at(-1)?.content ?? "";
 		assert.doesNotMatch(systemPrompt, /GOAL STALE/);
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -192,6 +194,7 @@ test("golden: user-driven turn cancels a pending continuation", async () => {
 		);
 		assert.equal(checkpoints.length, 0, "user turn must cancel the pending continuation");
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -238,6 +241,7 @@ test("provider-error guard: turn_end with stopReason=error never queues a contin
 
 		assert.equal(await countCheckpoints(h), 0, "error turn must not queue a continuation");
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -260,6 +264,7 @@ test("ordinary work without a disposition does not queue a continuation", async 
 
 		assert.equal(await countCheckpoints(h), 0, "work tools alone must not authorize continuation");
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -274,6 +279,7 @@ test("provider-error guard: agent_end with an error message never queues a conti
 
 		assert.equal(await countCheckpoints(h), 0, "agent_end with an error message must not queue a continuation");
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -297,6 +303,7 @@ test("network-error recovery waits for agent_settled before scheduling its backo
 		assert.equal(await countCheckpoints(h), 0, "the first recovery is delayed by the backoff policy");
 		assert.match(h.notifications.at(-1)?.message ?? "", /Retrying the goal in 5s \(recovery 1, unbounded\)/);
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -323,6 +330,7 @@ test("a successful Pi retry clears the pending network-error recovery", async ()
 		assert.equal(await countCheckpoints(h), 1, "the successful Pi retry uses the normal continuation path");
 		assert.equal(h.notifications.length, 0, "no goal-level recovery is announced after Pi retries successfully");
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -339,6 +347,7 @@ test("successful agent_end waits for agent_settled before queuing a continuation
 		await h.handlers["agent_settled"]!({}, idleCtx(h.ctx));
 		assert.equal(await countCheckpoints(h), 1, "agent_settled queues the continuation without idle polling");
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 

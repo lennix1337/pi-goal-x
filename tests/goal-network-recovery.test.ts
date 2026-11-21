@@ -305,6 +305,7 @@ test("regression: reported 503 payload schedules goal-level recovery after settl
 		);
 		assert.equal(await countCheckpoints(h), 0, "the first recovery is delayed by the backoff policy");
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -333,6 +334,7 @@ test("regression: generic Provider finish_reason: error schedules goal-level rec
 		);
 		assert.equal(await countCheckpoints(h), 0, "the first recovery is delayed by the backoff policy");
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
@@ -440,6 +442,7 @@ test("lifecycle: genuine user abort still pauses the goal", async () => {
 			"user-initiated pauses never schedule recovery",
 		);
 	} finally {
+		// external: ESLint requires a comment for intentionally empty blocks.
 	}
 });
 
