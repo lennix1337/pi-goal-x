@@ -1,10 +1,3 @@
-/**
- * PR #27 clean rewrite — layered global settings.
- *
- * Covers path resolution (injected env/home), the layering matrix
- * (env > project > global > defaults), per-leaf provenance, diagnostics,
- * conflict-safe scoped mutation, and fault behavior.
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -233,7 +226,7 @@ describe("scoped mutation", () => {
 			writeJson(target, { provider: "keep" });
 			const original = fs.readFileSync(target);
 			invalidateGoalSettingsCache();
-			// Fail the actual atomic replacement, independent of OS permissions or root privileges.
+			// external: OS permissions and root privileges cannot reliably force this failure.
 			const restore = denyAtomicReplacement(t, target);
 			try {
 				assert.throws(() =>

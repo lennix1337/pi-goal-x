@@ -1,20 +1,3 @@
-/**
- * Stage 0 golden tests: pin the current on-disk and in-memory data contracts
- * so the interface simplification (specs/2026-08-03-codex-inspired-goal-interface)
- * cannot silently break them.
- *
- * Covered goldens:
- *   - v3 goal file format (checked-in fixture) parses to a stable record;
- *   - the prompt body remains authoritative over the JSON header objective;
- *   - serialize -> parse round-trips the fixture record;
- *   - task trees, verification contracts, statuses, and pause metadata survive;
- *   - paused + legacy autoContinue normalization (current hazard, pinned);
- *   - ledger format (checked-in fixture): every event type reads, malformed
- *     lines are counted, and reconstruction yields stable terminal state;
- *   - focus restoration from disk through resolveSessionFocus;
- *   - compaction summary golden text;
- *   - auditor verdict marker contract.
- */
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -201,10 +184,6 @@ test("golden: malformed or duplicate task items are dropped by normalization", (
 });
 
 test("golden: paused + legacy autoContinue:true stays paused (status authoritative)", () => {
-	// TECH.md Stage 1: persisted lifecycle status is authoritative. autoContinue
-	// is an execution preference and must never rewrite status during reads or
-	// migration. The legacy case {status:"paused", autoContinue:true} must stay
-	// paused after normalization.
 	const pausedWithAutoContinue = normalizeGoalRecord({
 		id: "g1",
 		objective: "x",
@@ -226,8 +205,6 @@ test("golden: paused + autoContinue:false stays paused", () => {
 });
 
 test("golden: all five statuses survive normalization for both continuation flag values", () => {
-	// Persisted lifecycle status is authoritative and must survive every read
-	// and migration, regardless of the autoContinue execution preference.
 	const statuses = ["active", "paused", "blocked", "complete", "budget_limited"] as const;
 	for (const status of statuses) {
 		for (const autoContinue of [true, false]) {
@@ -240,9 +217,6 @@ test("golden: all five statuses survive normalization for both continuation flag
 });
 
 test("golden: legacy paused+autoContinue:true record stays paused through markdown parse", () => {
-	// The exact legacy on-disk case must survive the markdown-file read path,
-	// not only the pure normalizer. writeActiveGoalFile serializes a v3 file;
-	// parseGoalFile re-normalizes it, and the paused status must survive.
 	const cwd = tempCwd();
 	try {
 		const legacy = normalizeGoalRecord({
@@ -321,7 +295,6 @@ test("golden: focus restores from a focus entry against the on-disk pool", () =>
 			focusEntry: { version: 1, focusedGoalId: "golden_fixture_goal", reason: "created" },
 		}), "golden_fixture_goal");
 
-		// Stale focus id -> unfocused, not a crash.
 		assert.equal(resolveSessionFocus({
 			pool,
 			focusEntry: { version: 1, focusedGoalId: "ghost-goal", reason: "selected" },
@@ -404,9 +377,6 @@ test("golden: compaction summary for an empty session", () => {
 
 
 test("golden: auditor verdict marker contract is final-line approval/disapproval", () => {
-	// Pins the <approved/> / <disapproved/> marker contract that the completion
-	// audit currently uses. parseAuditorDecision requires the marker to be the
-	// final non-empty line (#20); a prose mention anywhere else is not a verdict.
 	assert.deepEqual(parseAuditorDecision("Looks good\n<approved/>"), { approved: true, disapproved: false });
 	assert.deepEqual(parseAuditorDecision("Nope\n<disapproved/>"), { approved: false, disapproved: true });
 	assert.deepEqual(parseAuditorDecision("confused <approved/> <disapproved/>"), { approved: false, disapproved: false });

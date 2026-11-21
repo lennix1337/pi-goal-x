@@ -1,10 +1,3 @@
-/**
- * Settings race test (plan §31): two real OS threads edit DIFFERENT keys of
- * the same global settings file concurrently. The locked mutation path must
- * serialize the writers so no key is lost.
- *
- * Run via: npm run test:settings-race
- */
 
 import test from "node:test";
 import assert from "node:assert/strict";

@@ -49,7 +49,7 @@ test("checkpoint: loadLedgerState falls back to full parse and writes a fresh ch
     const ledgerBytes = fs.statSync(goalLedgerPath(ctx)).size;
     assert.ok(!fs.existsSync(checkpointPath(ctx)), "no checkpoint before first load");
 
-    invalidateGoalLedgerCache(); // append only extends an existing cache entry
+    invalidateGoalLedgerCache();
     const result = loadLedgerState(ctx);
     assert.equal(result.source, "full");
     assert.equal(result.coveredEvents, 4);
@@ -93,8 +93,6 @@ test("checkpoint: tail replay applies only the ledger bytes past the checkpoint"
     assert.equal(first.source, "full");
     const coveredBefore = first.coveredBytes;
 
-    // Grow the ledger externally (no in-process append, so the checkpoint is
-    // not maintained by the mutation path and the tail path must engage).
     const ledgerPath = goalLedgerPath(ctx);
     const external: GoalLedgerEvent = { type: "goal_created", goalId: "g2", objective: "external", sisyphus: false, autoContinue: true, at: new Date().toISOString() };
     fs.appendFileSync(ledgerPath, JSON.stringify(external) + "\n", "utf8");
@@ -176,8 +174,7 @@ test("checkpoint: external ledger growth beyond a cold checkpoint is replayed", 
   try {
     appendGoal(ctx, "g1");
     invalidateGoalLedgerCache();
-    loadLedgerState(ctx); // checkpoint covers g1's events only
-    // External process appends g2 without going through this module's cache.
+    loadLedgerState(ctx);
     const ledgerPath = goalLedgerPath(ctx);
     const external: GoalLedgerEvent = { type: "goal_created", goalId: "g2", objective: "external", sisyphus: false, autoContinue: true, at: new Date().toISOString() };
     fs.appendFileSync(ledgerPath, JSON.stringify(external) + "\n", "utf8");

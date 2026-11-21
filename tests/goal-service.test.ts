@@ -533,7 +533,6 @@ describe("cross-process mutation control (follow-up Stage 4)", () => {
 		const f = fixture();
 		try {
 			const first = acquireGoalLock({ cwd: f.cwd }, f.written.id);
-			// A live holder must not be stolen: bounded acquisition times out.
 			assert.throws(
 				() => acquireGoalLock({ cwd: f.cwd }, f.written.id, { attempts: 3, retryMs: 5 }),
 				/Timed out acquiring/,
@@ -589,8 +588,6 @@ describe("persist additive usage merge on revision conflict", () => {
 			a2.usage.activeSeconds = 17;
 			f.ref.setFocused(a2);
 
-			// A persists: the revision moved, so only the additive delta
-			// (30 tokens / 7 seconds) is merged onto B's record.
 			const merged = f.service.persist({ cwd: f.cwd });
 			assert.ok(merged, "persist must merge instead of returning null");
 			assert.equal(merged.usage.tokensUsed, 100, "disk 70 + session delta 30");
@@ -603,8 +600,6 @@ describe("persist additive usage merge on revision conflict", () => {
 			assert.equal(onDisk.usage.tokensUsed, 100, "merged usage must be on disk");
 			assert.ok(onDisk.objective.includes("Writer B objective"), "B's objective must be on disk");
 
-			// A subsequent persist (memory revision now matches disk) must not
-			// double-count the merged usage.
 			const again = f.service.persist({ cwd: f.cwd });
 			assert.ok(again, "persist after merge succeeds on the success path");
 			assert.equal(again.usage.tokensUsed, 100, "usage must not double-count after the merge");
@@ -617,8 +612,6 @@ describe("persist additive usage merge on revision conflict", () => {
 	it("never clobbers authoritative fields on conflict (usage only), even with no prior baseline", () => {
 		const f = fixture();
 		try {
-			// Writer A never persisted this goal: its memory usage is the
-			// session's full local accounting since load (0 baseline).
 			const a = cloneGoal(f.ref.getFocused()!);
 			a.usage.tokensUsed = 100;
 			a.usage.activeSeconds = 30;

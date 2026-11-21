@@ -22,7 +22,6 @@ const implementationSources = IMPLEMENTATION_MODULES.map((name) =>
 	readFileSync(path.join(extensionsDir, name), "utf8"),
 ).join("\n");
 
-// Mutation primitives that must NOT be invoked from implementation modules directly.
 const FORBIDDEN_CALL_SITES = [
 	"writeActiveGoalFile(",
 	"archiveGoalFile(",

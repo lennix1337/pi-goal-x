@@ -12,14 +12,11 @@ function withCwd(run: (cwd: string) => void): void {
 	try { run(cwd); } finally { rmSync(cwd, { recursive: true, force: true }); }
 }
 
-// Machine: per-goal lock free -> held -> (released | stolen as stale). docs/state-machines.md, "Per-goal file lock".
 test("a holder whose lock was recovered as stale cannot release the new holder's lock", () => {
 	withCwd((cwd) => {
 		const ctx = { cwd };
 		const first = acquireGoalLock(ctx, "g1");
-		// A second writer judges the first lock stale (TTL exceeded) and takes over.
 		const second = acquireGoalLock(ctx, "g1", { staleTtlMs: -1, attempts: 2, retryMs: 1 });
-		// The first holder finally finishes: its release must not delete the lock it no longer owns.
 		first.release();
 		assert.throws(() => acquireGoalLock(ctx, "g1", { attempts: 2, retryMs: 1 }), /Timed out acquiring the goal lock/);
 		second.release();
@@ -49,12 +46,11 @@ test("a dead-pid lock without an owner token is still recovered", () => {
 	});
 });
 
-// Machine: settings-file lock, same free -> held -> (released | stolen as stale) lifecycle.
 test("a settings-lock holder whose lock was recovered as stale cannot release the new holder's lock", () => {
 	withCwd((cwd) => {
 		const lockPath = path.join(cwd, "settings.json.lock");
 		const first = acquirePathLock(lockPath);
-		// Make the stale condition independent of filesystem timestamp precision.
+		// external: filesystem timestamp precision varies.
 		utimesSync(lockPath, new Date(0), new Date(0));
 		const second = acquirePathLock(lockPath, { staleTtlMs: 1, attempts: 2, retryMs: 1 });
 		first.release();

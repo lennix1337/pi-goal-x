@@ -87,10 +87,6 @@ test("resume and clear policy preserve human-owned lifecycle affordances", () =>
 		}),
 		"Goal audit approved.\n\nAuditor approval:\nAudit Report\n\n<approved/>\n\nGoal complete.\n\nGoal: full objective\nStatus: complete",
 	);
-	// When the auditor approves, the full auditor output MUST be included in the
-	// completion report so the executor agent can see the auditor's reasoning.
-	// This validates the contract: the completion-flow handler passes
-	// auditor.output as auditorReport (regression test for the fix).
 	const longAuditorReport = [
 		"I have inspected the codebase.",
 		"The implementation covers all requirements:",

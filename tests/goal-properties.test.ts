@@ -31,7 +31,6 @@ const T0 = "2026-11-07T00:00:00.000Z";
 
 const STATUSES: GoalTask["status"][] = ["pending", "complete", "skipped"];
 
-/** Random task tree. With `forceDone`, every node is complete or skipped and so is every descendant of a complete node: the consistent states the tools can produce. */
 function genTasks(next: Next, depth: number, counter: { n: number }, forceDone = false): GoalTask[] {
 	const count = 1 + Math.floor(next() * 3);
 	return Array.from({ length: count }, () => {
@@ -229,7 +228,6 @@ test("property persisted scheduler keeps phase invariants, never loses spent all
 		assert.deepEqual(normalizeGoalScheduler(s), s, `seed ${seed}: not idempotent`);
 	}
 	assert.equal(normalizeGoalScheduler(newGoalScheduler("owner"))?.used, 0);
-	// The generator must reach both outcomes, or the invariants above would hold vacuously.
 	assert.ok(accepted >= 20 && rejected >= 20, `generator covers both outcomes: accepted ${accepted}, rejected ${rejected}`);
 });
 

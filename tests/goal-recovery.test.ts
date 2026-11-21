@@ -60,7 +60,6 @@ test("recovery report: malformed goal file, bad ledger line, stale lock, and orp
 		writeGoal(ctx);
 		fs.writeFileSync(path.join(ctx.cwd, GOALS_DIR, "active_goal_bad.md"), "this is not a goal file", "utf8");
 		fs.appendFileSync(path.join(ctx.cwd, GOALS_DIR, "goal_events.jsonl"), "{{{ not json\n", "utf8");
-		// Stale lock (dead pid + old startedAt).
 		writeStaleLock(ctx, "g1.lock");
 		writeGoal(ctx);
 		readActiveGoalPool(ctx);

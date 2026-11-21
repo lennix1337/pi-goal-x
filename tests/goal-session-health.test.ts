@@ -1,6 +1,3 @@
-/**
- * Issue #30 — checkpoint health diagnostics (extensions/goal-session-health.ts).
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

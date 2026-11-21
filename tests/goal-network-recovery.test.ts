@@ -1,18 +1,5 @@
 import { saveGoalSettingsFileConfig } from "../extensions/goal-settings.ts";
 import type { GoalCore } from "../extensions/goal-state.ts";
-/**
- * Regression and lifecycle tests for goal-level provider-error recovery.
- *
- * Regression seed (user report): a 503 `server_error` payload of the shape
- *
- *     Error: 503: {"type":"server_error","message":"Error from provider
- *     (Console): Upstream request failed: Endpoint is unavailable."}
- *     Error: Retry failed after 3 attempts: 503: {...}
- *
- * was NOT classified as a network error by isNetworkErrorAssistantMessage
- * (which only matched the literal text "network error"), so Pi's built-in
- * retries exhausted and no goal-level backoff ever engaged.
- */
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -45,7 +32,6 @@ const REPORTED_503_AFTER_RETRIES = `Retry failed after 3 attempts: ${REPORTED_50
 const REPORTED_HTTP2_PROTOCOL_ERROR =
 	'Post "https://chatgpt.com/backend-api/codex/responses": stream error: stream ID 1; PROTOCOL_ERROR; received from peer';
 
-// ── Harness (mirrors tests/goal-stale-continuation-golden.test.ts) ──────────
 
 interface HandlerMap {
 	[key: string]: (event: any, ctx: ExtensionContext) => Promise<unknown> | unknown;
@@ -379,9 +365,7 @@ test("lifecycle: provider-initiated abort routes into recovery instead of pausin
 });
 
 test("lifecycle: full real event ordering (message_end → turn_end → agent_end → settled) routes provider-side aborts into recovery", async () => {
-	// The auditor-verified gap: message_end and turn_end fire BEFORE agent_end
-	// in real pi runs. All three must agree: without a user abort signal, an
-	// aborted assistant message never pauses the goal and recovery engages.
+	// external: Pi emits message_end and turn_end before agent_end.
 	process.env.PI_GOAL_NETWORK_RECOVERY_MAX_DELAY_MS = "25";
 	const { cwd, goal } = fixtureCwd();
 	saveGoalSettingsFileConfig(cwd, { maxAutonomousRuns: 100 });
@@ -576,10 +560,7 @@ test("lifecycle: a successful turn resets the recovery counter and clears pendin
 });
 
 test("session_compact_failed warns the user instead of failing silently (pi 1.0.0)", async () => {
-	// pi 1.0.0 added `session_compact_failed`. The extension already charges
-	// progress to the goal at `session_before_compact`, so a failed compaction
-	// must not leave the goal silently uncompacted — that is how a long-running
-	// goal walks into the same context overflow on the next turn.
+	// external: Pi 1.0.0 added session_compact_failed.
 	const { cwd, goal } = fixtureCwd();
 	const h = createHarness(cwd);
 	await startSession(h.handlers, h.ctx, sessionEntriesFor(goal));

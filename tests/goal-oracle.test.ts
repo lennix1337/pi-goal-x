@@ -1,11 +1,3 @@
-/**
- * Issue #26 — opt-in read-only Blocker Oracle.
- *
- * Covers: default-off byte-comparable path, explicit provider/model config,
- * read-only tool profile, one consult per fingerprint, actionable/needs_human
- * dispositions, follow-up gating, failure limits, and both demonstration
- * journeys (actionable-advice and needs-human) via scripted fake sessions.
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -57,7 +49,7 @@ describe("blocker fingerprint", () => {
 		const fp2 = buildBlockerFingerprint(g, "tests  fail  with\nECONNREFUSED ");
 		assert.equal(fp1, fp2, "whitespace/case normalization");
 		const g2 = goal();
-		g2.id = g.id; // same goal identity: only usage/revision differ
+		g2.id = g.id;
 		g2.usage.tokensUsed = 999_999;
 		g2.revision = 42;
 		assert.equal(buildBlockerFingerprint(g2, "Tests fail with ECONNREFUSED"), fp1, "usage/revision do not change the fingerprint");

@@ -1,10 +1,3 @@
-/**
- * PR F — UI/model payload separation acceptance tests:
- *   - audit-start events are display-only (no turn trigger);
- *   - no report_auditor_progress tool exists anywhere;
- *   - auditor prompt carries objective + task tree exactly once;
- *   - post-compaction injection is a delta, not a duplicate summary.
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -70,7 +63,6 @@ describe("PR F §62: post-compaction delta", () => {
 		assert.match(delta, /goal_resumed/);
 		assert.match(delta, /Latest unresolved auditor finding: Missing evidence for t2\./);
 		assert.match(delta, /Other open goals: 3/);
-		// The active system block already has these — the delta must not repeat them.
 		assert.ok(!delta.includes(g.objective), "delta must not repeat the objective");
 		assert.ok(!delta.includes("update_goal"), "delta must not restate lifecycle policy");
 	});

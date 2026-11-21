@@ -71,9 +71,6 @@ test("pool snapshot: legacy in-dir snapshot is served as a one-time fallback", (
 	const cwd = tempCwd();
 	try {
 		writeGoal(cwd, "g1");
-		// Simulate a pre-relocation snapshot: valid content at the legacy path,
-		// consistent with the on-disk filename set (the name check must pass)
-		// and carrying a marker that only snapshot hydration would preserve.
 		const goalsDir = snapshotPaths(cwd).goalsDir;
 		const diskFile = fs.readdirSync(goalsDir).find((n) => n.startsWith("active_goal_"))!;
 		const diskGoal = parseGoalFile(path.join(goalsDir, diskFile))!;

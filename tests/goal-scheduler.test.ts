@@ -244,8 +244,6 @@ test("uncapped ready runs keep counting when limits are added and removed", asyn
 		h.core.scheduler.settled(h.ctx); t.mock.timers.tick(1); h.admit();
 		assert.equal(h.core.state.goal?.scheduler?.used, used);
 	}
-	// Uncapped runs still count. The summary reports nothing while the allowance is
-	// unlimited, because there is no limit to report.
 	assert.equal(h.core.state.goal?.scheduler?.used, 5);
 	assert.equal(schedulerSummary(h.core.state.goal?.scheduler), "");
 	assert.match(schedulerSummary(h.core.state.goal?.scheduler, 5), /5\/5/);
@@ -733,7 +731,6 @@ test("the runs line is omitted when unlimited and controlled by the setting when
 	const h = await fixture(t);
 	const s = { ...normalizeGoalScheduler({ version: 1, owner: "owner", generation: "gen", used: 4, phase: "idle", repairUsed: false })!, used: 4 };
 
-	// Unlimited: no line at all, because there is no limit to report.
 	assert.equal(schedulerSummary(s), "");
 	assert.equal(schedulerSummary(s, undefined), "");
 	assert.equal(schedulerSummary(s, undefined, true), "", "the setting cannot force a line when there is no limit");
@@ -816,8 +813,6 @@ test("prompt cache: normal and custom runs preserve history while refreshing all
  assert.equal(second.filter((m: any) => m.customType === "pi-goal-live-context").length, 3, "changed counters append one small tail; the policy block is retained, not resent");
  assert.match(second.at(-1).content, /12345 tokens/);
  assert.doesNotMatch(second.at(-1).content, /Autonomous runs/, "an unlimited allowance reports no runs line");
- // An objective edit changes the stable policy block: retention resets once so no
- // stale objective lingers mid-history, and the fresh pair anchors the new prefix.
  h.core.state.goal!.objective = "Changed objective";
  const third = await request();
  assert.equal(third.filter((m: any) => m.customType === "pi-goal-live-context").length, 2);
@@ -863,7 +858,6 @@ test("prompt cache: cleared scheduling instructions vanish from retained history
 	h.core.state.goal!.scheduler = {...newGoalScheduler("owner"), phase: "waiting", decision: {kind: "wait"}, wait: {id: "w1", token: "t1", reason: "Publish release v1", deadline: Date.now() + 60_000}};
 	const first: any[] = (await h.handlers.context!({messages: history}, h.ctx)).messages;
 	assert.ok(first.some((m: any) => typeof m.content === "string" && m.content.includes("Publish release v1")), "standing instruction rides the live state");
-	// Cleared by omission: a plain scheduler with no decision must not re-issue the order.
 	h.core.state.goal!.scheduler = {...newGoalScheduler("owner"), used: 1};
 	const advanced = [...history, {role: "assistant", content: "ack", timestamp: 2}];
 	const second: any[] = (await h.handlers.context!({messages: advanced}, h.ctx)).messages;

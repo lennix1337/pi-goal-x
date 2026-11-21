@@ -62,8 +62,6 @@ test("parseGoalSettings: string true/false values accepted", () => {
 test("parseGoalSettings: autoSelectSingleGoal accepted as bool or string; explicit false preserved (layering)", () => {
 	assert.deepEqual(parseGoalSettings({ autoSelectSingleGoal: true }), { autoSelectSingleGoal: true });
 	assert.deepEqual(parseGoalSettings({ autoSelectSingleGoal: "true" }), { autoSelectSingleGoal: true });
-	// Issue #27 layering requirement: explicit false must survive parsing so a
-	// project can override a global true.
 	assert.deepEqual(parseGoalSettings({ autoSelectSingleGoal: false }), { autoSelectSingleGoal: false });
 	assert.deepEqual(parseGoalSettings({ autoSelectSingleGoal: "false" }), { autoSelectSingleGoal: false });
 });
@@ -191,7 +189,6 @@ test("loadGoalSettings: env vars override file config", () => {
 		const configPath = goalSettingsPath(dir);
 		fs.mkdirSync(path.dirname(configPath), { recursive: true });
 		fs.writeFileSync(configPath, JSON.stringify({ disableTasks: true, disableContracts: true }), "utf8");
-		// Env says only disableTasks should be false (overriding file)
 		const result = loadGoalSettings(dir, { PI_GOAL_DISABLE_TASKS: "false", PI_GOAL_DISABLE_CONTRACTS: "true" });
 		assert.equal(result.disableTasks, false, "env override should win");
 		assert.equal(result.disableContracts, true, "file value used when no env override");
@@ -250,7 +247,6 @@ test("loadGoalSettings: both flags disabled via file", () => {
 	});
 });
 
-// ── objectiveMaxChars (goal length limit setting) ────────────────────────
 
 test("parseGoalSettings: objectiveMaxChars accepted as number or string, 0 allowed", () => {
 	assert.deepEqual(parseGoalSettings({ objectiveMaxChars: 0 }), { objectiveMaxChars: 0 });
@@ -271,7 +267,6 @@ test("loadGoalSettings: objectiveMaxChars defaults to no limit and honors the en
 	assert.equal(loadGoalSettings("/tmp/does-not-exist", {}).objectiveMaxChars, 0, "unset resolves to the default 0 (no limit)");
 });
 
-// ── networkRecovery (provider-error recovery backoff) ─────────────────
 
 test("parseGoalSettings: networkRecovery accepts valid layers and rejects invalid leaves", () => {
 	assert.deepEqual(parseGoalSettings({ networkRecovery: { maxAttempts: 0 } }), { networkRecovery: { maxAttempts: 0 } });
