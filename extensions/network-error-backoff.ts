@@ -26,7 +26,6 @@ export const DEFAULT_NETWORK_ERROR_RECOVERY_POLICY: NetworkErrorRecoveryPolicy =
 
 export interface NetworkErrorBackoffPlan {
 	attempt: number;
-	/** 0 = unbounded. */
 	maxAttempts: number;
 	delayMs: number;
 }

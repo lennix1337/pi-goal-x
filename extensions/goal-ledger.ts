@@ -108,8 +108,6 @@ export function appendGoalEvents(ctx: GoalLedgerContext, events: GoalLedgerEvent
 function appendLedgerLines(ctx: GoalLedgerContext, events: GoalLedgerEvent[]): GoalLedgerAppendResult {
   const filePath = goalLedgerPath(ctx);
   const dir = path.dirname(filePath);
-  // NAF: per-dir memo — mkdir once per directory per process; steady-state
-  // appends skip it entirely (0 ops for the dir).
   if (!ledgerDirsKnown.has(dir)) {
     try {
       ensureGoalStorageDirectory(ctx, ".pi/goals", false);
@@ -120,9 +118,6 @@ function appendLedgerLines(ctx: GoalLedgerContext, events: GoalLedgerEvent[]): G
   }
 
   const lines = events.map((event) => JSON.stringify(event) + "\n").join("");
-  // NAF: direct O_APPEND write (one op) instead of the temp-write→read→append
-  // dance — a single JSONL line (or one batched block) is appended atomically
-  // by the OS; torn-line handling lives in the reader, not here.
   try {
     if (isExternalGoalStorage(ctx)) {
       ensureGoalStorageDirectory(ctx, ".pi/goals");
@@ -140,7 +135,6 @@ function appendLedgerLines(ctx: GoalLedgerContext, events: GoalLedgerEvent[]): G
   return { ok: true };
 }
 
-/** Directories whose ledger file exists (per-dir mkdir memo). */
 const ledgerDirsKnown = new Set<string>();
 
 /**
@@ -171,7 +165,6 @@ export function invalidateGoalLedgerCache(): void {
 	lastCheckpointDiskWrite.clear();
 }
 
-/** Keep the zero-op ledger cache in sync with an in-process append (no fs ops). */
 function extendLedgerCache(filePath: string, lines: string, events: GoalLedgerEvent[]): void {
   const cached = ledgerCache.get(filePath);
   if (!cached) return;
@@ -198,13 +191,11 @@ export function readGoalLedger(ctx: GoalLedgerContext): GoalLedgerReadResult {
   return readGoalLedgerCold(ctx, filePath);
 }
 
-/** Cold read: full file read + parse, populating the zero-op cache. */
 function readGoalLedgerCold(ctx: GoalLedgerContext, filePath: string): GoalLedgerReadResult {
   let content: string;
   try {
     content = fs.readFileSync(filePath, "utf8");
   } catch {
-    // Missing or unreadable: cache the empty result so repeated reads are zero-op.
     const empty = {events: [], malformed: 0, revision: {}};
     ledgerCache.set(filePath, {size: 0, mtimeMs: 0, chars: 0, ...empty});
     return empty;
@@ -215,10 +206,8 @@ function readGoalLedgerCold(ctx: GoalLedgerContext, filePath: string): GoalLedge
   return result;
 }
 
-/** Parse a JSONL ledger body into sanitized events + a malformed-line count. */
 function parseLedgerLines(content: string): GoalLedgerReadResult {
   const events: GoalLedgerEvent[] = [];
-  // Goal IDs repeat across most rows. A bounded per-read map avoids repeated sanitation.
   const goalIds = new Map<string, string>();
   let malformed = 0;
   for (const line of content.split("\n")) {
@@ -243,20 +232,6 @@ function parseLedgerLines(content: string): GoalLedgerReadResult {
   return { events, malformed };
 }
 
-// ---------------------------------------------------------------------------
-// Ledger checkpoint (reliability campaign 2026-08-09)
-//
-// The zero-op cache bounds steady-state reads, but a fresh session still reads
-// and parses the complete JSONL ledger. The checkpoint bounds the COLD path:
-// it stores the reconstructed accumulator (state + focus bookkeeping), the
-// per-goal recent-event tails, and the byte position of the ledger it covers.
-// A cold read then costs 2 fs ops (checkpoint read + stat) when covered, or a
-// bounded positioned tail read when the ledger grew. The JSONL ledger itself
-// is untouched and remains authoritative: the checkpoint is a best-effort
-// optimization — missing/corrupt/version-mismatched checkpoints fall back to
-// the full parse, and any coveredBytes mismatch (external edits, truncation)
-// falls back or replays the tail.
-// ---------------------------------------------------------------------------
 
 export const LEDGER_CHECKPOINT_FILE = ".goal-ledger-checkpoint.json";
 export const LEDGER_CHECKPOINT_VERSION = 3;
@@ -267,13 +242,9 @@ export interface LedgerCheckpoint {
   version: typeof LEDGER_CHECKPOINT_VERSION;
   format: "goal-ledger-checkpoint";
   createdAt: string;
-  /** Byte length of the ledger covered (compared against stat().size). */
   coveredBytes: number;
-  /** Number of ledger events covered. */
   coveredEvents: number;
-  /** Pre-finalize accumulator (focus bookkeeping kept for incremental tail apply). */
   acc: ReconstructAccumulator;
-  /** Per-goal recent-event tails (capped), already sanitized. */
   recentEventsByGoal: Map<string, GoalLedgerEvent[]>;
   runtimeIndex: Map<string, GoalLedgerIndex>;
 }
@@ -287,7 +258,6 @@ export interface LedgerStateReadResult {
   source: "cache" | "checkpoint" | "tail" | "full";
 }
 
-/** In-process checkpoint mirror (null = known absent). */
 const checkpointCache = new Map<string, LedgerCheckpoint | null>();
 
 /**
@@ -377,7 +347,6 @@ function parseGoalState(value: unknown): ReconstructedGoalState | null {
   };
 }
 
-/** Parse + validate a checkpoint file body; null on any mismatch (version/format/shape). */
 function checkpointFromJson(value: unknown): LedgerCheckpoint | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const o = value as Record<string, unknown>;
@@ -464,7 +433,6 @@ function writeLedgerCheckpointAtomic(filePath: string, cp: LedgerCheckpoint): vo
   }
 }
 
-/** Read + validate the checkpoint for a ledger path (cached per process). */
 function readLedgerCheckpointFile(filePath: string): LedgerCheckpoint | null {
   const cached = checkpointCache.get(filePath);
   if (cached !== undefined) return cached;
@@ -479,7 +447,6 @@ function readLedgerCheckpointFile(filePath: string): LedgerCheckpoint | null {
   return cp;
 }
 
-/** Append one event to a per-goal recent tail, keeping the newest cap entries. */
 function appendRecent(recent: Map<string, GoalLedgerEvent[]>, goalId: string, event: GoalLedgerEvent): void {
   const tail = recent.get(goalId) ?? [];
   tail.push(event);
@@ -487,7 +454,6 @@ function appendRecent(recent: Map<string, GoalLedgerEvent[]>, goalId: string, ev
   recent.set(goalId, tail);
 }
 
-/** Build a checkpoint from full events (used to bootstrap / refresh). */
 function buildCheckpointFromEvents(events: GoalLedgerEvent[], coveredBytes: number): LedgerCheckpoint {
   const runtimeIndex = buildLedgerIndex(events);
   return {
@@ -502,7 +468,6 @@ function buildCheckpointFromEvents(events: GoalLedgerEvent[], coveredBytes: numb
   };
 }
 
-/** Positioned read of the ledger bytes past `offset`, parsed as JSONL. */
 function readLedgerTailFrom(filePath: string, offset: number): GoalLedgerReadResult {
   try {
     const fd = fs.openSync(filePath, "r");
@@ -571,7 +536,6 @@ function updateLedgerCheckpointAfterAppend(filePath: string, lines: string, even
  *  - no/valid-but-stale-beyond-use checkpoint: full parse + reconstruct, then
  *    writes a fresh checkpoint so the next session is bounded.
  */
-/** Current bounded runtime projections, initialized once from checkpoint + tail. */
 function runtimeIndex(ctx: GoalLedgerContext): Map<string, GoalLedgerIndex> {
  const filePath = goalLedgerPath(ctx);
  if (!runtimeReady.has(filePath)) {
@@ -581,7 +545,6 @@ function runtimeIndex(ctx: GoalLedgerContext): Map<string, GoalLedgerIndex> {
    const full = readGoalLedger(ctx);
    checkpointCache.set(filePath, buildCheckpointFromEvents(full.events, ledgerCache.get(filePath)?.size ?? 0));
   }
-  // Hot consumers do not retain a second full-history representation.
   ledgerCache.delete(filePath);
   runtimeReady.add(filePath);
  }
@@ -661,8 +624,6 @@ export function loadLedgerState(ctx: GoalLedgerContext): LedgerStateReadResult {
     lastCheckpointDiskWrite.set(filePath, { appendsSinceWrite: updated.coveredEvents, at: Date.now() });
     return { state, recentEventsByGoal: recent, malformed: tail.malformed, coveredBytes: size, coveredEvents: updated.coveredEvents, source: "tail" };
   }
-  // Full fallback: missing/corrupt checkpoint, version mismatch, or the ledger
-  // was rewritten to be smaller than the checkpoint's coverage.
   const full = readGoalLedgerCold(ctx, filePath);
   const fresh = buildCheckpointFromEvents(full.events, size);
   checkpointCache.set(filePath, fresh);
@@ -759,7 +720,6 @@ function sanitizeEvent(event: GoalLedgerEvent, owned = false): GoalLedgerEvent {
 }
 
 export function reconstructGoalLedger(events: GoalLedgerEvent[]): ReconstructedLedgerState {
-  // Inline accumulator allocation (no helper call on the measured path).
   return finalizeLedgerState(applyLedgerEvents({
     goals: new Map(),
     terminalGoals: new Map(),
@@ -851,15 +811,12 @@ function applyLedgerEvents(acc: ReconstructAccumulator, events: GoalLedgerEvent[
         break;
       }
       case "completion_requested": {
-        // No status change until audit_result or goal_completed
         break;
       }
       case "audit_started": {
-        // No state change
         break;
       }
       case "audit_skipped": {
-        // audit was skipped; goal continues as-is
         break;
       }
       case "audit_result": {
@@ -917,20 +874,16 @@ function applyLedgerEvents(acc: ReconstructAccumulator, events: GoalLedgerEvent[
   return acc;
 }
 
-/** Apply one ledger event (checkpoint incremental paths; not on the measured hot path). */
 function applyLedgerEvent(acc: ReconstructAccumulator, event: GoalLedgerEvent): void {
   applyLedgerEvents(acc, [event]);
 }
 
-/** Materialize focus flags once (O(goals)), clearing focus on terminal goals. */
 function finalizeLedgerState(acc: ReconstructAccumulator): ReconstructedLedgerState {
   const { goals, terminalGoals, focusGenByGoal } = acc;
   const focusGeneration = acc.focusGeneration;
-  // Materialize the generation-based focus flags (O(goals) once, not per event).
   for (const g of goals.values()) g.latestFocus = focusGenByGoal.get(g.goalId) === focusGeneration;
   for (const g of terminalGoals.values()) g.latestFocus = focusGenByGoal.get(g.goalId) === focusGeneration;
 
-  // If the focused goal was moved to terminal (e.g., aborted/completed), clear focus.
   if (acc.focusedGoalId && !goals.has(acc.focusedGoalId)) {
     acc.focusedGoalId = null;
   }

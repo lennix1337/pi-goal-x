@@ -26,7 +26,6 @@ export type ToolGateDecision =
 	| { block: false }
 	| { block: true; reason: string };
 
-// ── Shared formatting helpers ──────────────────────────────────────────────
 function formatModeLabel(sisyphus: boolean): string {
 	return sisyphus ? "Sisyphus (prompt/criteria style)" : "Normal goal";
 }
@@ -197,7 +196,6 @@ export function goalDraftingPrompt(topic: string, focus: GoalDraftingFocus): str
 }
 
 
-// ── §14 durable proposal summary ─────────────────────────────────────────────
 
 export interface ProposalSummaryArgs {
 	objective: string;

@@ -25,6 +25,5 @@ export function truncateToWidth(text: string, width: number, ellipsis = "...", p
 }
 
 export function wrapTextWithAnsi(text: string, width: number): string[] {
-	// Callers may edit the returned rows; cached rows stay privately owned.
 	return memo(`w:${width}:${text}`, () => sdkWrap(text, width)).slice();
 }

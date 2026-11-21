@@ -20,12 +20,6 @@ import {
 export const GOALS_DIR = ".pi/goals";
 export const ARCHIVED_GOALS_DIR = ".pi/goals/archived";
 
-/**
- * Per-file parse cache (P1-1): keyed by (absolute path, mtime, size), so
- * steady-state parses of goal files cost one lstat instead of lstat+read+
- * JSON-parse. Every parse call site (pool scan, reconcile, merge-from-disk)
- * shares this cache; writers invalidate the entries they touch.
- */
 interface GoalFileParseCacheEntry {
 	mtimeMs: number;
 	size: number;
@@ -99,12 +93,9 @@ function poolSnapshotLegacyPath(root: string): string {
 	return path.join(root, POOL_SNAPSHOT_LEGACY_NAME);
 }
 
-/** Read + validate the snapshot; null when missing/corrupt/unsupported. */
 function readPoolSnapshotSync(ctx: GoalFileContext, root: string): PoolSnapshot | null {
 	const parsed = tryParsePoolSnapshotSync(goalPoolSnapshotPath(ctx));
 	if (parsed) return parsed;
-	// One-time migration fallback: a snapshot written before 2026-08-09 lives
-	// inside the goals dir; keep serving it until the next write replaces it.
 	return tryParsePoolSnapshotSync(poolSnapshotLegacyPath(root));
 }
 
@@ -115,7 +106,6 @@ function tryParsePoolSnapshotSync(filePath: string): PoolSnapshot | null {
 			return data as PoolSnapshot;
 		}
 	} catch {
-		// missing or corrupt — caller falls back to a full scan
 	}
 	return null;
 }
@@ -141,7 +131,7 @@ async function tryParsePoolSnapshotAsync(filePath: string): Promise<PoolSnapshot
 function hydratePoolFromSnapshot(snapshot: PoolSnapshot): Map<string, GoalRecord> {
 	const pool = new Map<string, GoalRecord>();
 	for (const goal of snapshot.goals) {
-		if (goal.status === "complete") continue; // matches scanActiveGoalFiles
+		if (goal.status === "complete") continue;
 		pool.set(goal.id, goal);
 	}
 	return pool;
@@ -174,14 +164,12 @@ async function writePoolSnapshotAsync(ctx: GoalFileContext, root: string, goals:
 		await fs.promises.rename(tempPath, target);
 		removeLegacyPoolSnapshot(root);
 	} catch {
-		// best-effort
 	}
 }
 
-/** Merge a delta (written goal or removal) into the persisted snapshot. */
 function updatePoolSnapshotSync(ctx: GoalFileContext, root: string, mutate: (goals: GoalRecord[]) => GoalRecord[]): void {
 	const snapshot = readPoolSnapshotSync(ctx, root);
-	if (!snapshot) return; // no snapshot yet — next cold read does a full scan + write
+	if (!snapshot) return;
 	snapshot.goals = mutate(snapshot.goals);
 	try {
 		const rootStat = fs.lstatSync(root);
@@ -193,16 +181,13 @@ function updatePoolSnapshotSync(ctx: GoalFileContext, root: string, mutate: (goa
 		fs.renameSync(tempPath, target);
 		removeLegacyPoolSnapshot(root);
 	} catch {
-		// best-effort
 	}
 }
 
-/** Best-effort removal of the legacy in-dir snapshot after the first new-location write. */
 function removeLegacyPoolSnapshot(root: string): void {
 	try {
 		fs.unlinkSync(poolSnapshotLegacyPath(root));
 	} catch {
-		// already absent
 	}
 }
 
@@ -280,7 +265,6 @@ export function atomicWriteGoalFile(ctx: GoalFileContext, rootRel: string, relPa
 	invalidateGoalDirCache(goalStoragePath(ctx, rootRel));
 }
 
-/** One metadata read suffices for existence and symlink checks; retain real IO errors. */
 function statIfPresent(filePath: string): fs.Stats | undefined {
 	try { return fs.lstatSync(filePath); }
 	catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
@@ -456,7 +440,6 @@ export function writeActiveGoalFile(ctx: GoalFileContext, current: GoalRecord): 
 	const activePath = activePathForGoal(ctx, current);
 	const next = sanitizeGoalPaths(ctx, { ...current, activePath, updatedAt: nowIso() });
 	atomicWriteGoalFile(ctx, GOALS_DIR, activePath, serializeGoalFile(next));
-	// Keep the persistent pool snapshot current (read-modify-write, best-effort).
 	updatePoolSnapshotSync(ctx, goalStoragePath(ctx, GOALS_DIR), (goals) => {
 		const rest = goals.filter((g) => g.id !== next.id);
 		rest.push(next);
@@ -480,10 +463,6 @@ export function archiveGoalFile(ctx: GoalFileContext, current: GoalRecord): Goal
 
 export function mergeGoalPromptFromDisk(ctx: GoalFileContext, current: GoalRecord): GoalRecord {
 	if (!isSafeActivePath(ctx, current.activePath)) return current;
-	// NAF: the zero-op pool cache is the session view of the parsed goal file
-	// (invalidated on every extension write) — source the objective from it so
-	// the per-turn merge is 0 fs ops. When the cache is empty (cold or just
-	// invalidated by a write), fall back to the mtime-keyed direct parse.
 	const root = goalStoragePath(ctx, GOALS_DIR);
 	const cached = goalPoolCache.get(root)?.get(current.id);
 	if (cached) return { ...current, objective: cached.objective };
@@ -507,7 +486,6 @@ export function readActiveGoalFiles(ctx: GoalFileContext): GoalRecord[] {
 	return goals;
 }
 
-/** Uncached full scan (used when the zero-op pool cache is empty). */
 function scanActiveGoalFiles(ctx: GoalFileContext, root: string): GoalRecord[] {
 	let entries: string[];
 	try {
@@ -577,7 +555,6 @@ function readPoolWithSnapshotSync(ctx: GoalFileContext, root: string): Map<strin
 	return pool;
 }
 
-/** True when the snapshot's goal filename set equals the goals dir's active_goal files. */
 function activeGoalNamesMatchSync(root: string, snapshot: PoolSnapshot): boolean {
 	try {
 		return activeGoalNamesMatch(fs.readdirSync(root), snapshot);

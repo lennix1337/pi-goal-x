@@ -35,7 +35,6 @@ export const COMPLETE_STATUS = "complete";
  */
 export const GOAL_PROGRESS_TOOL_SET = new Set<string>(GOAL_PROGRESS_TOOL_NAMES);
 
-// ---------- summaries ----------
 
 export function usageLines(goal: GoalRecord): string[] {
 	return [
@@ -58,7 +57,6 @@ export function detailedSummary(goal: GoalRecord | null): string {
 	if (goal.taskList) {
 		const taskSummary = buildTaskSummary(goal.taskList);
 		lines.push(`Tasks: ${taskSummary}`);
-		// Find first pending task at any depth (BFS)
 		const queue = [...(goal.taskList.tasks ?? [])];
 		let firstPending: { id: string; title: string } | undefined;
 		while (queue.length > 0 && !firstPending) {
@@ -84,7 +82,6 @@ export function oneLineSummary(goal: GoalRecord | null): string {
 	return `${statusLabel(goal)}${tail} - ${truncateText(goal.objective)}`;
 }
 
-// ---------- entry / render helpers ----------
 
 export function goalDetails(goal: GoalRecord | null, resultDetail?: string): GoalStateEntry {
 	return { version: 3, goal: goal ? cloneGoal(goal) : null, ...(resultDetail ? { resultDetail } : {}) };
@@ -95,8 +92,6 @@ export function renderGoalResult(result: { details?: unknown; content: Array<{ t
 	const firstText = first?.text ?? "";
 	const details = result.details as GoalStateEntry | undefined;
 	if (details && typeof details === "object" && "resultDetail" in details && details.resultDetail && options?.expanded) {
-		// E7: the collapsed heading stays byte-identical; the full reason is one
-		// keystroke away in the expanded tool-result detail view.
 		return new Text(`${firstText}\n${details.resultDetail}`, 0, 0);
 	}
 	if (!details || typeof details !== "object" || !("goal" in details)) {

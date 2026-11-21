@@ -23,17 +23,11 @@ export interface GoalActivityItem {
 	at: string;
 	kind: GoalActivityKind;
 	text: string;
-	/**
-	 * Display marker category for the dashboard feed: done (✓), current (▸),
-	 * skipped (~), or neutral (·) — the renderer maps these to §5.2 symbols.
-	 */
 	marker?: "done" | "current" | "skipped";
 }
 
 export interface DeriveGoalActivityOptions {
-	/** taskId → title lookup; falls back to the raw task id when absent. */
 	taskTitles?: ReadonlyMap<string, string>;
-	/** Maximum items to return (the latest N, in chronological order). Default 5. */
 	limit?: number;
 }
 
@@ -124,7 +118,6 @@ function mapEvent(event: GoalLedgerEvent, taskTitles: ReadonlyMap<string, string
 			};
 		case "goal_archived":
 			return { at: event.at, kind: "archive", marker: "done", text: "Archived the completed goal." };
-		// Low-value checkpoint noise / focus churn: excluded from the default feed.
 		case "goal_focused":
 		case "goal_unfocused":
 		case "goal_stalled":
@@ -159,7 +152,6 @@ export function isActivityEvent(event: GoalLedgerEvent): boolean { return activi
 export function sameActivityEvent(left: GoalLedgerEvent, right: GoalLedgerEvent): boolean {
  if (left.type !== right.type) return false;
  if ("taskId" in left && "taskId" in right && left.taskId !== right.taskId) return false;
- // Reasons/evidence use the exact display normalization for true duplicates.
  return activityEventKey(left) === activityEventKey(right);
 }
 
@@ -194,9 +186,6 @@ export function deriveGoalActivity(
 		if (last && last.kind === item.kind && last.text === item.text) continue;
 		items.push(item);
 	}
-	// The ledger is append-ordered, but sort defensively so the feed is
-	// always correctly ordered regardless of input order (stable sort keeps
-	// equal timestamps in input order).
 	items.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
 	return items.slice(-limit);
 }

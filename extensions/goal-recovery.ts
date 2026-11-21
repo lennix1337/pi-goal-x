@@ -82,7 +82,6 @@ function locksDir(ctx: GoalFileContext): string {
 	return goalStoragePath(ctx, GOAL_LOCK_DIR);
 }
 
-/** Scan the goals dir for active_goal files that fail to parse. */
 function scanMalformedGoalFiles(ctx: GoalFileContext): MalformedGoalFileEntry[] {
 	const root = goalsDir(ctx);
 	const out: MalformedGoalFileEntry[] = [];
@@ -103,7 +102,6 @@ function scanMalformedGoalFiles(ctx: GoalFileContext): MalformedGoalFileEntry[] 
 	return out;
 }
 
-/** Scan the lock dir for lock files whose pid is dead or whose age exceeds the TTL. */
 function scanStaleLocks(ctx: GoalFileContext): StaleLockEntry[] {
 	const dir = locksDir(ctx);
 	const out: StaleLockEntry[] = [];
@@ -133,7 +131,6 @@ function scanStaleLocks(ctx: GoalFileContext): StaleLockEntry[] {
 	return out;
 }
 
-/** Snapshot goals whose active file no longer exists in the goals dir. */
 function scanOrphanedSnapshotGoals(ctx: GoalFileContext): OrphanedSnapshotEntry[] {
 	const root = goalsDir(ctx);
 	const out: OrphanedSnapshotEntry[] = [];
@@ -154,7 +151,6 @@ function scanOrphanedSnapshotGoals(ctx: GoalFileContext): OrphanedSnapshotEntry[
 			}
 		}
 	} catch {
-		// Missing/corrupt snapshot: no orphan data to report.
 	}
 	return out;
 }
@@ -205,7 +201,6 @@ export async function runRecoveryRepair(
 			fs.unlinkSync(source);
 			applied.push(`removed stale lock ${lock.fileName}`);
 		} catch {
-			// best-effort per item
 		}
 	}
 
@@ -215,13 +210,10 @@ export async function runRecoveryRepair(
 			if (fs.existsSync(snapshotPath)) {
 				fs.copyFileSync(snapshotPath, path.join(backupDir, "pool-snapshot.json"));
 			}
-			// Refresh the pool snapshot from a fresh scan (invalidate first so
-			// the re-read goes cold and rewrites the snapshot).
 			invalidateGoalPoolCache();
 			readActiveGoalPool(ctx);
 			applied.push(`refreshed pool snapshot (${report.orphanedSnapshotGoals.length} orphaned entr${report.orphanedSnapshotGoals.length === 1 ? "y" : "ies"} dropped)`);
 		} catch {
-			// best-effort
 		}
 	}
 

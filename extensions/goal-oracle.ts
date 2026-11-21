@@ -30,13 +30,11 @@ function escapePromptPayload(value: string): string {
 	return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
-// ── blocker fingerprint ─────────────────────────────────────────────────────
 
 function normalizeBlockerReason(reason: string): string {
 	return reason.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-/** Stable short hash over task-tree shape + contracts (not usage/timestamps). */
 function taskStateFingerprint(goal: GoalRecord): string {
 	const lines: string[] = [];
 	const walk = (tasks: NonNullable<GoalRecord["taskList"]>["tasks"], depth: number): void => {
@@ -74,7 +72,6 @@ export function buildBlockerFingerprint(goal: GoalRecord, reason: string): strin
 	return createHash("sha256").update(JSON.stringify(input)).digest("hex").slice(0, 24);
 }
 
-// ── ledger reconstruction ───────────────────────────────────────────────────
 
 export interface OracleConsultState {
 	result?: { adviceId: string; disposition: "actionable" | "needs_human" | "insufficient_context"; summary: string };
@@ -107,7 +104,6 @@ export function oracleStateForFingerprint(events: readonly GoalLedgerEvent[], go
 	return state;
 }
 
-// ── structured advice + isolated session ────────────────────────────────────
 
 const OracleAdviceSchema = Type.Object({
 	diagnosis: Type.String({ maxLength: 2000 }),
@@ -166,7 +162,6 @@ export function buildBlockerOraclePrompt(args: {
 	].filter(Boolean).join("\n\n");
 }
 
-/** Validate untrusted submitted advice against the bounded schema semantics. */
 function validateAdvice(value: unknown): OracleAdvice | { error: string } {
 	const raw = value as Record<string, unknown> | null;
 	if (!raw || typeof raw !== "object") return { error: "advice must be an object" };
@@ -290,7 +285,6 @@ type OracleSessionFactory = {
 	subscribe?: (listener: (event: unknown) => void) => () => void;
 };
 
-// ── armed follow-up marker (session-scoped) ────────────────────────────────
 
 interface ArmedAdvice {
 	goalId: string;

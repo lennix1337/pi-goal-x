@@ -24,7 +24,6 @@ export default function goalExtension(
 	dependencies: GoalCoreDependencies = {},
 ): void {
 	if (isDelegatedGoalSession()) {
-		// Inherit conversation without inheriting ownership of the parent's goal.
 		pi.on("context", async event => {
 			const messages = filterGoalSessionContext(event.messages, true);
 			return messages === null ? undefined : { messages };
@@ -35,7 +34,6 @@ export default function goalExtension(
 	pi.registerMessageRenderer<GoalAuditEventDetails>(GOAL_AUDIT_ENTRY, renderGoalAuditEvent);
 
 	const core = createGoalCore(pi, dependencies);
-	// Test/debug hook: expose the core for harness introspection (no behavior).
 	(pi as unknown as { _goalCore?: typeof core })._goalCore = core;
 	registerGoalCommands(core);
 	registerGoalTools(core);

@@ -17,9 +17,6 @@ import type { GoalLedgerEvent } from "../goal-ledger.ts";
 import type { GoalRecord, GoalTask } from "../goal-record.ts";
 import { deriveGoalActivity, type GoalActivityItem } from "../goal-activity.ts";
 
-// ---------------------------------------------------------------------------
-// Types (plan §6)
-// ---------------------------------------------------------------------------
 
 export type DashboardStatusCode = "running" | "idle" | "paused" | "blocked" | "budget_limited" | "complete";
 
@@ -31,21 +28,18 @@ export interface GoalDashboardModel {
 	status: {
 		code: DashboardStatusCode;
 		label: string;
-		/** Footer-status label (goal-core statusLabel), e.g. `running`, `paused (agent)`. */
 		footerLabel: string;
 		reason?: string;
 		suggestedAction?: string;
 	};
 
 	focused: boolean;
-	/** §auditor-toggle: whether the independent completion auditor is enabled for this goal (derived from the goal's persisted skipAuditor; undefined = on). */
 	auditorEnabled: boolean;
 	filePath?: string;
 
 	usage: {
 		activeSeconds: number;
 		tokens: number;
-		/** Footer-style usage content, e.g. `49h49m36s 19M` (empty when unused). */
 		footerBits: string;
 	};
 
@@ -94,36 +88,26 @@ export interface DashboardTaskNode {
 	isCurrent: boolean;
 	verificationContract?: string;
 	evidence?: string;
-	/** Completion timestamp (when status is complete) — the scroll anchor (§9.6). */
 	completedAt?: string;
 	/** Direct-child subtask total — 0 for a leaf task (§9.3 rule: direct children only). */
 	totalSubtasks: number;
-	/** Direct children complete or skipped (same "done" rule as §9.1). */
 	completedSubtasks: number;
 }
 
 export interface GoalDashboardModelOptions {
 	maxAutonomousRuns?: number;
-	/** Report the runs line for a finite allowance (default on). */
 	showAutonomousRuns?: boolean;
 	focused: boolean;
 	otherOpenGoals: number;
 	ledgerEvents?: readonly GoalLedgerEvent[];
 	activityLimit?: number;
-	/** §9.5: omit task sections when tasks are disabled by settings. */
 	tasksDisabled?: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Status derivation
-// ---------------------------------------------------------------------------
 
 export interface DashboardGoalStatus {
 	code: DashboardStatusCode;
 	label: string;
-	/** Footer-status label (goal-core statusLabel: running / paused (agent) /
-	 * blocked / budget limited / active / complete, with sisyphus prefix) — the
-	 * widget status line shows the same terminology as the pi footer. */
 	footerLabel: string;
 	reason?: string;
 	suggestedAction?: string;
@@ -159,9 +143,6 @@ export function deriveGoalStatus(goal: GoalRecord): DashboardGoalStatus {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Task progress (plan §9)
-// ---------------------------------------------------------------------------
 
 export interface TaskProgress {
 	completed: number;
@@ -186,9 +167,6 @@ function percentageOf(done: number, total: number): number {
 	return Math.min(100, Math.max(0, Math.round((done / total) * 100)));
 }
 
-// ---------------------------------------------------------------------------
-// Task tree (plan §9.2)
-// ---------------------------------------------------------------------------
 
 /**
  * Flatten the recursive task tree into display rows. `currentTaskId` marks
@@ -205,9 +183,6 @@ export function flattenTaskTree(tasks: readonly GoalTask[] | undefined, currentT
  }));
 }
 
-// ---------------------------------------------------------------------------
-// Current task (plan §7.2, §9.3)
-// ---------------------------------------------------------------------------
 
 export interface CurrentTaskSubtaskProgress {
 	completedSubtasks: number;
@@ -381,9 +356,7 @@ export interface TaskListViewport {
 	rows: number;
 	offset: number;
 	maxOffset: number;
-	/** Rows hidden above the window (offset > 0). */
 	hiddenAbove: number;
-	/** Rows hidden below the window (offset + rows < total). */
 	hiddenBelow: number;
 }
 
@@ -418,16 +391,10 @@ function findTask(tasks: readonly GoalTask[], id: string): GoalTask | undefined 
 	return undefined;
 }
 
-// ---------------------------------------------------------------------------
-// Activity (re-exported from the durable-ledger mapping, §12)
-// ---------------------------------------------------------------------------
 
 export { deriveGoalActivity };
 export type { GoalActivityItem, GoalActivityKind } from "../goal-activity.ts";
 
-// ---------------------------------------------------------------------------
-// Formatting helpers
-// ---------------------------------------------------------------------------
 
 /** Compact elapsed duration, e.g. `12m47s` (shared formatter from goal-core). */
 export function formatDashboardDuration(seconds: number): string {
@@ -460,15 +427,7 @@ export function formatBudget(used: number, total: number): string {
 	return `${formatCompactTokens(used)} / ${formatCompactTokens(total)} · ${pct}%`;
 }
 
-// ---------------------------------------------------------------------------
-// Whole-model derivation
-// ---------------------------------------------------------------------------
 
-/**
- * Task rows, progress and current task for one render. Derived per read: the
- * task index is not cached, so no stable key exists, and one walk of the tasks
- * costs less than the key comparison a memo would need.
- */
 function taskPresentation(goal: GoalRecord, disabled: boolean) {
  const taskProgress = disabled ? undefined : deriveTopLevelTaskProgress(goal);
  const tree = disabled ? [] : flattenTaskTree(goal.taskList?.tasks);
@@ -491,8 +450,6 @@ export function deriveGoalDashboardModel(
 
 	const status = deriveGoalStatus(goal);
 	if (goal.status === "active" && goal.scheduler?.phase === "waiting") { status.code = "idle"; status.label = "Waiting"; status.footerLabel = "waiting"; }
-	// §9.5: with tasks disabled, omit task sections entirely (status,
-	// verification, usage, path, and focus remain).
  const {taskProgress, taskTree, currentTask, taskTitles} = taskPresentation(goal, tasksDisabled);
 
 	const budget =
@@ -507,9 +464,6 @@ export function deriveGoalDashboardModel(
 
 	const recentActivity = deriveGoalActivity(ledgerEvents, goal.id, { taskTitles, limit: activityLimit });
 
-	// Footer-status usage bits (goal-core footerStatus parity): compact
-	// duration + compact token count, e.g. `49h49m36s 19M`. The status line
-	// renders them inside brackets; empty when the goal has no usage yet.
 	const footerUsageBits: string[] = [];
 	if (goal.usage.activeSeconds > 0) footerUsageBits.push(formatDuration(goal.usage.activeSeconds));
 	if (goal.usage.tokensUsed > 0) footerUsageBits.push(formatCompactTokens(goal.usage.tokensUsed));

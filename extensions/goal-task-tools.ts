@@ -1,11 +1,3 @@
-/**
- * Task-tool support for the Stage 4 consolidation:
- * flat parent-linked `set_goal_tasks` input → recursive GoalTask[] tree,
- * with the same validation rules the recursive path enforced (unique ids,
- * non-empty titles, existing parents, acyclic, ≤50 tasks, configured depth,
- * valid lightweight-subtask placement), plus id-stable merging that preserves
- * status/evidence/timestamps for matching ids.
- */
 
 import { StringEnum, Type } from "@earendil-works/pi-ai";
 import { defineTool, type AgentToolResult, type ExtensionContext, type Theme } from "@earendil-works/pi-coding-agent";
@@ -89,7 +81,6 @@ export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?
 		}
 	}
 
-	// Build the tree.
 	const childrenOf = new Map<string, FlatTaskInput[]>();
 	const roots: FlatTaskInput[] = [];
 	for (const item of flat) {
@@ -119,7 +110,6 @@ export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?
 		}
 		return node;
 	}
-	// Both buckets were populated in input order, so sorting would repeat that work.
 	const tasks = roots.map(buildNode);
 
 	// Lightweight placement: lightweight_subtasks must be on a task with children.
@@ -169,7 +159,6 @@ export function mergeTasksWithExisting(existing: GoalTask[] | undefined, incomin
 		const base: GoalTask = {
 			id: input.id,
 			title: input.title,
-			// Structural fields are authoritative; undefined (omitted) clears.
 			verificationContract: input.verificationContract,
 			lightweightSubtasks: input.lightweightSubtasks,
 			...progress,
@@ -177,7 +166,6 @@ export function mergeTasksWithExisting(existing: GoalTask[] | undefined, incomin
 		if (input.subtasks && input.subtasks.length > 0) {
 			base.subtasks = input.subtasks.map((child) => mergeTask(child));
 		} else if (prior?.subtasks) {
-			// Structural removal of all children for this id.
 			delete base.subtasks;
 		}
 		return base;
@@ -246,12 +234,10 @@ function progressSpec(input: TaskProgressInput, core: import("./goal-state.ts").
  };
 }
 
-// ── Tool registration (moved from goal-tools.ts in the Stage 5 module split) ─
 
 export function registerTaskTools(core: import("./goal-state.ts").GoalCore): void {
 	const { pi } = core;
 
-	// ── set_goal_tasks: flat parent-linked structural task-tree tool ───────────
 pi.registerTool(defineTool({
 	name: SET_GOAL_TASKS_TOOL_NAME,
 	label: "Set Goal Tasks",
@@ -305,9 +291,6 @@ pi.registerTool(defineTool({
 		const blockCompletion = params.block_completion === true;
 		const now = nowIso();
 
-		// Render the proposed STRUCTURAL tree for the confirmation dialog.
-		// Progress merge happens inside GoalService.apply against the
-		// disk-refreshed clone.
 		function renderTaskLines(tasks: GoalTask[], indent = 0): string[] {
 			const prefix = "  ".repeat(indent);
 			const lines: string[] = [];
@@ -347,9 +330,6 @@ pi.registerTool(defineTool({
 			reconcile: false,
 			focusToken: taskListFocus,
 			refreshFromDisk: true,
-			// Merge the confirmed structural input against the disk-refreshed
-			// clone so a concurrent external edit is preserved unless the
-			// requested operation changes the same task.
 			mutate: (g) => {
 				const merged = mergeTasksWithExisting(g.taskList?.tasks, converted.tasks);
 				// §7.5: preserve currentTaskId only when the same id remains pending;
@@ -394,7 +374,6 @@ pi.registerTool(defineTool({
 	},
 }));
 
-// ── update_goal_task: discriminated per-task status tool ───────────────────
 pi.registerTool(defineTool({
 	name: UPDATE_GOAL_TASK_TOOL_NAME,
 	label: "Update Goal Task",
@@ -465,8 +444,6 @@ pi.registerTool(defineTool({
 					return { ok: true };
 				},
 				update: (task) => task,
-				// §8.1: set explicit execution focus; a later start replaces it, and
-				// completing/skipping this task clears it.
 				setCurrentTaskId: params.task_id,
 				ledger: (written) => [{
 					type: "task_started",
@@ -564,7 +541,6 @@ pi.registerTool(defineTool({
 			};
 		}
 
-		// status === "pending": reopen a skipped task; completed tasks are immutable.
 		const result = core.goalService.updateTask(ctx, {
 			focusToken: taskFocus,
 			taskId: params.task_id,

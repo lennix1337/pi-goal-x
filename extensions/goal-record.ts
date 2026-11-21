@@ -45,20 +45,11 @@ export interface GoalRecord {
 	activePath?: string;
 	archivedPath?: string;
 	stopReason?: StopReason;
-	// Set when the model reports the goal blocked. Cleared when the goal becomes active again.
 	pauseReason?: string;
 	pauseSuggestedAction?: string;
 	skipAuditor?: boolean;
-	/**
-	 * Persisted monotonic mutation counter (follow-up Stage 4). Missing
-	 * historical values normalize to zero. Cross-process writers compare the
-	 * revision captured at reconciliation with the disk value under the
-	 * per-goal lock; a mismatch is a typed conflict instead of a blind write.
-	 */
 	revision?: number;
-	/** Optional token budget (whole tokens). When accounted usage reaches it, the runtime marks the goal budget_limited. */
 	tokenBudget?: number;
-	/** Per-goal run allowance: null = unlimited, absent = inherit settings. */
 	maxAutonomousRuns?: number | null;
 	scheduler?: GoalSchedulerState;
 	/**
@@ -69,14 +60,12 @@ export interface GoalRecord {
 	 */
 	currentTaskId?: string;
 	taskList?: GoalTaskList;
-	/** Plain-text description of what verification evidence is required before completing this goal. */
 	verificationContract?: string;
 }
 
 export interface GoalStateEntry {
 	version: 3;
 	goal: GoalRecord | null;
-	/** E7: expandable tool-result detail line (e.g. full pause reason). */
 	resultDetail?: string;
 }
 
@@ -145,7 +134,6 @@ export interface GoalCreationConfig {
 	autoContinue: boolean;
 	sisyphus: boolean;
 	taskList?: GoalTaskList;
-	/** User-chosen per-draft auditor bypass, persisted on the created goal. */
 	skipAuditor?: boolean;
 }
 
@@ -359,7 +347,6 @@ export function normalizeGoalRecord(value: unknown): GoalRecord | null {
 	// Persisted lifecycle status is authoritative. autoContinue is an execution
 	// preference only: it must never rewrite status during reads or migration.
 	const status = normalizeGoalStatus(raw.status);
-	// autoContinue normalizes independently of status.
 	const autoContinue = typeof raw.autoContinue === "boolean" ? raw.autoContinue : true;
 	const usage = normalizeUsage(raw.usage);
 	const sisyphus = raw.sisyphus === true;

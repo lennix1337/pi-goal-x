@@ -10,7 +10,6 @@ export interface GoalStorageContext {
 	sessionManager?: { getSessionId(): string | undefined };
 }
 
-// Host contexts change between hooks; the session manager owns their lifetime.
 const roots = new WeakMap<object, { id: string | undefined; cwd: string; root: string }>();
 
 export function goalStorageRoot(ctx: GoalStorageContext): string {
@@ -40,7 +39,6 @@ function configuredGoalRoot(ctx: GoalStorageContext): string {
 		fs.mkdirSync(root, { recursive: true });
 		if (fs.lstatSync(root).isSymbolicLink()) throw new Error(`Goal root is a symlink: ${root}`);
 		root = fs.realpathSync(root);
-		// Metadata lives inside an override without perturbing the pool's mtime.
 		const metadata = path.join(root, ".metadata");
 		fs.mkdirSync(metadata, { recursive: true });
 		if (fs.lstatSync(metadata).isSymbolicLink()) throw new Error(`Goal metadata directory is a symlink: ${metadata}`);

@@ -23,9 +23,6 @@ export function isRunnableStatus(status: GoalStatusLike): boolean {
 }
 
 export function isCompletableStatus(status: GoalStatusLike): boolean {
-	// A budget-limited goal is NOT completed by the transition itself, but the
-	// user (or the model on explicit evidence) may still complete it. A blocked
-	// goal is the model's terminal surrender — resume or clear it instead.
 	return status === "active" || status === "paused" || status === "budget_limited";
 }
 
@@ -190,7 +187,6 @@ export function validateTaskListProposal(args: {
 		if (!t.title.trim()) return { ok: false, message: `Task "${t.id}" must have a non-empty title.` };
 		if (ids.has(t.id)) return { ok: false, message: `Duplicate task id: "${t.id}".` };
 		ids.add(t.id);
-		// Recursively check subtask ids against the same global set
 		if (t.subtasks && t.subtasks.length > 0) {
 			const childErr = checkDuplicateTaskIds(t.subtasks, ids);
 			if (childErr) return { ok: false, message: childErr };
@@ -245,7 +241,6 @@ export function checkSubtasksComplete(task: GoalTask): string | undefined {
 		if (child.status === "pending") {
 			return `Task "${task.id}" has pending subtask "${child.id}". Complete or skip all subtasks first.`;
 		}
-		// Check recursively
 		const childCheck = checkSubtasksComplete(child);
 		if (childCheck) return childCheck;
 	}
@@ -292,11 +287,6 @@ export function buildCompletionReport(args: { detailedSummary: string; auditorRe
 export interface GoalCreatedReportArgs {
 	objective: string;
 	detailedSummary?: string | null;
-	/**
-	 * Guided-confirmation report (§14): the richer opening line plus expanded
-	 * detail (goal id, active file, task count, verification contract, auditor
-	 * configuration, token budget). Direct creation keeps the default text.
-	 */
 	confirmed?: boolean;
 	goalId?: string;
 	filePath?: string;

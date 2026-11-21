@@ -77,7 +77,6 @@ export interface GoalCore {
 	auditProgress: AuditorWidgetProgress | null;
 	auditAnimationTimer: ReturnType<typeof setInterval> | null;
 	auditAbortController: AbortController | null;
-	/** §15.4: finished audit result card shown briefly before the dashboard returns. */
 	auditResult: { verdict: AuditVerdict; report: string; at: string } | null;
 	setAuditResult(verdict: AuditVerdict, report: string): void;
 	clearAuditResult(): void;
@@ -111,9 +110,7 @@ export interface GoalCore {
 	isStaleCheckpointBlockedToolCall(toolName: string): boolean;
 	clearStoppedRuntimeState(): void;
 	openGoals(): GoalRecord[];
-	/** §10: toggle the unified dashboard between compact and expanded modes. */
 	toggleDashboardExpanded(): void;
-	/** §10: whether the unified dashboard is currently expanded. */
 	isDashboardExpanded(): boolean;
 	reconcileFocusedGoalFromDisk(ctx: ExtensionContext, opts?: { preserveMemoryUsage?: boolean }): boolean;
 	appendFocusEntry(goalId: string | null, reason: GoalFocusReason): void;
@@ -134,14 +131,11 @@ export interface GoalCore {
 	archiveCurrentGoal(ctx: ExtensionContext, reason: StopReason | undefined): GoalRecord | null;
 	stopActiveGoal(status: Exclude<GoalStatus, "active">, reason: StopReason | undefined, ctx: ExtensionContext): void;
 	pauseActiveGoal(ctx: ExtensionContext): void;
-	/** §auditor-toggle: flip the focused goal's persisted per-goal skipAuditor and record the ledger event. */
 	toggleGoalAuditor(ctx: ExtensionContext): void;
 	queueContinuation(ctx: ExtensionContext, force?: boolean): void;
 	flushGoalTransaction(ctx: ExtensionContext): void;
 	replaceGoal(config: GoalCreationConfig, ctx: ExtensionContext, startNow?: boolean, verificationContract?: string, tokenBudget?: number): void;
-	/** F5: bump the last-activity timestamp (called on real work events). */
 	touchGoalActivity(): void;
-	/** F5: detect a stalled active auto-continue goal; returns the [GOAL STALLED] steering note. */
 	checkStall(ctx: ExtensionContext): string;
 }
 
@@ -194,11 +188,6 @@ export function createGoalCore(
 		},
 	};
 
-	/**
-	 * Sole mutation boundary for goal records. All goal-file writes, ledger
-	 * appends, and ordered write→ledger→memory commits route through this
-	 * service; handlers keep validation and runtime/UI effects.
-	 */
 	const goalService = new GoalService({
 		getFocused: () => state.goal,
 		setFocused: (goal) => {
@@ -241,8 +230,6 @@ export function createGoalCore(
 	function setAuditResult(verdict: AuditVerdict, report: string): void {
 		auditResult = { verdict, report, at: nowIso() };
 		if (auditResultClearTimer) clearTimeout(auditResultClearTimer);
-		// Short-lived foreground display (§2.5): the card is visible while the
-		// user reads it, then the normal dashboard returns automatically.
 		auditResultClearTimer = setTimeout(() => {
 			auditResult = null;
 			auditResultClearTimer = null;
@@ -261,8 +248,6 @@ export function createGoalCore(
 
 	let goalModalDepth = 0;
 	let debugMode = false;
-	// §10: unified dashboard expansion state (compact vs expanded task view),
-	// owned by the core so it survives host-side widget re-instantiation.
 	let dashboardExpanded = false;
 
 	// turn-stop guard, stale checkpoint, continuation scheduling, and one-time
@@ -296,8 +281,6 @@ export function createGoalCore(
 	});
 	const accounting = new GoalAccounting();
 
-	// Whether the task tools are advertised, decided once at session start from
-	// settings (disableTasks). Stage 4 replaces them with the two task tools.
 	let tasksEnabled = true;
 	// Which goal-tool profile is installed: none yet (before session start), the
 	// fixed execution profile, or the transient drafting profile. Focus changes
@@ -372,9 +355,6 @@ export function createGoalCore(
 		stopAuditAnimation();
 		auditProgress = null;
 		goalWidgetComponentRef.current?.invalidate();
-		// Nothing else is recorded here; the completion flow sees the aborted
-		// result and decides the single canonical ledger outcome after the
-		// dialog choice.
 	}
 
 	function clearContinuationTimer(): void {
@@ -434,14 +414,13 @@ export function createGoalCore(
 	): void {
 		const previousGoalId = focusedGoalId;
 		if (previousGoalId !== goalId) scheduler.takeover(ctx);
-		if (previousGoalId !== goalId) goalService.flushTurn(ctx); // P1-3: persist the old buffer before switching focus
+		if (previousGoalId !== goalId) goalService.flushTurn(ctx);
 		assignFocusedGoalId(goalId && goalsById.has(goalId) ? goalId : null);
 		if (previousGoalId !== focusedGoalId) {
 			clearContinuationState();
 			clearActiveAccounting();
 		}
 		appendFocusEntry(focusedGoalId, reason);
-		// Append ledger event for focus changes
 		try {
 			if (opts.recordLedger !== false && focusedGoalId) {
 				goalService.appendEvents(ctx, [{ type: "goal_focused", goalId: focusedGoalId, reason, at: nowIso() }]);
@@ -449,7 +428,6 @@ export function createGoalCore(
 				goalService.appendEvents(ctx, [{ type: "goal_unfocused", reason, at: nowIso() }]);
 			}
 		} catch {
-			// Ledger append failure should not crash focus change
 		}
 		updateUI(ctx);
 	}
@@ -467,7 +445,7 @@ export function createGoalCore(
 	}
 
 	function removeFocusedGoal(ctx: ExtensionContext, reason: GoalFocusReason): void {
-		goalService.flushTurn(ctx); // P1-3: persist pending mutations before the goal leaves the session
+		goalService.flushTurn(ctx);
 		if (focusedGoalId) goalsById.delete(focusedGoalId);
 		assignFocusedGoalId(null);
 		clearStoppedRuntimeState();
@@ -485,12 +463,10 @@ export function createGoalCore(
 	}
 
 	function goalForDisplay(): GoalRecord | null {
-		// P1-12: extracted live-usage view.
 		return liveDisplayGoal(state.goal, accounting);
 	}
 
 	function accountProgress(ctx: ExtensionContext, opts: { completedTurnTokens?: number } = {}): void {
-		// Skip disk reconciliation for complete goals — they are pending archival at turn_end.
 		if (state.goal?.activePath && state.goal?.status !== "complete" && !reconcileFocusedGoalFromDisk(ctx, { preserveMemoryUsage: true })) return;
 		if (!state.goal || state.goal.status !== "active" || !accounting.isActiveFor(state.goal.id)) {
 			beginAccounting();
@@ -508,7 +484,6 @@ export function createGoalCore(
 		state.goal = next;
 		persist(ctx);
 
-		// One warning per accounting update, even when several thresholds are crossed.
 		const budgetGoal = state.goal;
 		if (budgetGoal && budgetGoal.status === "active" && typeof budgetGoal.tokenBudget === "number" && budgetGoal.tokenBudget > 0 && budgetGoal.usage.tokensUsed > 0) {
 			const pct = budgetGoal.usage.tokensUsed / budgetGoal.tokenBudget;
@@ -626,7 +601,7 @@ export function createGoalCore(
 
 	let lastGoalActivityAt = Date.now();
 	let stallNotified = false;
-	const budgetWarningsFired = new Set<string>(); // "goalId:budget:threshold"
+	const budgetWarningsFired = new Set<string>();
 
 	function touchGoalActivity(): void {
 		lastGoalActivityAt = Date.now();
@@ -658,12 +633,6 @@ export function createGoalCore(
 	let uiFlushScheduled = false;
 	let lastUiCtx: ExtensionContext | null = null;
 
-	/**
-	 * P1-9: coalesced widget updates. Multiple updateUI calls within one
-	 * synchronous block (a tool handler typically calls it 2–4 times) collapse
-	 * into a single microtask render; the final turn_end render still shows the
-	 * latest state. The render itself reads live state at flush time.
-	 */
 	function updateUI(ctx: ExtensionContext): void {
 		if (!ctx.hasUI) return;
 		lastUiCtx = ctx;
@@ -682,9 +651,6 @@ export function createGoalCore(
 			return;
 		}
 		if (!state.goal && loadGoalSettings(ctx.cwd).hideUnfocusedBanner === true) {
-			// PR #29: layered hideUnfocusedBanner suppresses the unfocused status
-			// hint. Focused status and audit UI are unaffected; the model-facing
-			// [PI GOAL UNFOCUSED] prompt is unchanged.
 			clearGoalWidget(ctx);
 			return;
 		}
@@ -757,7 +723,7 @@ export function createGoalCore(
 		externalFocusRoot = focusStorageRoot !== path.resolve(ctx.cwd, ".pi/goals");
 		goalsById = await readActiveGoalPoolAsync(ctx);
 		tasksEnabled = !loadGoalSettings(ctx.cwd).disableTasks;
-		focusRevision += 1; // Session reload/tree navigation invalidates pending async focus operations.
+		focusRevision += 1;
 		assignFocusedGoalId(null);
 		hasExplicitSessionFocus = false;
 		let focusEntry: GoalFocusEntry | null = null;
@@ -858,7 +824,7 @@ export function createGoalCore(
 			// accrue time, and the UI must reflect the new status immediately.
 			clearContinuationState();
 			clearActiveAccounting();
-			goalService.flushTurn(ctx); // P1-3: user-visible status change persists now, not at turn end
+			goalService.flushTurn(ctx);
 			updateUI(ctx);
 		}
 	}
@@ -899,7 +865,7 @@ export function createGoalCore(
 			ctx.ui.notify("Could not toggle the auditor: " + result.message, "error");
 			return;
 		}
-		goalService.flushTurn(ctx); // P1-3: user-visible setting change persists now, not at turn end
+		goalService.flushTurn(ctx);
 		updateUI(ctx);
 		ctx.ui.notify(nextEnabled ? "Auditor enabled for this goal." : "Auditor disabled for this goal.", "info");
 	}

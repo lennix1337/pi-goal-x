@@ -13,22 +13,14 @@ function isKittyRepeatOrRelease(data: string): boolean {
 	return data.startsWith("\x1b[") && /^[0-9:;]+:[23][u~ABCDHF]$/.test(data.slice(2));
 }
 
-/**
- * Terminal input keybindings (Escape pause/abort-audit, Ctrl+Shift+T dashboard
- * overlay, and the hidden debug-mode bindings) plus the debug goal/task/audit
- * helpers. Re-registered at session start/tree navigation; the handler reads
- * live state through the core at event time.
- */
 let debugGoalCounter = 0;
 let debugMockAuditTimer: ReturnType<typeof setInterval> | null = null;
 
-/** Debug helpers are inert unless PI_GOAL_DEBUG is set (P1-13). */
 function isDebugEnabled(): boolean {
 	const value = process.env.PI_GOAL_DEBUG;
 	return value === "true" || value === "1";
 }
 
-/** Render task lines for the debug proposal dialog. */
 function formatModeLabelDebug(sisyphus: boolean): string {
 	return sisyphus ? "Sisyphus (prompt/criteria style)" : "Normal goal";
 }
@@ -168,9 +160,6 @@ export function syncTerminalInputPause(core: GoalCore, ctx: ExtensionContext): v
 				return undefined;
 			}
 
-			// Ctrl+Shift+T — toggle the unified dashboard between compact and
-			// expanded task views (the task-list overlay is merged into the
-			// dashboard; §10).
 			if (matchesKey(data, keybindings.toggleExpand)) {
 				core.toggleDashboardExpanded();
 				return { consume: true };
@@ -203,12 +192,8 @@ export function syncTerminalInputPause(core: GoalCore, ctx: ExtensionContext): v
 				}
 			}
 
-			// Debug keybindings are inert unless PI_GOAL_DEBUG is set (P1-13).
 			if (!isDebugEnabled()) return undefined;
 
-			// ── Debug mode keybindings (hidden from normal view) ────────────────
-
-			// Ctrl+Shift+X — toggle debug mode on/off
 			if (matchesKey(data, "ctrl+shift+x")) {
 				core.debugMode = !core.debugMode;
 				ctx.ui.notify(core.debugMode ? "Debug mode ON" : "Debug mode OFF", "info");
@@ -219,25 +204,21 @@ export function syncTerminalInputPause(core: GoalCore, ctx: ExtensionContext): v
 			// Only process the following debug keybindings when debug mode is active
 			if (!core.debugMode) return undefined;
 
-			// Ctrl+Shift+N — create a test goal
 			if (matchesKey(data, "ctrl+shift+n")) {
 				createDebugGoal(ctx);
 				return { consume: true };
 			}
 
-			// Ctrl+Shift+T — inject sample tasks into current goal
 			if (matchesKey(data, "ctrl+shift+t")) {
 				injectDebugTasks(ctx);
 				return { consume: true };
 			}
 
-			// Ctrl+Shift+R — start mock completion audit
 			if (matchesKey(data, "ctrl+shift+r")) {
 				startMockAudit(ctx);
 				return { consume: true };
 			}
 
-			// Ctrl+Shift+O — open proposal dialog with sample data
 			if (matchesKey(data, "ctrl+shift+o")) {
 				openDebugProposal(ctx);
 				return { consume: true };
@@ -246,12 +227,10 @@ export function syncTerminalInputPause(core: GoalCore, ctx: ExtensionContext): v
 			return undefined;
 		});
 
-		/** Toggle a test goal: create (first press) or remove (second press) */
 		function createDebugGoal(ctx: ExtensionContext): void {
 			if (!isDebugEnabled()) return;
 			const prev = core.state.goal;
 			if (prev && prev.id.startsWith("debug-")) {
-				// Toggle off — remove debug goal entirely (no archive, full delete)
 				const filePath = `${DEBUG_GOALS_DIR}/debug_goal.md`;
 				core.goalService.removeDebugFile(ctx, filePath);
 				const prevId = prev.id;
@@ -266,7 +245,6 @@ export function syncTerminalInputPause(core: GoalCore, ctx: ExtensionContext): v
 				return;
 			}
 
-			// Toggle on — create a new debug goal, write to temp dir
 			debugGoalCounter++;
 			const goal = createGoal({
 				objective: "=== Goal ===\nObjective: Debug test goal",
@@ -278,11 +256,10 @@ export function syncTerminalInputPause(core: GoalCore, ctx: ExtensionContext): v
 			goal.updatedAt = nowIso();
 			goal.activePath = `${DEBUG_GOALS_DIR}/debug_goal.md`;
 			core.goalService.writeDebugFile(ctx, goal.activePath, serializeGoalFile(goal));
-			core.setGoal(goal, ctx, false, "created"); // no persist (we already wrote the file)
+			core.setGoal(goal, ctx, false, "created");
 			ctx.ui.notify(`Debug goal created: ${goal.id}`, "info");
 		}
 
-		/** Inject 3-4 sample tasks into the current goal */
 		function injectDebugTasks(ctx: ExtensionContext): void {
 			if (!isDebugEnabled()) return;
 			if (!core.state.goal) {
@@ -319,7 +296,6 @@ export function syncTerminalInputPause(core: GoalCore, ctx: ExtensionContext): v
 			ctx.ui.notify("Sample tasks injected (3 tasks, 1 completed)", "info");
 		}
 
-		/** Stop mock audit timer if running */
 		function stopMockAuditTimer(): void {
 			if (debugMockAuditTimer) {
 				clearInterval(debugMockAuditTimer);
@@ -327,7 +303,6 @@ export function syncTerminalInputPause(core: GoalCore, ctx: ExtensionContext): v
 			}
 		}
 
-		/** Start a mock completion audit that transitions through phases */
 		function startMockAudit(ctx: ExtensionContext): void {
 			if (!isDebugEnabled()) return;
 			stopMockAuditTimer();
@@ -373,7 +348,6 @@ export function syncTerminalInputPause(core: GoalCore, ctx: ExtensionContext): v
 						"✓ No truncation cap remaining",
 					];
 					stopMockAuditTimer();
-					// Auto-clear audit after 3 more seconds
 					setTimeout(() => {
 						core.auditProgress = null;
 						core.goalWidgetComponentRef.current?.invalidate();
@@ -398,10 +372,8 @@ function renderDebugTaskLines(tasks: GoalTask[], indent = 0): string[] {
 			return lines;
 		}
 
-		/** Show the proposal dialog using real goal state — no hardcoded text */
 		function openDebugProposal(ctx: ExtensionContext): void {
 			if (!isDebugEnabled()) return;
-			// Build a fresh debug goal + tasks in memory for the dialog
 			debugGoalCounter++;
 			const goal = createGoal({
 				objective: `=== Goal ===

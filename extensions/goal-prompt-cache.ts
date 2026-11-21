@@ -35,8 +35,6 @@ export function cacheGoalHistory(payload: unknown, liveContent: string | readonl
 		const record = asRecord(block);
 		return typeof record?.text === "string" && live.has(record.text);
 	};
-	// Bedrock represents its breakpoint as a separate content block. The tail
-	// may be several live blocks; skip back over all of them.
 	const bedrockPoint = asRecord(last.content.at(-1));
 	if (asRecord(bedrockPoint?.cachePoint)) {
 		// Require our live text immediately before the marker. A bare marker

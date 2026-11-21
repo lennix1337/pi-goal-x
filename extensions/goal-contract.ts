@@ -28,7 +28,6 @@ export function extractVerificationContract(objective: string): { objective: str
 		const m = VERIFICATION_CONTRACT_RE.exec(trimmed);
 		if (m) {
 			contract = m[1]!.trim();
-			// Skip this line — don't add it to the cleaned objective
 		} else {
 			filtered.push(line);
 		}
@@ -52,7 +51,5 @@ export function promptSafeObjective(objective: string): string {
  * /sisyphus flow (or a corrected /sisyphus-direct argument) is required.
  */
 export function sisyphusObjectiveSufficient(objective: string): boolean {
-	// Ordered work can be written inline ("Refactor: 1) extract. 2) wire.")
-	// or as a numbered block; any explicit item marker counts as sufficient.
 	return /\b\d{1,2}\s*[).:]|\bstep\s*\d+/i.test(objective.trim());
 }

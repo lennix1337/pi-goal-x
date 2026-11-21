@@ -75,8 +75,6 @@ function readLockText(lockPath: string): string | undefined {
 }
 
 function sleepMs(ms: number): void {
-	// Synchronous bounded wait (Atomics.wait is legal on the main thread and
-	// does not burn CPU like a spin loop).
 	const buffer = new Int32Array(new SharedArrayBuffer(4));
 	Atomics.wait(buffer, 0, 0, ms);
 }
@@ -136,12 +134,10 @@ export function acquireGoalLock(
 					try {
 						fs.unlinkSync(lockPath);
 					} catch {
-						// Someone else recovered it first; retry acquisition.
 					}
 					continue;
 				}
 			} catch {
-				// Lock vanished between stat and read (holder released): retry.
 				continue;
 			}
 			sleepMs(retryMs);

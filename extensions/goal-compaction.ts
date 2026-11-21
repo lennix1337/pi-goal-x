@@ -96,7 +96,6 @@ export function buildCompactionSummary(args: {
   goalsById: Map<string, GoalRecord>;
   focusedGoalId: string | null;
   ledgerEvents?: GoalLedgerEvent[];
-  /** Checkpoint-fed view: uses reconstructed state + per-goal recent tails instead of a full event list. */
   ledgerState?: LedgerStateReadResult;
   capOpenGoals?: number;
   capEventsPerGoal?: number;
@@ -177,7 +176,6 @@ export function buildPostCompactionGoalDelta(args: {
       if (current.id.length > 80 || current.title.length > 180 || (current.verificationContract?.length ?? 0) > 600) lines.push('Retrieve omitted task requirements with get_goal(section="tasks") before continuing.');
     }
   }
-  // Bounded recent-event tail.
   const recent = latestEventsForGoal(ledgerEvents, goal.id, 5);
   if (recent.length > 0) {
     lines.push("Recent events:");
@@ -185,7 +183,6 @@ export function buildPostCompactionGoalDelta(args: {
       lines.push(`  ${localClock(event.at)} ${event.type}`);
     }
   }
-  // Latest unresolved auditor finding.
   const audit = latestAuditorResultForGoal(ledgerEvents, goal.id);
   if (audit && audit.verdict === "disapproved") {
     lines.push(`Latest unresolved auditor finding: ${audit.report.slice(0, 300)}`);

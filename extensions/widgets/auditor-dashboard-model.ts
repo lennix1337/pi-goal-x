@@ -1,11 +1,3 @@
-/**
- * Structured audit dashboard model (plan §15).
- *
- * Pure derivation from the low-level auditor progress stream: five check
- * stages (objective, verification, tasks, workspace, decision) with explicit
- * pending/running/passed/failed states, plus the approval/rejection result
- * card model. No TUI imports; the renderer and /goal-status share this model.
- */
 
 import type { AuditorProgress } from "../goal-auditor.ts";
 import { formatDashboardDuration } from "./goal-dashboard-model.ts";
@@ -31,9 +23,7 @@ export interface AuditorDashboardModel {
 	currentTool?: string;
 	currentToolArgs?: string;
 	recentOutput: string[];
-	/** Result verdict when the audit finished (drives the result card). */
 	verdict?: AuditVerdict | null;
-	/** Whether the audit session is still running (false when phase === done). */
 	active: boolean;
 }
 
@@ -53,7 +43,6 @@ const CHECK_LABELS: Array<{ id: AuditCheckId; label: string }> = [
 
 export interface DeriveAuditorDashboardOptions {
 	auditorLabel?: string;
-	/** Result verdict when known (set after the audit session finishes). */
 	verdict?: AuditVerdict | null;
 }
 
@@ -158,8 +147,6 @@ function extractFindings(report: string): string[] {
 		if (/^<(approved|disapproved)\s*\/>/.test(line)) continue;
 		const cleaned = line.replace(/^[-*•✗✓]\s*/, "").replace(/^(\d+[.)])\s*/, "").trim();
 		if (!cleaned) continue;
-		// Skip section headers ("Audit report:", "Findings:") and generic
-		// "Auditor: ..." attribution lines — they are not findings.
 		if (/^auditor\s*:/i.test(cleaned)) continue;
 		if (/^[a-z][a-z ]{0,24}:$/i.test(cleaned)) continue;
 		if (cleaned.length > 200) findings.push(`${cleaned.slice(0, 197)}...`);

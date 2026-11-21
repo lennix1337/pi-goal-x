@@ -217,7 +217,6 @@ function visibleLen(value: string): number {
 	return value.length;
 }
 
-// ── Verbose (§13.2) ─────────────────────────────────────────────────────────
 
 function buildVerboseStatus(goal: GoalRecord, model: ReturnType<typeof deriveGoalDashboardModel>, events: GoalLedgerEvent[], settingsReport: string[], _width: number): string {
 	const lines: string[] = [];
@@ -294,5 +293,4 @@ function renderTaskTreeVerbose(tasks: GoalTask[], depth = 0, currentTaskId?: str
 	return lines;
 }
 
-// Re-export for consumers that want the same event type.
 export type { LedgerEvent };

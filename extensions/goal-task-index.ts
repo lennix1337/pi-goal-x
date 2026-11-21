@@ -1,7 +1,6 @@
 import type { GoalTask } from "./goal-record.ts";
 
 export interface TaskIndex {
- /** The task list this index was derived from (read-time view, not a copy). */
  tasks: readonly GoalTask[];
  byId: Map<string, GoalTask>;
  ordered: Array<{task: GoalTask; depth: number; parentId?: string}>;

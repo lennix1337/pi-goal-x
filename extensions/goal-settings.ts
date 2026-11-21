@@ -33,7 +33,6 @@ import { formatConfiguredRunAllowance } from "./goal-run-budget.ts";
 
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
-// ── sparse keybinding layers ────────────────────────────────────────────────
 
 export interface GoalDashboardKeybindings {
 	toggleExpand: KeyId;
@@ -89,7 +88,6 @@ export function formatGoalKeybinding(key: string): string {
 	}[part.toLowerCase()] ?? part.toUpperCase())).join("+");
 }
 
-// ── resolved settings (runtime shape) ───────────────────────────────────────
 
 export interface GoalSettingsResolvedShape {
 	disableTasks?: boolean;
@@ -100,9 +98,7 @@ export interface GoalSettingsResolvedShape {
 	thinkingLevel?: ThinkingLevel;
 	disabled?: boolean;
 	autoSelectSingleGoal?: boolean;
-	/** E3: load the project's own skills/extensions into auditor sessions (off by default = isolation). */
 	auditorProjectResources?: boolean;
-	/** F5: stall detector timeout in minutes (0 = off). */
 	stallTimeoutMinutes?: number;
 	/** Optional extension-run limit per creation/resume; zero disables; absent gives new goals the default (30) while earlier goals without an override inherit the configured allowance (unlimited if none). */
 	maxAutonomousRuns?: number;
@@ -119,9 +115,7 @@ export interface GoalSettingsResolvedShape {
 	 * /goal-tweak).
 	 */
 	objectiveMaxChars?: number;
-	/** Keyboard shortcuts for the compact task list and dashboard expansion. */
 	keybindings?: GoalKeybindings;
-	/** PR #29: suppress the unfocused goal widget + status hint (default false). */
 	hideUnfocusedBanner?: boolean;
 	/** Issue #72: suppress the model-facing [PI GOAL UNFOCUSED] prompt (default false). */
 	hideUnfocusedPrompt?: boolean;
@@ -135,8 +129,6 @@ export interface GoalSettingsResolvedShape {
 	networkRecovery?: GoalNetworkRecoverySettingsLayer;
 }
 
-// Resolved Oracle settings are attached to the resolved runtime shape below
-// (see ResolvedGoalOracleSettings).
 
 /**
  * Issue #26: sparse per-leaf Oracle settings. Every leaf inherits
@@ -201,7 +193,6 @@ export const PI_GOAL_GLOBAL_SETTINGS_FILE_ENV = "PI_GOAL_GLOBAL_SETTINGS_FILE";
 
 const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
 
-// ── pure path resolution ────────────────────────────────────────────────────
 
 function asNonEmptyString(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -240,7 +231,6 @@ export function goalSettingsPath(cwd: string, env: NodeJS.ProcessEnv = process.e
 	return path.join(cwd, ".pi", "pi-goal-x-settings.json");
 }
 
-// ── diagnostics ─────────────────────────────────────────────────────────────
 
 export type SettingsScope = "global" | "project";
 
@@ -268,10 +258,8 @@ export interface SettingsLayerRead {
 	fingerprint: string;
 }
 
-// ── zero-op cache ───────────────────────────────────────────────────────────
 
 interface SettingsFileCacheEntry {
-	/** Missing/malformed file: cached so repeated loads are zero-op too. */
 	missing?: boolean;
 	read?: SettingsLayerRead;
 }
@@ -580,7 +568,6 @@ export function parseGoalSettings(raw: unknown): GoalSettings {
 	return layer as GoalSettings;
 }
 
-// ── layer reads (cache-served, zero-op steady state) ───────────────────────
 
 function fingerprintOf(text: string): string {
 	// Cheap stable fingerprint: length + simple rolling sum (not security).
@@ -661,7 +648,6 @@ export function loadGoalSettingsFileConfig(cwd: string, env: NodeJS.ProcessEnv =
 	return readSettingsLayer(goalSettingsPath(cwd, env), "project").layer as GoalSettings;
 }
 
-// ── resolution with provenance ──────────────────────────────────────────────
 
 export type SettingsSource = "environment" | "project" | "global" | "default";
 
@@ -698,10 +684,6 @@ function pathKey(...parts: Array<string | undefined>): string {
 	return parts.filter((p) => p !== undefined).join(".");
 }
 
-/**
- * Resolve both layers + env into one snapshot with per-leaf provenance.
- * Nested keybindings resolve leaf-by-leaf from the SPARSE layers.
- */
 const resolutionEnvKeys = ["PI_GOAL_ROOT", "PI_GOAL_DISABLE_TASKS", "PI_GOAL_DISABLE_CONTRACTS", "PI_GOAL_OBJECTIVE_MAX_CHARS", "PI_GOAL_NETWORK_RECOVERY_MAX_ATTEMPTS", "PI_GOAL_NETWORK_RECOVERY_MAX_DELAY_MS"] as const;
 const resolvedSettingsCache: Array<{global: SettingsLayerRead; project: SettingsLayerRead; environment: Array<string | undefined>; snapshot: SettingsSnapshot}> = [];
 
@@ -1050,7 +1032,6 @@ export function acquirePathLock(
 					try {
 						fs.unlinkSync(lockPath);
 					} catch {
-						// Someone else recovered it first; retry.
 					}
 					continue;
 				}
@@ -1073,7 +1054,6 @@ function refuseSymlinkTarget(target: string): void {
 		}
 	} catch (err) {
 		if (err instanceof SettingsMutationError) throw err;
-		// Target does not exist yet — fine.
 	}
 }
 
@@ -1086,7 +1066,6 @@ function atomicWriteJson(target: string, value: unknown, options: { defaultMode:
 	try {
 		mode = fs.statSync(target).mode & 0o777;
 	} catch {
-		// New file: keep default mode.
 	}
 
 	const temp = path.join(parent, `.${path.basename(target)}.${process.pid}.${Date.now()}.tmp`);
@@ -1102,11 +1081,11 @@ function atomicWriteJson(target: string, value: unknown, options: { defaultMode:
 		if (fd !== undefined) {
 			try {
 				fs.closeSync(fd);
-			} catch { /* best effort */ }
+			} catch { }
 		}
 		try {
 			fs.unlinkSync(temp);
-		} catch { /* best effort */ }
+		} catch { }
 		throw error;
 	}
 	try {
@@ -1121,14 +1100,12 @@ function applyPathMutation(layer: GoalSettingsLayer, mutation: SettingsMutation)
 		const key = mutation.path[i]!;
 		const next = container[key];
 		if (!next || typeof next !== "object") {
-			if (mutation.op === "unset") return; // nothing to unset
+			if (mutation.op === "unset") return;
 			container[key] = {};
 		}
 		container = container[key] as Record<string, unknown>;
 	}
 	const last = mutation.path[mutation.path.length - 1]!;
-	// thinkingLevel/thinking_level are accepted aliases on read; writes operate
-	// on BOTH spellings so unset clears hand-edited variants too.
 	if (last === "thinkingLevel" || last === "thinking_level") {
 		if (mutation.op === "set") container.thinkingLevel = mutation.value;
 		else {
@@ -1141,7 +1118,6 @@ function applyPathMutation(layer: GoalSettingsLayer, mutation: SettingsMutation)
 	else delete container[last];
 }
 
-/** Canonicalize the persisted spelling of aliased keys before writing. */
 function canonicalizeAliases(layer: Record<string, unknown>): void {
 	if (layer.thinkingLevel !== undefined) {
 		layer.thinking_level = layer.thinkingLevel;
@@ -1198,7 +1174,6 @@ export function mutateSettingsLayer(input: MutateSettingsInput): SettingsSnapsho
 	}
 }
 
-// ── legacy whole-file save (routed through the locked mutation path) ────────
 
 /**
  * Save settings to the PROJECT file. Kept for compatibility; internally uses
@@ -1218,8 +1193,6 @@ export function saveGoalSettingsFileConfig(cwd: string, settings: GoalSettings):
 		const clean = buildPersistedLayer(settings);
 		atomicWriteJson(target, clean, { defaultMode: 0o600 });
 		invalidateSettingsCachePath(target);
-		// Return the normalized runtime shape (thinkingLevel), not the
-		// canonical persisted key (thinking_level).
 		const returned = { ...clean };
 		if (typeof returned.thinking_level === "string") {
 			returned.thinkingLevel = returned.thinking_level as ThinkingLevel;
@@ -1231,7 +1204,6 @@ export function saveGoalSettingsFileConfig(cwd: string, settings: GoalSettings):
 	}
 }
 
-/** Canonical persisted form of a resolved/sparse settings object. */
 function buildPersistedLayer(settings: GoalSettings): Record<string, unknown> {
 	const persisted: Record<string, unknown> = {};
 	if (settings.provider) persisted.provider = settings.provider;
@@ -1275,7 +1247,6 @@ function buildPersistedLayer(settings: GoalSettings): Record<string, unknown> {
 	return persisted;
 }
 
-// ── reporting ───────────────────────────────────────────────────────────────
 
 /**
  * E2: which env var (if any) overrides a settings key's effective value.

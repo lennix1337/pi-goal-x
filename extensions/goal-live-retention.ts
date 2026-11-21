@@ -64,7 +64,6 @@ interface RetainedTail {
 interface SessionRetention {
 	tails: RetainedTail[];
 	lastFresh: FreshLiveTails | undefined;
-	/** Digest of every base message at the last apply; any earlier rewrite resets. */
 	baseFingerprints: Array<string | null>;
 }
 
@@ -147,12 +146,7 @@ export class LiveTailRetention {
 		// instruction lingering mid-history.
 		if (session.lastFresh !== undefined && (session.lastFresh.state !== fresh.state
 			|| (session.lastFresh.counters !== undefined && fresh.counters === undefined))) reset();
-		// Tails anchored while history was empty would linger at the head once
-		// real history arrives. Reset once so fresh tails anchor at the tail.
 		if (session.tails.length > 0 && session.baseFingerprints.length === 0 && base.length > 0) reset();
-		// Any rewrite earlier than the anchors — middle-message edits, filter
-		// changes, checkpoint normalization — breaks the prefix even when the
-		// trailing message is identical, so verify the whole preceding history.
 		if (session.baseFingerprints.length > base.length) reset();
 		else {
 			for (let i = 0; i < session.baseFingerprints.length; i++) {
@@ -163,8 +157,6 @@ export class LiveTailRetention {
 				}
 			}
 		}
-		// An unsafe anchor invalidates the whole replay. Keeping an earlier
-		// policy while re-appending fresh blocks would duplicate that policy.
 		let valid = 0;
 		while (valid < session.tails.length) {
 			const tail = session.tails[valid]!;

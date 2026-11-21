@@ -25,7 +25,6 @@ export class GoalAccounting {
 	private activeGoalId: string | null = null;
 	private lastAccountedAt: number | null = null;
 
-	/** Start accounting for a goal id (or clear when null). */
 	begin(goalId: string | null): void {
 		this.activeGoalId = goalId;
 		this.lastAccountedAt = goalId ? Date.now() : null;
@@ -40,7 +39,6 @@ export class GoalAccounting {
 		return this.activeGoalId;
 	}
 
-	/** True when accounting is active for exactly this goal. */
 	isActiveFor(goalId: string): boolean {
 		return this.activeGoalId === goalId && this.lastAccountedAt !== null;
 	}
@@ -63,7 +61,6 @@ export class GoalAccounting {
 		return { tokens, seconds: elapsedSeconds };
 	}
 
-	/** Live elapsed whole seconds for display; does not advance the baseline. */
 	liveSeconds(now = Date.now()): number {
 		if (this.lastAccountedAt === null) return 0;
 		return Math.max(0, Math.floor((now - this.lastAccountedAt) / 1000));

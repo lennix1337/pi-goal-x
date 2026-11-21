@@ -53,11 +53,8 @@ async function showTaskListConfirmationDialog(ctx: ExtensionContext, proposalTex
 			}
 			const wasHardwareCursorShown = tui.getShowHardwareCursor();
 			tui.setShowHardwareCursor(false);
-			// Pause pi's working spinner for the dialog duration: its ~80ms re-renders
-			// write output that snaps a scrolled-up user back to the terminal bottom.
 			ctx.ui.setWorkingVisible(false);
 
-			// Default: "Confirm task list" (matches the pre-existing default).
 			let selectedIndex = 0;
 
 			const OPTIONS: Array<{ label: string; value: TaskConfirmationResult["decision"]; description: string }> = [
@@ -80,7 +77,6 @@ async function showTaskListConfirmationDialog(ctx: ExtensionContext, proposalTex
 			const dim = (s: string) => theme.fg("dim", s);
 			const muted = (s: string) => theme.fg("muted", s);
 
-			// ── Component ────────────────────────────────────────────────────
 			const component: Component & { dispose?(): void } = {
 				dispose() {
 					tui.setShowHardwareCursor(wasHardwareCursorShown);
@@ -88,7 +84,6 @@ async function showTaskListConfirmationDialog(ctx: ExtensionContext, proposalTex
 				},
 
 				invalidate(): void {
-					// No cached state to invalidate
 				},
 
 				render(width: number): string[] {
@@ -101,12 +96,10 @@ async function showTaskListConfirmationDialog(ctx: ExtensionContext, proposalTex
 					const lines: string[] = [];
 					const p = "  ";
 
-					// ── Header ────────────────────────────────────────────────
 					lines.push(accent(`┌${horizLine}┐`));
 					lines.push(line(p + theme.bold("Task list confirmation")));
 					lines.push(accent(`├${horizLine}┤`));
 
-					// ── Body: the proposed task tree ─────────────────────────
 					const body = BODY_LINES.slice(0, MAX_BODY);
 					for (const raw of body) {
 						const trimmed = raw;
@@ -117,7 +110,6 @@ async function showTaskListConfirmationDialog(ctx: ExtensionContext, proposalTex
 					}
 					lines.push(accent(`├${horizLine}┤`));
 
-					// ── Options ─────────────────────────────────────────────
 					OPTIONS.forEach((opt, i) => {
 						const isSelected = i === selectedIndex;
 						const marker = isSelected ? "▸ " : "  ";
@@ -128,7 +120,6 @@ async function showTaskListConfirmationDialog(ctx: ExtensionContext, proposalTex
 						}
 					});
 
-					// ── Footer ───────────────────────────────────────────────
 					lines.push(accent(`├${horizLine}┤`));
 					lines.push(line(p + dim("Enter to select  ·  ↑↓ to navigate  ·  Esc = keep current tasks")));
 					lines.push(accent(`└${horizLine}┘`));

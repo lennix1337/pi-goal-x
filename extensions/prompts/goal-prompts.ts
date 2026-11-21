@@ -50,7 +50,6 @@ function assertBounded(content: string): void {
 /** Cap on the objective block inside prompts (escaping + truncation). */
 export const MAX_OBJECTIVE_BLOCK_CHARS = 1_500;
 
-/** Cap on pending tasks rendered inline in the prompt (P1-4 trim). */
 const MAX_PENDING_RENDERED = 3;
 
 /**
@@ -70,7 +69,6 @@ function renderPendingTasks(tasks: GoalTask[], indent: number, rendered: { count
 	const lines: string[] = [];
 	for (const task of tasks) {
 		if (task.status !== "pending") {
-			// Completed/skipped: not rendered; their pending descendants still are.
 			if (task.subtasks && task.subtasks.length > 0) {
 				lines.push(...renderPendingTasks(task.subtasks, indent, rendered));
 			}
@@ -110,9 +108,6 @@ export function taskListBlock(goal: GoalRecord, settings?: GoalSettings): string
  const pending = pendingTasks.length;
 	const lines: string[] = [];
 	lines.push(`[TASK LIST — ${complete}/${total} tasks complete${skipped > 0 ? ` (${skipped} skipped)` : ""}]`);
-	// §8.1: surface the persisted execution focus (current task), with its
-	// verification contract when present, so the next continuation prompt
-	// carries the contract of the task the agent is working on.
 	if (goal.currentTaskId) {
 		const current = index.byId.get(goal.currentTaskId);
 		if (current) {
@@ -122,8 +117,6 @@ export function taskListBlock(goal: GoalRecord, settings?: GoalSettings): string
 	}
 	const legacy = promptProfile() === "legacy-v1";
 	if (legacy) {
-		// legacy-v1: pre-PR-E wording (current task also appears as a generic
-		// pending item; UI shortcut hint included).
 		const rendered = { count: 0, stop: false };
 		lines.push(...renderPendingTasks(goal.taskList.tasks, 0, rendered));
 		const hiddenPending = Math.max(0, (pending ?? 0) - rendered.count - (goal.currentTaskId && pendingTasks?.some(t => t.id === goal.currentTaskId) ? 1 : 0));
@@ -131,13 +124,10 @@ export function taskListBlock(goal: GoalRecord, settings?: GoalSettings): string
 			lines.push(`  (+${hiddenPending} more pending — expand the dashboard with Ctrl+Shift+T)`);
 		}
 	} else {
-		// compact-v2: the current task appears ONCE (in the Current line above);
-		// visible pending items exclude it.
 		const rendered = { count: 0, stop: false, skipId: goal.currentTaskId };
 		lines.push(...renderPendingTasks(goal.taskList.tasks, 0, rendered));
 		const hiddenPending = Math.max(0, (pending ?? 0) - rendered.count - (goal.currentTaskId && pendingTasks?.some(t => t.id === goal.currentTaskId) ? 1 : 0));
 		if (hiddenPending > 0 && rendered.count === 0) {
-			// Nothing visible at all: point at the next actionable task instead.
 			const next = pendingTasks?.find((t) => t.id !== goal.currentTaskId);
 			if (next) lines.push(`  Next pending: ${next.id} — ${next.title}`);
 		}
@@ -151,7 +141,6 @@ export function taskListBlock(goal: GoalRecord, settings?: GoalSettings): string
 	return lines.join("\n");
 }
 
-/** Bounded verification-contract block. */
 function excerpt(text: string, cap: number, section: "objective" | "tasks"): string {
  const safe = promptSafeObjective(text);
  return safe.length <= cap ? safe : `${safe.slice(0, cap)}… [more: get_goal(section="${section}")]`;
@@ -183,7 +172,6 @@ export function sisyphusDisciplineBlock(goal: GoalRecord): string {
 	].join("\n");
 }
 
-/** Shared outcome/blocker policy for active goals (bounded). */
 function lifecyclePolicyBlock(autonomous: boolean, strict: boolean): string {
  return [
   "[OUTCOMES]",

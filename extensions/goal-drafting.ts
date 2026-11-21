@@ -34,7 +34,6 @@ export interface GoalDraftSession {
 	targetGoalId?: string;
 	startedAt: string;
 	auditorEnabled: boolean;
-	/** Tombstone marker: set when the draft is cancelled, confirmed, or replaced. */
 	clearedAt?: string;
 }
 
@@ -44,7 +43,6 @@ export interface ActiveGoalDraft {
 	targetGoalId?: string;
 	startedAt: string;
 	auditorEnabled: boolean;
-	/** E5: formatted questionnaire Q&A to echo in the created-goal report. */
 	questionnaireEcho?: string;
 }
 
@@ -64,7 +62,6 @@ export function clearGoalDrafting(core: GoalCore, ctx: ExtensionContext): void {
 	if (!activeDrafts.has(core)) return;
 	const existing = activeDrafts.get(core)!;
 	activeDrafts.delete(core);
-	// Tombstone the durable entry: the last entry wins on rehydration.
 	draftSessionEntry(core, { version: 1, mode: existing.mode, seed: existing.originalTopic, targetGoalId: existing.targetGoalId, startedAt: existing.startedAt, auditorEnabled: existing.auditorEnabled, clearedAt: nowIso() });
 	core.installGoalToolProfile(core.tasksEnabled);
 	void ctx;
@@ -143,7 +140,7 @@ export async function startGoalDrafting(core: GoalCore, ctx: ExtensionContext, m
 	if (activeDraft(core)) {
 		const choice = ctx.hasUI
 			? await awaitDraftChoice(core, ctx, label)
-			: "replace"; // headless: explicit new intent wins, but not silently (notified)
+			: "replace";
 		if (choice === "resume") {
 			ctx.ui.notify("A draft is already active; resuming it. Use /goal-cancel to discard it.", "info");
 			return;
@@ -237,7 +234,6 @@ function flatTaskSchema() {
 	}), { description: "Flat parent-linked task tree to confirm with the goal." });
 }
 
-/** An actual drafting failure. Cancellation, decline, refinement and focus loss are not failures and keep plain results. */
 function draftingFailure(core: GoalCore, text: string) {
 	return { content: [{ type: "text" as const, text }], details: goalDetails(core.state.goal), isError: true as const };
 }
@@ -295,7 +291,7 @@ export function registerDraftingTools(core: GoalCore): void {
 				const result = await runGoalQuestionnaire(ctx, questions);
 				if (!result.cancelled) {
 					const active = activeDraft(core);
-					if (active) active.questionnaireEcho = formatQuestionnaireAnswers(result); // E5
+					if (active) active.questionnaireEcho = formatQuestionnaireAnswers(result);
 				}
 				if (result.unavailable === true) return draftingFailure(core, `${DIALOG_UNAVAILABLE_HINT} Ask the questions in chat instead.`);
 				return { content: [{ type: "text", text: result.cancelled ? "The user cancelled the questionnaire. Continue drafting conversationally." : formatQuestionnaireAnswers(result) }], details: goalDetails(core.state.goal) };
@@ -376,9 +372,6 @@ export function registerDraftingTools(core: GoalCore): void {
 			}
 			const settings = loadGoalSettings(ctx.cwd);
 			const extracted = settings.disableContracts ? { objective, verificationContract: undefined } : extractVerificationContract(objective);
-			// §14: the durable proposal summary is part of the transcript for
-			// EVERY outcome (confirm / continue refining / cancel), so the user
-			// can review the proposal after the dialog closes.
 			const summary = budgetSummary + "\n" + runsSummary + "\n\n" + buildProposalSummary({
 				objective: extracted.objective,
 				taskList: taskResult.value,
@@ -394,8 +387,6 @@ export function registerDraftingTools(core: GoalCore): void {
 				return draftingFailure(core, `${summary}\n\n${DIALOG_UNAVAILABLE_HINT} The goal was NOT created and drafting remains active; do not retry the dialog until the host supports it or the user explicitly restarts with PI_GOAL_AUTO_CONFIRM=1.`);
 			}
 			if (confirmation.decision !== "confirm") {
-				// Continue refining: preserve the user's auditor choice for the
-				// next proposal (memory and the durable session entry).
 				if (confirmation.auditorEnabled !== draft.auditorEnabled) {
 					const next = { ...draft, auditorEnabled: confirmation.auditorEnabled };
 					activeDrafts.set(core, next);
@@ -404,12 +395,8 @@ export function registerDraftingTools(core: GoalCore): void {
 				return { content: [{ type: "text", text: `${summary}\n\nGoal draft refinement requested. The goal was not changed; ask what the user wants revised before proposing again.` }], details: goalDetails(core.state.goal) };
 			}
 			const skipAuditor = confirmation.auditorEnabled === false;
-			// §14: capture the questionnaire answers BEFORE clearing draft state so
-			// the confirmed-goal report can include them reliably (E5).
 			const qaEcho = draft.questionnaireEcho;
 			if (draft.mode !== "tweak") {
-				// F2: if the confirmation carried no task plan but the objective has
-				// structure, bootstrap the derived tree so the goal starts trackable.
 				const effectiveTaskList: GoalTaskList | undefined = taskResult.value ?? (() => {
 					const derived = deriveTasksFromObjective(extracted.objective);
 					return derived && derived.length > 0 ? { tasks: derived, blockCompletion: false, proposedAt: nowIso() } : undefined;
@@ -434,7 +421,6 @@ export function registerDraftingTools(core: GoalCore): void {
 			const finalFlushError = core.goalService.flushForAudit(ctx);
 			core.reconcileFocusedGoalFromDisk(ctx);
 			const changedDuringConfirmation = "Goal tweak was not applied: the goal changed during confirmation. Review and propose again.";
-			// Focus loss is a cancellation (nothing applied, not an error); a flush failure or a concurrent revision is a failure.
 			const flushFailed = finalFlushError || core.goalService.isTurnBuffered();
 			if (!flushFailed && !core.isFocusedOperationCurrent(token)) return {content: [{type: "text", text: changedDuringConfirmation}], details: goalDetails(core.state.goal)};
 			if (flushFailed || core.state.goal?.revision !== proposalRevision || core.state.goal?.status === "complete") return draftingFailure(core, changedDuringConfirmation);
@@ -461,10 +447,6 @@ export function registerDraftingTools(core: GoalCore): void {
 					const currentTaskId = mergedTaskList && goal.currentTaskId && !currentTaskIdIsPending(mergedTaskList.tasks, goal.currentTaskId)
 						? undefined
 						: goal.currentTaskId;
-					// §tweak-resume: resume a paused/blocked goal (mirror the
-					// /goal-resume transition: status active + pause metadata
-					// cleared). A budget-limited goal needs an explicit budget
-					// change that clears the resource gate; preserve scheduler limits.
 					const exhausted = budgetReached({...goal, tokenBudget: proposedBudget});
 					const wantsResume = goal.status === "paused" || goal.status === "blocked" || (goal.status === "budget_limited" && params.token_budget !== undefined && !exhausted);
 					const scheduler = goal.scheduler;
@@ -496,7 +478,6 @@ export function registerDraftingTools(core: GoalCore): void {
 				try {
 					core.goalService.appendEvents(ctx, [{ type: "goal_resumed", goalId: result.goal.id, reason: "tweak", at: nowIso() }]);
 				} catch {
-					// Ledger append failure should not crash the tweak.
 				}
 			}
 			core.clearContinuationState();
@@ -505,8 +486,6 @@ export function registerDraftingTools(core: GoalCore): void {
 			core.updateUI(ctx);
 			let schedulingNote = "";
 			if (resumed) {
-				// Resume glue mirrors replaceGoal: restart accounting and queue
-				// the auto-continuation so the revived goal keeps going.
 				core.beginAccounting();
 				const scheduling = core.scheduler.declare(ctx, {kind: "ready"});
 				if (!scheduling.terminate) schedulingNote = "\n" + scheduling.content.filter(item => item.type === "text").map(item => item.text).join("\n");
