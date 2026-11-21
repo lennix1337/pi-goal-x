@@ -103,7 +103,6 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const port = server.address().port;
 
-// ── Isolated agent dir + project ────────────────────────────────────────────
 const work = mkdtempSync(path.join(tmpdir(), "goal-live-lifecycle-"));
 const agentDir = path.join(work, "agent");
 const projectDir = path.join(work, "project");
@@ -127,7 +126,6 @@ writeFileSync(path.join(agentDir, "models.json"), JSON.stringify({
 	},
 }));
 
-// ── Drive the live session ──────────────────────────────────────────────────
 const child = spawn("pi", ["--mode", "rpc", "-e", EXT_PATH, "-ne", "--no-session"], {
 	cwd: projectDir,
 	env: { ...process.env, PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1" },
@@ -210,7 +208,6 @@ server.close();
 // The audit only counts as observed if it really went through the SDK path.
 milestones.auditRan = seen.audit > 0;
 
-// ── On-disk evidence ────────────────────────────────────────────────────────
 const goalDir = path.join(projectDir, ".pi", "goals");
 const activeFiles = readdirSync(goalDir).filter((f) => f.endsWith(".json") || f.endsWith(".md"));
 let archived = [];
@@ -230,8 +227,6 @@ for (const file of readdirSync(goalDir)) {
 }
 
 const ledgerTypes = [...ledger.matchAll(/"type"\s*:\s*"([a-z_]+)"/g)].map((m) => m[1]);
-// Completion is proven by the terminal ledger events, not by the goal file
-// remaining active: a completed goal is archived and leaves no active record.
 milestones.completed =
 	ledgerTypes.includes("goal_completed") ||
 	ledgerTypes.includes("goal_archived") ||

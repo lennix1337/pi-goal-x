@@ -45,7 +45,6 @@ function asRecord(value) {
 	return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
-/** Extract goalId from a checkpoint entry's details or content (v2 + legacy forms). */
 function checkpointGoalId(entry) {
 	const raw = asRecord(entry);
 	if (!raw) return null;
@@ -76,9 +75,7 @@ function graphIdentity(entry) {
 
 function splitPreservingFinalNewline(text) {
 	const lines = text.split("\n");
-	// split() drops knowledge of a trailing newline; re-add an empty final
-	// segment so join("\n") reproduces the input byte count exactly.
-	if (text.endsWith("\n")) return lines; // last element is "" already
+	if (text.endsWith("\n")) return lines;
 	return lines;
 }
 
@@ -111,7 +108,7 @@ export function transformSessionLines(originalText) {
 		originalGraph.push(graphIdentity(entry));
 
 		if (!isGoalCheckpointCustomMessage(entry)) {
-			outputLines.push(rawLine); // byte-identical for untouched entries
+			outputLines.push(rawLine);
 			outputGraph.push(graphIdentity(entry));
 			continue;
 		}
@@ -164,7 +161,6 @@ function recoverSession(inputPath, apply) {
 	const { outputLines, originalGraph, outputGraph, changed, savedChars, malformed } =
 		transformSessionLines(original);
 
-	// ── invariants before any write ──────────────────────────────────────
 	if (JSON.stringify(outputGraph) !== JSON.stringify(originalGraph)) {
 		throw new Error("graph identity mismatch: ids/parentIds would change — aborting");
 	}
@@ -215,9 +211,9 @@ function recoverSession(inputPath, apply) {
 		fs.renameSync(temp, absolute);
 	} catch (error) {
 		if (fd !== undefined) {
-			try { fs.closeSync(fd); } catch { /* best effort */ }
+			try { fs.closeSync(fd); } catch { }
 		}
-		try { fs.unlinkSync(temp); } catch { /* best effort */ }
+		try { fs.unlinkSync(temp); } catch { }
 		throw error;
 	}
 
@@ -225,7 +221,6 @@ function recoverSession(inputPath, apply) {
 		fs.fsyncSync(fs.openSync(path.dirname(absolute), "r"));
 	} catch { /* directory fsync is platform-dependent; best effort */ }
 
-	// Post-write validation by re-reading.
 	const reread = fs.readFileSync(absolute, "utf8");
 	const rereadLines = reread.split("\n");
 	if (rereadLines.length !== outputLines.length) throw new Error("post-write validation failed: line count changed");
@@ -237,7 +232,6 @@ function recoverSession(inputPath, apply) {
 	console.log(`Backup: ${backup}`);
 }
 
-// ── CLI parsing ────────────────────────────────────────────────────────────
 
 function main(argv) {
 	let session = null;
