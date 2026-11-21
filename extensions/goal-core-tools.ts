@@ -197,6 +197,7 @@ pi.registerTool(defineTool({
 		if (runError) return {content: [{type: "text", text: runError}], details: goalDetails(core.state.goal), isError: true};
 		let tokenBudget: number | undefined;
 		if (params.token_budget !== undefined && params.token_budget !== null) {
+			// external: tool callers are untrusted, even when a schema is supplied.
 			const budgetGate = validateTokenBudgetInput(params.token_budget);
 			if (!budgetGate.ok) {
 				return {

@@ -136,35 +136,11 @@ function fit(value: string, width: number): string {
 }
 
 
-/**
- * Minimum rows reserved below/around the widget so pi's frame stays usable
- * when the widget is at its cap: status line (1) + editor minimum (3) +
- * footer (1) + a chat row (1). With the widget capped at
- * `terminalRows − WIDGET_HEIGHT_RESERVE`, the widget never fills the terminal:
- * the chat row stays in the frame, the widget's top lines stay within the
- * viewport (no pi-tui full-render scrollback wipe), and the editor/footer
- * stay visible — the equal-height scroll-up failure is impossible. Kept at
- * the minimum that still guarantees the chat row: a larger reserve would
- * slice dashboards that genuinely fit (e.g. the expanded 24-line dashboard
- * on a 30-row terminal renders unchanged at 24 + 5 chrome + 1 chat = 30).
- */
+// external: pi-tui can erase scrollback on a full render.
+/** Minimum rows reserved for surrounding terminal chrome and chat. */
 export const WIDGET_HEIGHT_RESERVE = 6;
 
-/**
- * Deterministic height guard: cap rendered lines to the terminal height minus
- * the reserved chrome. Head slice, because the dashboard's content priority
- * is top-down (identity → status → progress → tasks → details → hints); the
- * goal identity/status and the interactive task list stay in frame. Pure
- * index function — stable across renders, so the widget never shrinks on its
- * own and can never trigger pi-tui's clearOnShrink full-render
- * (`\x1b[2J\x1b[H\x1b[3J` scrollback wipe). No-op (unbounded) when
- * terminalRows is missing (mock TUI, headless contexts, /goal-status text).
- *
- * This pure head-slice is the terminal bound for direct callers. The live
- * component additionally applies the stable-height bound
- * (spec 2026-08-11-stable-widget-height) so the rendered height stays
- * constant within each regime — see applyStableHeightBound.
- */
+/** Bound widget lines to terminal height, or leave them unbounded without dimensions. */
 export function boundWidgetRenderLines(lines: string[], terminalRows: number | undefined): string[] {
 	if (!terminalRows || terminalRows <= 0) return lines;
 	const cap = Math.max(1, terminalRows - WIDGET_HEIGHT_RESERVE);
@@ -172,32 +148,7 @@ export function boundWidgetRenderLines(lines: string[], terminalRows: number | u
 	return lines.slice(0, cap);
 }
 
-/**
- * Stable rendered height per regime (spec 2026-08-11-stable-widget-height).
- *
- * The widget's natural (unbounded) height varies with goal state — activity
- * feed growth, current-task contract/evidence wrapping, verification text,
- * budget, task growth (measured 4..31 lines on a 24-row terminal). Every
- * natural-height change alters the dock height → the terminal buffer's line
- * count changes → the terminal scrolls to the bottom and the user cannot hold
- * a scroll position to read the chat. The latch makes the rendered height
- * invariant to goal-state changes in EVERY case (fits and capped):
- *
- * - the first render of each regime commits the rendered height
- *   (min(natural, cap)) and every later render of that regime renders exactly
- *   that many lines — growth is head-sliced, shrink is blank-padded, the
- *   height never changes;
- * - resizing the terminal clears the latch and re-evaluates
- *   min(natural, newCap): growing the terminal reveals more of the widget,
- *   shrinking re-caps;
- * - a regime change (goal id/status, widget state kind, compact↔expanded,
- *   debug mode, tasks disabled, first task appearing) clears the latch so the
- *   new mode starts from its own natural height.
- *
- * Pure given the persisted latch state: deterministic, no timers, no
- * randomness — the same goal state on the same terminal renders the same
- * lines on every render.
- */
+/** Keep widget height stable within a regime; reset on regime or terminal changes. */
 export function applyStableHeightBound(
 	lines: string[],
 	terminalRows: number | undefined,

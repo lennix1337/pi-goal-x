@@ -35,16 +35,7 @@ export type FlatTaskConversion =
 	| { ok: true; tasks: GoalTask[] }
 	| { ok: false; message: string };
 
-/**
- * Convert a flat parent-linked task list into the recursive GoalTask[]
- * representation, validating:
- *  - non-empty unique ids and titles;
- *  - parent_id references an existing task in the same input;
- *  - acyclic parent relationships;
- *  - at most MAX_TASKS tasks total;
- *  - subtask depth within maxDepth (subtaskDepth setting, default 1);
- *  - lightweight_subtasks is only set on tasks that actually have children.
- */
+/** Convert flat parent-linked tasks into a validated task tree. */
 export function convertFlatTasks(flat: FlatTaskInput[], opts: { maxSubtaskDepth?: number } = {}): FlatTaskConversion {
 	if (!Array.isArray(flat)) return { ok: false, message: "tasks must be an array." };
 	if (flat.length > MAX_TASKS) return { ok: false, message: `Task list cannot exceed ${MAX_TASKS} tasks.` };

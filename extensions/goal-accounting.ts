@@ -1,15 +1,3 @@
-/**
- * GoalAccounting — serialized, idempotent token/time accounting.
- *
- * One instance per extension. `begin(goalId)` starts a session for an active
- * goal; `charge()` computes the elapsed seconds since the last charge and the
- * completed-turn tokens, then advances the baseline so repeated calls never
- * double-charge the same wall-clock interval. `liveSeconds()` is a read-only
- * display helper that does not mutate state.
- *
- * Also exposes the token-budget helpers used by the runtime to detect the
- * one-time `budget_limited` transition.
- */
 
 export interface AccountingCharge {
 	tokens: number;

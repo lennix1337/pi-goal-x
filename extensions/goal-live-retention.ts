@@ -1,27 +1,7 @@
 import { createHash } from "node:crypto";
 import { asRecord } from "./goal-record.ts";
 
-/**
- * Prefix-stable retention for request-only goal-state tails.
- *
- * The context hook appends live goal state to every provider request without
- * persisting it. When the next request arrives, the completed assistant turn
- * occupies the position where the previous tail sat, so request N is no
- * longer a prefix of request N+1 and implicit prompt caches (OpenAI Responses
- * / Chat Completions, which carry no explicit marker) freeze at the first
- * injection point.
- *
- * This module makes each request a true prefix of the next: previously sent
- * tails are re-inserted verbatim at their recorded anchor (the session length
- * when they were emitted), the whole preceding history is verified unchanged
- * by digest, and only genuinely new tail content is appended. Identical
- * content across repeated requests appends nothing, so tool loops and idle
- * re-requests cost zero growth. A stable-state change, any history rewrite
- * (compaction, resume, session-tree moves, filter changes, middle-message
- * edits), an unsafe insertion point, or overflow all perform one documented
- * full reset instead of silently shifting the prefix or corrupting message
- * structure.
- */
+// external: OpenAI implicit prompt caches require an exact reusable prefix.
 
 export const LIVE_CONTEXT_TYPE = "pi-goal-live-context";
 

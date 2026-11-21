@@ -41,19 +41,7 @@ export interface GoalStatusTextOptions {
 	width?: number;
 }
 
-/**
- * Build the /goal-status text.
- *
- * Standard (§13.1): static compact-dashboard rendering + current-task details
- * + recent activity + last audit result when available. The terminology and
- * hierarchy match the expanded dashboard (§13.3); no effective settings by
- * default.
- *
- * Verbose (§13.2): goal id, revision, full objective, complete task tree with
- * full evidence and contracts, recent ledger history, effective settings and
- * provenance, token budget detail, pause/blocker detail, paths, and the last
- * audit report.
- */
+/** Build concise or verbose goal status text. */
 export function buildGoalStatusText(options: GoalStatusTextOptions): string {
 	const width = options.width ?? GOAL_STATUS_WIDTH;
 	if (options.health) return buildHealthStatus(options, width);

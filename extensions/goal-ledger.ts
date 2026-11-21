@@ -79,16 +79,7 @@ export function goalLedgerPath(ctx: GoalLedgerContext): string {
 
 export type GoalLedgerAppendResult = { ok: true } | { ok: false; error: unknown };
 
-/**
- * Append one ledger event. Returns a discriminated result instead of swallowing
- * both append attempts internally: the authoritative state write is never
- * rolled back after a ledger failure, but callers (GoalService) route failures
- * through the onDiagnostic hook so they stay observable.
- *
- * NAF: after a successful append the in-memory ledger cache is extended with
- * the same event (sanitized), so the next readGoalLedger is zero-op and
- * always current for extension-mediated writes.
- */
+/** Append an event; report ledger failure without rolling back authoritative state. */
 export function appendGoalEvent(ctx: GoalLedgerContext, event: GoalLedgerEvent): GoalLedgerAppendResult {
   const result = appendLedgerLines(ctx, [event]);
   return result;

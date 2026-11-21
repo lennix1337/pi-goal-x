@@ -1,15 +1,4 @@
-/**
- * Goal-level recovery after Pi has exhausted its provider retries.
- *
- * Pi owns the immediate request retries. These longer delays are deliberately
- * slow and only apply to transient provider failures, so an unavailable
- * provider never becomes a rapid auto-continue loop.
- *
- * Default policy is UNBOUNDED: recovery keeps retrying forever on an
- * escalating delay ladder that plateaus at `maxDelayMs`. A bounded cap can
- * be configured via layered settings (`networkRecovery.maxAttempts`, where
- * 0/unset means unbounded).
- */
+// external: Pi handles immediate provider retries before goal-level recovery.
 
 export const NETWORK_ERROR_BACKOFF_DELAYS_MS = [5_000, 10_000, 20_000, 40_000, 80_000] as const;
 

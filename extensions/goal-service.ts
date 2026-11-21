@@ -91,25 +91,6 @@ export interface GoalMutationFailure {
 
 export type GoalMutationOutcome = GoalMutationResult | GoalMutationFailure;
 
-/**
- * GoalService — the extension's sole mutation boundary for goal records.
- *
- * Ordered pipeline for every focused-goal mutation (mirrors TECH.md storage
- * section):
- *
- *   1. safe focused record reconciliation from disk;
- *   2. expected goal id + focus revision check;
- *   3. mutation on a clone;
- *   4. active-file write (or archival for complete/clear/abort);
- *   5. ledger append best effort;
- *   6. in-memory pool/focus commit;
- *   7. runtime/UI effects (returned and signalled through the ref hooks).
- *
- * If the active-file write fails it throws, so memory/ledger/focus/archive are
- * never committed. A failed ledger append after the authoritative write keeps
- * the successful state transition and reports diagnostics via the hook, matching
- * the current best-effort ledger semantics.
- */
 export interface GoalTaskUpdateSpec {
 	/** If provided, the token must still be current (same goal id + focus revision). */
 	focusToken?: { goalId: string; revision: number };
@@ -334,20 +315,7 @@ export class GoalService {
 		}
 	}
 
-	/**
-	 * The single ordered mutation pipeline for a focused goal.
-	 * Returns the written record plus focus-change effects; the extension maps
-	 * failures to user-facing results.
-	 *
-	 * Cross-process control (follow-up Stage 4): after the session-local
-	 * validation, an exclusive per-goal lock is acquired (bounded, with stale
-	 * recovery) and the authoritative file is re-read under the lock. If the
-	 * persisted revision differs from the one captured at reconciliation, the
-	 * mutation returns a typed conflict carrying the current revision instead
-	 * of overwriting blindly. On success the revision is incremented, the file
-	 * is written atomically, ledger events are appended best-effort, memory is
-	 * committed, and the lock is released in a finally block.
-	 */
+	/** Apply a focused-goal mutation, returning a typed conflict for stale revisions. */
 		apply(ctx: GoalServiceContext, spec: GoalMutationSpec): GoalMutationOutcome {
 		if (spec.reconcile !== false && !this.reconcileFocused(ctx)) {
 			return { ok: false, message: "The focused goal was lost during reconciliation; the mutation was not applied." };
@@ -559,19 +527,6 @@ export class GoalService {
   } finally { lock?.release(); }
  }
 
-	/**
-	 * Disk-fresh single-task transaction (follow-up Stage 4 adds the per-goal
-	 * lock + optimistic revision check). Pipeline:
-	 *  1. reconcile the focused record;
-	 *  2. validate focus token/id;
-	 *  3. acquire the per-goal lock and re-read the authoritative file;
-	 *  4. a stale writer gets a typed conflict; it retries ONCE with the fresh
-	 *     state — the transition validation re-checks that the same task and
-	 *     relevant status/structure are unchanged, so a genuinely concurrent
-	 *     edit is rejected rather than silently merged;
-	 *  5. load the fresh task, validate the transition, update only that task;
-	 *  6. write with an incremented revision, append the ledger, and commit.
-	 */
 	private updateTaskAttempt(ctx: GoalServiceContext, spec: GoalTaskUpdateSpec, retriesLeft: number): GoalTaskUpdateOutcome {
 		if (!this.reconcileFocused(ctx)) {
 			return { ok: false, message: "The focused goal was lost during reconciliation; the task was not updated." };

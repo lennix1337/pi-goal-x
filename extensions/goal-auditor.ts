@@ -250,18 +250,8 @@ export function resolveAuditorModel(ctx: ExtensionContext, config: GoalSettings)
 	return { model: undefined, error: `Configured auditor model is ambiguous or unavailable: ${config.model}` };
 }
 
-/**
- * Options that reuse the parent session's auth + registered providers for the nested auditor.
- *
- * Pi 0.81+ `createAgentSession` accepts `modelRuntime` (and ignores `modelRegistry`).
- * ExtensionContext still exposes `modelRegistry`, which wraps the live ModelRuntime.
- * Sharing that runtime keeps extension providers such as `pi-cursor-sdk`'s `cursor`
- * provider (and its auth) available. Without this, the auditor builds a fresh runtime
- * with an empty resource loader, so Cursor models fail with "No API key found for cursor"
- * even when `~/.pi/agent/auth.json` has a Cursor key.
- *
- * Older SDKs still accept `modelRegistry`; pass both for compatibility.
- */
+// external: newer Pi SDKs use modelRuntime; older SDKs accept modelRegistry.
+/** Reuse the parent session providers and authentication for the auditor. */
 export function resolveAuditorSessionModelOptions(ctx: ExtensionContext): {
 	modelRegistry: ExtensionContext["modelRegistry"];
 	modelRuntime?: unknown;
@@ -414,6 +404,7 @@ export async function runGoalCompletionAuditor(args: {
 			unsubscribe();
    session.dispose?.();
 		}
+		// external: Pi session.abort() may resolve prompt normally with partial output.
 		if (args.signal?.aborted) {
 			return {
 				approved: false,

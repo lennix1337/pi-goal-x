@@ -1,17 +1,7 @@
 import { asRecord } from "./goal-record.ts";
 
-/**
- * Pi marks the final user block for explicit caching. Our request-only state
- * never enters history, so that block cannot be reused on the next request.
- * Move that existing breakpoint to the preceding cacheable history block.
- * Implicit caches and cacheRetention=none have no marker and are untouched.
- * Reuse the provider's TTL and marker count rather than enabling caching here.
- *
- * The live tail may span several request-only blocks (stable goal state plus
- * volatile counters) and previously sent tails may be retained verbatim
- * mid-history for implicit-prefix stability. Every such block is transient:
- * the breakpoint must skip all of them and land on real history.
- */
+// external: Pi marks the final user block for explicit caching.
+/** Relocate an existing cache breakpoint from live tails to preceding history. */
 export function cacheGoalHistory(payload: unknown, liveContent: string | readonly string[] | undefined): unknown {
 	const live = liveContent === undefined
 		? undefined

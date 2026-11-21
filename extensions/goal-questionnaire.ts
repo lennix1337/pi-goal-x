@@ -67,23 +67,8 @@ function stripAnsiCodes(value: string): string {
 	return value.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
-/**
- * Locate the proposal tasks segment and the options tail in a rendered dialog.
- * Returns null when the dialog is not a proposal-style confirmation (no
- * "Tasks proposed for confirmation:" header / "┌─ TASKS ─" box).
- *
- * The scan is ANSI-aware: every rendered line carries `theme.fg(...)` escape
- * sequences in the real TUI (the mock theme does not), so plain-text regexes
- * must be run against the stripped line or the tasks section collapses to its
- * header and every styled task line is sliced out of the bounded frame. The
- * box-drawn bottom border (`└───┘`) after the last task line is kept so the
- * `┌─ TASKS ─┐` box renders complete.
- *
- * The interactive auditor toggle line ("press 'a' to toggle") renders between
- * the context and the options; `tailStart` is pulled back to it so the bounded
- * fit always keeps the auditor status visible (its status text is the only
- * visible toggle feedback in the dialog).
- */
+// external: Pi TUI themes render lines with ANSI escape sequences.
+/** Locate proposal task and option segments, or return null for other dialogs. */
 export function findProposalPresentationSegments(lines: string[], tailStart: number): ProposalPresentationSegments | null {
 	if (tailStart < 0) return null;
 	const tasksStart = lines.findIndex((l) => l.includes("Tasks proposed for confirmation:") || l.includes("┌─ TASKS ─"));
@@ -108,27 +93,7 @@ export function findProposalPresentationSegments(lines: string[], tailStart: num
 	return { tasksStart, tasksEnd, tailStart: effectiveTail };
 }
 
-/**
- * Fit a rendered dialog to the terminal-height bound without ever hiding the
- * question. The protected head (top border + tabs + question line) is always
- * kept; the remaining budget is spent on the tail — options/footer/bottom
- * border — so long context blocks (proposal confirmations) are sliced from
- * their head exactly as the pre-fix tail-slice did (383ae52 surface). The
- * footer hint and bottom border are always the last rendered lines. Never
- * returns more than maxDialogLines.
- *
- * Proposal confirmations (proposal segments given) keep the head, the tasks
- * section (header + every task line), and the options/footer/bottom border in
- * frame; only the objective-box middle is sacrificed in-frame — the full
- * objective is always present in the scrollable transcript presentation
- * (propose_goal_draft renderCall), so nothing of the goal is ever omitted.
- *
- * §options-scroll: when a `scroll` state is given (select-mode question tabs
- * and the submit summary), the dialog becomes a `less`-style viewport over the
- * FULL content — nothing is truncated, nothing is sliced away — and the
- * options are always reachable by scrolling (PageUp/PageDown, Ctrl+↑/↓, and
- * ↑/↓ selection auto-follow). See fitDialogViewport.
- */
+/** Scroll position and selectable line ranges for a dialog viewport. */
 export interface DialogScrollState {
 	scrollTop: number;
 	needsFollow: boolean;
@@ -324,6 +289,7 @@ export async function runGoalQuestionnaire(ctx: ExtensionContext, rawQuestions: 
 		return { questions: [], answers: [], cancelled: true };
 	}
 
+	// external: pi-web uses RPC mode but can still render TUI components.
 	const questions = normalizeQuestionnaireQuestions(rawQuestions);
 	if (typeof ctx.ui.custom !== "function") {
 		return runQuestionnaireWithBasicDialogs(ctx, questions, auditorToggleInit);
@@ -348,6 +314,7 @@ export async function runGoalQuestionnaire(ctx: ExtensionContext, rawQuestions: 
 		let optionIndex = 0;
 		let inputMode = false;
 		let inputQuestionId: string | null = null;
+		// external: Pi Editor needs focus to emit CURSOR_MARKER and position the cursor for IME input.
 		let dialogFocused = false;
 		let cachedLines: string[] | undefined;
 		let optionsStartIndex = -1;

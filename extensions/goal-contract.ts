@@ -1,18 +1,7 @@
 
 const VERIFICATION_CONTRACT_RE = /^Verification contract:\s*(.+)$/im;
 
-/**
- * Extract a `Verification contract:` section from a goal objective and return
- * the cleaned objective (without the contract section) and the contract text.
- *
- * The contract section is a single line matching:
- *   Verification contract: <text>
- *
- * It can appear anywhere in the objective, but by convention it goes after
- * the other sections (like Success criteria, Boundaries, Constraints).
- *
- * If no contract section is found, `verificationContract` is undefined.
- */
+/** Extract a Verification contract line; the contract field is undefined when absent. */
 export function extractVerificationContract(objective: string): { objective: string; verificationContract?: string } {
 	const lines = objective.replace(/\r/g, "").split("\n");
 	let contract: string | undefined;
